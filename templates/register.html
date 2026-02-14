@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RentEase - Регистрация</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Глобальные стили для страницы регистрации */
+        body.register-body {
+            overflow: hidden; /* ГЛАВНОЕ: убираем прокрутку всей страницы */
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        .register-page {
+            height: calc(100vh - 70px); /* Высота за вычетом хедера */
+            background-image: url('/static/background-register.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            position: relative;
+            display: flex;
+            align-items: flex-start;
+            padding: 30px 0 30px 5%;
+            box-sizing: border-box;
+            overflow: hidden; /* Запрещаем прокрутку на уровне страницы */
+        }
+
+        .register-page::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.1) 100%);
+            pointer-events: none;
+        }
+
+        .register-container {
+            width: 40%;
+            min-width: 450px;
+            max-width: 550px;
+            position: relative;
+            z-index: 2;
+            height: 100%; /* Занимает всю высоту родителя */
+            display: flex;
+            flex-direction: column;
+        }
+
+        .register-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            animation: slideIn 0.5s ease-out;
+            display: flex;
+            flex-direction: column;
+            height: 100%; /* Занимает всю высоту контейнера */
+            max-height: 100%;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .register-header {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            padding: 20px 30px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .register-header h1 {
+            font-size: 26px;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .register-header p {
+            font-size: 14px;
+            opacity: 0.9;
+            margin: 0;
+        }
+
+        .steps-indicator {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            flex-shrink: 0;
+        }
+
+        .step-item {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .step-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 18px;
+            right: -30px;
+            width: 60px;
+            height: 2px;
+            background: #dee2e6;
+        }
+
+        .step-item.active .step-circle {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .step-item.completed .step-circle {
+            background: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+
+        .step-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid #dee2e6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 6px;
+            font-weight: 600;
+            font-size: 16px;
+            color: #6c757d;
+            transition: all 0.3s;
+        }
+
+        .step-label {
+            font-size: 11px;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .step-item.active .step-label {
+            color: #007bff;
+            font-weight: 600;
+        }
+
+        .step-item.completed .step-label {
+            color: #28a745;
+        }
+
+        /* Контейнер с прокруткой ТОЛЬКО ДЛЯ ФОРМЫ */
+        .register-form-container {
+            padding: 20px 30px;
+            overflow-y: auto; /* Прокрутка только здесь */
+            flex: 1;
+            min-height: 0; /* Важно для корректной работы overflow */
+        }
+
+        /* Стилизация скроллбара */
+        .register-form-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .register-form-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .register-form-container::-webkit-scrollbar-thumb {
+            background: #007bff;
+            border-radius: 10px;
+        }
+
+        .register-form-container::-webkit-scrollbar-thumb:hover {
+            background: #0056b3;
+        }
+
+        .register-form {
+            display: block;
+        }
+
+        .register-form.hidden {
+            display: none;
+        }
+
+        .section-title {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        .form-group label .required {
+            color: #dc3545;
+            margin-left: 4px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        }
+
+        .form-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .form-hint {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 4px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin: 15px 0;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-top: 2px;
+        }
+
+        .checkbox-group label {
+            margin-bottom: 0;
+            font-weight: normal;
+            font-size: 13px;
+        }
+
+        .checkbox-group a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        .checkbox-group a:hover {
+            text-decoration: underline;
+        }
+
+        /* Стили для кода подтверждения */
+        .code-input-container {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .code-digit {
+            width: 40px;
+            height: 45px;
+            text-align: center;
+            font-size: 20px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .code-digit:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+            outline: none;
+        }
+
+        .code-separator {
+            font-size: 20px;
+            color: #6c757d;
+            display: flex;
+            align-items: center;
+        }
+
+        .code-timer {
+            text-align: center;
+            color: #6c757d;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+
+        .code-timer span {
+            font-weight: 600;
+            color: #007bff;
+        }
+
+        /* Стили для аватарки */
+        .avatar-section {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .avatar-preview {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto 15px;
+            background: #f8f9fa;
+            border: 3px dashed #007bff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .avatar-preview:hover {
+            border-color: #0056b3;
+            background: #e9ecef;
+        }
+
+        .avatar-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .avatar-preview .placeholder {
+            color: #6c757d;
+            font-size: 12px;
+        }
+
+        .btn-upload {
+            background: none;
+            border: 1px solid #007bff;
+            color: #007bff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        .btn-upload:hover {
+            background: #007bff;
+            color: white;
+        }
+
+        /* Кнопки */
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 8px 0;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #495057;
+            border: 1px solid #ced4da;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.3s;
+            margin: 8px 0;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+            border-color: #007bff;
+        }
+
+        .btn-link {
+            background: none;
+            border: none;
+            color: #007bff;
+            cursor: pointer;
+            font-size: 13px;
+            text-decoration: none;
+            margin: 5px 0;
+            display: inline-block;
+        }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+        .form-footer {
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        .form-footer a {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 13px;
+        }
+
+        .form-footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Адаптивность */
+        @media (max-width: 992px) {
+            .register-container {
+                width: 50%;
+                min-width: 400px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .register-page {
+                justify-content: center;
+                padding: 20px;
+                align-items: center;
+            }
+
+            .register-container {
+                width: 100%;
+                max-width: 500px;
+                margin-left: 0;
+            }
+
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            .step-item:not(:last-child)::after {
+                width: 30px;
+                right: -15px;
+            }
+
+            .register-form-container {
+                padding: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .step-item:not(:last-child)::after {
+                display: none;
+            }
+
+            .code-digit {
+                width: 35px;
+                height: 40px;
+                font-size: 18px;
+            }
+
+            .code-input-container {
+                gap: 4px;
+            }
+        }
+    </style>
+</head>
+<body class="register-body"> <!-- Добавлен класс для отключения прокрутки страницы -->
+    <div class="header">
+        <div class="logo">RentEase</div>
+        <div class="menu">
+            <a href="/">Каталог объектов</a>
+            <a href="#" onclick="showGuidePopup()">Руководство</a>
+            <a href="#">Контакты</a>
+            <div class="location" onclick="showCityPopup()">
+                <span id="selectedCity">Москва</span>
+                <img src="/static/pin.png" alt="Location">
+            </div>
+            <a href="#" class="login" onclick="showLoginModal()">Войти</a>
+        </div>
+    </div>
+
+    <div class="register-page">
+        <div class="register-container">
+            <div class="register-card">
+                <div class="register-header">
+                    <h1>Регистрация в RentEase</h1>
+                    <p>Присоединяйтесь к сообществу арендаторов и собственников</p>
+                </div>
+
+                <!-- Индикатор шагов -->
+                <div class="steps-indicator">
+                    <div class="step-item active" id="step1-indicator">
+                        <div class="step-circle">1</div>
+                        <div class="step-label">Основные данные</div>
+                    </div>
+                    <div class="step-item" id="step2-indicator">
+                        <div class="step-circle">2</div>
+                        <div class="step-label">Подтверждение</div>
+                    </div>
+                    <div class="step-item" id="step3-indicator">
+                        <div class="step-circle">3</div>
+                        <div class="step-label">Профиль</div>
+                    </div>
+                </div>
+
+                <!-- Контейнер с прокруткой (ТОЛЬКО ЗДЕСЬ) -->
+                <div class="register-form-container">
+                    <!-- ШАГ 1: Основные данные -->
+                    <div class="register-form" id="step1">
+                        <div class="section-title">Шаг 1 из 3: Основные данные</div>
+
+                        <div class="form-group">
+                            <label for="email">Email <span class="required">*</span></label>
+                            <input type="email" id="email" placeholder="name@service.com">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="password">Пароль <span class="required">*</span></label>
+                                <input type="password" id="password" placeholder="Не менее 8 символов">
+                            </div>
+                            <div class="form-group">
+                                <label for="password-confirm">Повторите <span class="required">*</span></label>
+                                <input type="password" id="password-confirm" placeholder="Подтвердите пароль">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="phone">Номер телефона</label>
+                            <input type="tel" id="phone" placeholder="+7 (XXX) XXX-XX-XX">
+                            <div class="form-hint">Для связи и уведомлений</div>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="agree">
+                            <label for="agree">Я принимаю <a href="#">условия использования</a> и <a href="#">политику конфиденциальности</a></label>
+                        </div>
+
+                        <button class="btn-primary" onclick="goToStep(2)">Продолжить</button>
+
+                        <div class="form-footer">
+                            Уже есть аккаунт? <a href="#" onclick="showLoginModal()">Войдите</a>
+                        </div>
+                    </div>
+
+                    <!-- ШАГ 2: Подтверждение email -->
+                    <div class="register-form" id="step2" style="display: none;">
+                        <div class="section-title">Шаг 2 из 3: Подтверждение email</div>
+
+                        <p style="color: #6c757d; margin-bottom: 15px; font-size: 14px;">
+                            На вашу почту <strong id="displayEmail">example@service.com</strong> отправлен код подтверждения
+                        </p>
+
+                        <div class="code-input-container">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <span class="code-separator">-</span>
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                        </div>
+
+                        <div class="code-timer">
+                            Код действителен: <span id="timer">05:00</span>
+                        </div>
+
+                        <button class="btn-primary" onclick="goToStep(3)">Подтвердить</button>
+                        <button class="btn-secondary" id="resendCode">Отправить код повторно</button>
+                        <button class="btn-link" onclick="goToStep(1)">← Вернуться</button>
+                    </div>
+
+                    <!-- ШАГ 3: Личные данные + Аватарка -->
+                    <div class="register-form" id="step3" style="display: none;">
+                        <div class="section-title">Шаг 3 из 3: Заполните профиль</div>
+
+                        <!-- Аватарка -->
+                        <div class="avatar-section">
+                            <div class="avatar-preview" onclick="document.getElementById('avatarInput').click()">
+                                <img src="/static/placeholder-image.png" alt="Avatar" style="display: none;">
+                                <div class="placeholder">+ Загрузить фото</div>
+                            </div>
+                            <input type="file" id="avatarInput" accept="image/*" style="display: none;" onchange="previewAvatar(this)">
+                            <div class="form-hint">Фото повышает доверие к вам (необязательно)</div>
+                        </div>
+
+                        <!-- Личные данные -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="name">Имя</label>
+                                <input type="text" id="name" placeholder="Иван">
+                            </div>
+                            <div class="form-group">
+                                <label for="surname">Фамилия</label>
+                                <input type="text" id="surname" placeholder="Иванов">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="patronymic">Отчество</label>
+                            <input type="text" id="patronymic" placeholder="Иванович">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="passport">Серия и номер паспорта</label>
+                            <input type="text" id="passport" placeholder="0000 000000">
+                            <div class="form-hint">Данные защищены, нужны для договоров</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="inn">ИНН</label>
+                            <input type="text" id="inn" placeholder="000000000000">
+                        </div>
+
+                        <button class="btn-primary" onclick="completeRegistration()">Завершить регистрацию</button>
+                        <button class="btn-secondary" onclick="completeRegistration()">Пропустить и завершить</button>
+                        <button class="btn-link" onclick="goToStep(2)">← Назад</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Всплывающие окна (без изменений) -->
+    <div id="cityPopup" class="popup">
+        <!-- ... содержимое попапа ... -->
+    </div>
+
+    <div id="loginModal" class="modal">
+        <!-- ... содержимое модалки ... -->
+    </div>
+
+    <script>
+        // Текущий шаг
+        let currentStep = 1;
+        let timerInterval;
+
+        // Функция переключения шагов
+        function goToStep(step) {
+            // Скрываем все шаги
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'none';
+            document.getElementById('step3').style.display = 'none';
+
+            // Показываем нужный шаг
+            document.getElementById(`step${step}`).style.display = 'block';
+
+            // Обновляем индикаторы
+            for (let i = 1; i <= 3; i++) {
+                const indicator = document.getElementById(`step${i}-indicator`);
+                indicator.classList.remove('active', 'completed');
+
+                if (i < step) {
+                    indicator.classList.add('completed');
+                } else if (i === step) {
+                    indicator.classList.add('active');
+                }
+            }
+
+            currentStep = step;
+
+            // Если шаг 2 - запускаем таймер
+            if (step === 2) {
+                startTimer(300);
+                const email = document.getElementById('email').value;
+                if (email) {
+                    document.getElementById('displayEmail').textContent = email;
+                }
+            }
+
+            // Останавливаем таймер при выходе с шага 2
+            if (step !== 2 && timerInterval) {
+                clearInterval(timerInterval);
+            }
+
+            // Прокручиваем контейнер формы вверх при смене шага
+            document.querySelector('.register-form-container').scrollTop = 0;
+        }
+
+        // Таймер для кода
+        function startTimer(duration) {
+            const timerDisplay = document.getElementById('timer');
+            let timer = duration;
+
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+
+            timerInterval = setInterval(() => {
+                const minutes = Math.floor(timer / 60);
+                const seconds = timer % 60;
+                timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                if (--timer < 0) {
+                    clearInterval(timerInterval);
+                    timerDisplay.textContent = '00:00';
+                    timerDisplay.style.color = '#dc3545';
+                }
+            }, 1000);
+        }
+
+        // Обработка ввода кода
+        document.addEventListener('DOMContentLoaded', function() {
+            const codeInputs = document.querySelectorAll('.code-digit');
+
+            codeInputs.forEach((input, index) => {
+                input.addEventListener('input', function() {
+                    if (this.value.length === 1 && index < codeInputs.length - 1) {
+                        codeInputs[index + 1].focus();
+                    }
+                });
+
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Backspace' && index > 0 && this.value.length === 0) {
+                        codeInputs[index - 1].focus();
+                    }
+                });
+            });
+
+            document.getElementById('resendCode')?.addEventListener('click', function() {
+                startTimer(300);
+                alert('Новый код отправлен на вашу почту');
+            });
+        });
+
+        // Предпросмотр аватарки
+        function previewAvatar(input) {
+            const preview = document.querySelector('.avatar-preview');
+            const img = preview.querySelector('img');
+            const placeholder = preview.querySelector('.placeholder');
+
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    if (img) {
+                        img.src = e.target.result;
+                        img.style.display = 'block';
+                        if (placeholder) placeholder.style.display = 'none';
+                    }
+                }
+
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        // Валидация шага 1
+        document.querySelector('#step1 .btn-primary').addEventListener('click', function() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const confirm = document.getElementById('password-confirm').value;
+            const agree = document.getElementById('agree').checked;
+
+            if (!email || !password || !confirm) {
+                alert('Заполните все обязательные поля');
+                return;
+            }
+
+            if (password !== confirm) {
+                alert('Пароли не совпадают');
+                return;
+            }
+
+            if (password.length < 8) {
+                alert('Пароль должен быть не менее 8 символов');
+                return;
+            }
+
+            if (!agree) {
+                alert('Необходимо согласиться с условиями использования');
+                return;
+            }
+
+            goToStep(2);
+        });
+
+        // Завершение регистрации
+        function completeRegistration() {
+            alert('Регистрация успешно завершена! Добро пожаловать в RentEase!');
+            window.location.href = '/';
+        }
+
+        // Функции для всплывающих окон
+        function showCityPopup() {
+            document.getElementById('cityPopup').style.display = 'flex';
+        }
+
+        function hideCityPopup() {
+            document.getElementById('cityPopup').style.display = 'none';
+        }
+
+        function searchCity() {
+            const searchText = document.getElementById('citySearch').value;
+            if (searchText.length >= 2) {
+                alert(`Поиск города: ${searchText}`);
+            }
+        }
+
+        function showLoginModal() {
+            document.getElementById('loginModal').style.display = 'flex';
+            setTimeout(() => document.getElementById('login-email').focus(), 100);
+        }
+
+        function hideLoginModal() {
+            document.getElementById('loginModal').style.display = 'none';
+        }
+
+        // Закрытие по клику на фон
+        window.addEventListener('click', function(event) {
+            if (event.target.classList.contains('popup')) {
+                event.target.style.display = 'none';
+            }
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        });
+
+        // Выбор города
+        document.querySelectorAll('.city-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const city = this.textContent;
+                document.getElementById('selectedCity').textContent = city;
+                hideCityPopup();
+            });
+        });
+
+        // Обработка входа
+        document.getElementById('loginForm')?.addEventListener('submit', function(e) {
+            e.preventDefault();
+            alert('Вход выполнен успешно!');
+            hideLoginModal();
+        });
+    </script>
+</body>
+</html>

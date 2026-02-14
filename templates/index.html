@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RentEase - Аренда недвижимости</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <script src="/static/script.js" defer></script>
+</head>
+<body>
+    <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
+    <div class="header">
+        <div class="logo">RentEase</div>
+        <div class="menu">
+            <a href="/">Каталог объектов</a>
+            <a href="#" onclick="showGuidePopup()">Руководство</a>
+            <a href="#">Контакты</a>
+            <div class="location" onclick="showCityPopup()">
+                <span id="selectedCity">Москва</span>
+                <img src="/static/pin.png" alt="Location">
+            </div>
+            <a href="#" class="login" onclick="showLoginModal()">Войти</a>
+        </div>
+    </div>
+
+    <!-- ФИЛЬТР ПОИСКА -->
+    <div class="filter-section">
+        <div class="filter-container">
+            <form action="/search" method="post" class="filter-form" id="searchForm">
+                <div class="filter-row">
+                    <!-- ПОЛЕ ПОИСКА (ВОССТАНОВЛЕНО) -->
+                    <div class="filter-group search-field">
+                        <label for="search">Поиск</label>
+                        <input type="text"
+                               id="search"
+                               name="search"
+                               placeholder="Поиск по адресу или названию"
+                               value="{{ search_text or '' }}">
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="city">Город</label>
+                        <input type="text"
+                               id="city"
+                               name="city"
+                               placeholder="Город или район"
+                               value="{{ search_city or '' }}"
+                               list="citySuggestions"
+                               hx-get="/api/cities/search"
+                               hx-trigger="keyup changed delay:300ms"
+                               hx-target="#citySuggestions">
+                        <datalist id="citySuggestions"></datalist>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="property_type">Тип</label>
+                        <select name="property_type" id="property_type">
+                            <option value="all" {% if search_type == 'all' %}selected{% endif %}>Любой тип</option>
+                            <option value="apartment" {% if search_type == 'apartment' %}selected{% endif %}>Квартира</option>
+                            <option value="house" {% if search_type == 'house' %}selected{% endif %}>Дом</option>
+                            <option value="commercial" {% if search_type == 'commercial' %}selected{% endif %}>Коммерческая</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="rooms">Комнат</label>
+                        <select name="rooms" id="rooms">
+                            <option value="all">Любое</option>
+                            <option value="1">1 комната</option>
+                            <option value="2">2 комнаты</option>
+                            <option value="3">3 комнаты</option>
+                            <option value="4">4+ комнат</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="min_price">Цена, ₽</label>
+                        <div class="price-range">
+                            <input type="number" name="min_price" placeholder="от" value="{{ search_min_price or '' }}">
+                            <span>—</span>
+                            <input type="number" name="max_price" placeholder="до" value="{{ search_max_price or '' }}">
+                        </div>
+                    </div>
+
+                    <!-- ПОЛЕ ПЛОЩАДИ (ДОБАВЛЕНО В ОСНОВНОЙ ФИЛЬТР) -->
+                    <div class="filter-group">
+                        <label for="min_area">Площадь, м²</label>
+                        <div class="price-range">
+                            <input type="number" name="min_area" placeholder="от" value="{{ search_min_area or '' }}">
+                            <span>—</span>
+                            <input type="number" name="max_area" placeholder="до" value="{{ search_max_area or '' }}">
+                        </div>
+                    </div>
+
+                    <div class="filter-group filter-actions">
+                        <button type="submit" class="filter-btn">
+                            <img src="/static/search.png" alt="Search"> Найти
+                        </button>
+                        <button type="button" class="filter-reset" onclick="resetFilters()">Сбросить</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ОСНОВНОЙ КОНТЕЙНЕР С ОБЪЕКТАМИ -->
+    <div class="main-container">
+        <!-- Верхняя панель управления списком объектов -->
+        <div class="results-header">
+            <div class="results-count">
+                <h2>Всего найдено: <span id="totalCount">{{ properties|length if properties else 0 }}</span> объектов</h2>
+            </div>
+            <div class="results-controls">
+                <div class="sorting">
+                    <label for="sortBy">Сортировка:</label>
+                    <select id="sortBy" onchange="changeSort(this.value)">
+                        <option value="price_asc">Сначала дешевле</option>
+                        <option value="price_desc">Сначала дороже</option>
+                        <option value="area_asc">По площади (возр.)</option>
+                        <option value="area_desc">По площади (убыв.)</option>
+                        <option value="newest">Сначала новые</option>
+                    </select>
+                </div>
+                <div class="view-toggle">
+                    <button class="view-btn active" onclick="setViewMode('grid')" title="Сетка" id="gridViewBtn">
+                        <img src="/static/grid.png" alt="Grid">
+                    </button>
+                    <button class="view-btn" onclick="setViewMode('list')" title="Список" id="listViewBtn">
+                        <img src="/static/line.png" alt="List">
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-grid" id="propertiesContainer">
+            {% if properties %}
+                {% for property in properties %}
+                <a href="/property/{{ property.property_id }}" class="property-card"
+                   data-price="{{ property.price }}"
+                   data-area="{{ property.area }}"
+                   data-created="{{ property.created_at }}">
+                    <div class="property-image">
+                        <img src="{{ property.main_photo_url }}"
+                             alt="{{ property.title }}"
+                             onerror="this.src='/static/placeholder-image.png'">
+                        <div class="property-status">{{ property.status }}</div>
+                    </div>
+                    <div class="property-info">
+                        <h3>{{ property.title }}</h3>
+                        <p class="property-address">{{ property.address }}, {{ property.city }}</p>
+                        <div class="property-details">
+                            <span class="property-rooms">{{ property.rooms }} комн.</span>
+                            <span class="property-area">{{ property.area }} м²</span>
+                            <span class="property-type">
+                                {% if property.property_type == 'apartment' %}Квартира
+                                {% elif property.property_type == 'house' %}Дом
+                                {% else %}Коммерческая{% endif %}
+                            </span>
+                        </div>
+                        <div class="property-price">
+                            <strong>{{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽</strong>
+                            {% if property.interval_pay == 'month' %}/мес{% endif %}
+                        </div>
+                        <div class="property-meta">
+                            <span>Добавлено: {{ property.created_at.strftime('%d.%m.%Y') if property.created_at else 'сегодня' }}</span>
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            {% else %}
+                <div class="no-results">
+                    <h2>Объекты не найдены</h2>
+                    <p>Попробуйте изменить параметры поиска</p>
+                    <a href="/" class="btn">Сбросить фильтры</a>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Пагинация (если будет много объектов) -->
+        {% if properties and properties|length > 20 %}
+        <div class="pagination">
+            <button class="page-btn active">1</button>
+            <button class="page-btn">2</button>
+            <button class="page-btn">3</button>
+            <button class="page-btn">4</button>
+            <button class="page-btn">5</button>
+            <span>...</span>
+            <button class="page-btn">10</button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ПОПАП ВЫБОРА ГОРОДА -->
+    <div id="cityPopup" class="popup">
+        <div class="popup-content">
+            <span class="close-popup" onclick="hideCityPopup()">×</span>
+            <h2>Выберите город</h2>
+            <div class="popular-cities">
+                <button class="city-btn">Москва</button>
+                <button class="city-btn">Санкт-Петербург</button>
+                <button class="city-btn">Новосибирск</button>
+                <button class="city-btn">Екатеринбург</button>
+                <button class="city-btn">Казань</button>
+            </div>
+            <div class="city-search">
+                <input type="text" id="citySearch" placeholder="Поиск города...">
+                <button type="button" onclick="searchCity()">Найти</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ПОПАП РУКОВОДСТВА -->
+    <div id="guidePopup" class="popup">
+        <div class="popup-content">
+            <span class="close-popup" onclick="hideGuidePopup()">×</span>
+            <h2>Руководство по использованию</h2>
+            <div class="guide-section">
+                <h3>Для арендаторов</h3>
+                <p>Как найти и снять жилье</p>
+            </div>
+            <div class="guide-section">
+                <h3>Для собственников</h3>
+                <p>Как сдать жилье быстро и выгодно</p>
+            </div>
+            <div class="guide-section">
+                <h3>Для агентов</h3>
+                <p>Профессиональные инструменты</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО ВХОДА -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <button class="close" onclick="hideLoginModal()">×</button>
+            <h2>Вход в систему RentEase</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" placeholder="example@service.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Пароль</label>
+                    <input type="password" id="login-password" placeholder="Введите пароль" required>
+                </div>
+                <button type="submit" class="btn-primary">Войти</button>
+                <div class="form-links">
+                    <a href="/recovery">Забыли пароль?</a>
+                    <a href="/register">Создать аккаунт</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

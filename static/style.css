@@ -1,0 +1,1247 @@
+/* static/style.css */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f8f9fa;
+}
+
+/* Header */
+.header {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.logo {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+.menu {
+    display: flex;
+    align-items: center;
+    gap: 25px;
+}
+
+.menu a {
+    color: white;
+    text-decoration: none;
+    font-weight: 500;
+    transition: opacity 0.3s;
+}
+
+.menu a:hover {
+    opacity: 0.8;
+}
+
+.location {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    padding: 5px 10px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 6px;
+    transition: background 0.3s;
+}
+
+.location:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.location img {
+    width: 18px;
+    height: 18px;
+}
+
+.login {
+    background: rgba(255,255,255,0.15);
+    padding: 8px 20px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.3);
+    transition: all 0.3s;
+}
+
+.login:hover {
+    background: rgba(255,255,255,0.25);
+    border-color: rgba(255,255,255,0.5);
+}
+
+/* Search Bar */
+.search-bar {
+    background: white;
+    padding: 25px 30px;
+    box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+    margin-bottom: 30px;
+}
+
+.search-form {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.search-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.search-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.search-group input,
+.search-group select {
+    flex: 1;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.search-btn {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: transform 0.2s;
+}
+
+.search-btn:hover {
+    transform: translateY(-1px);
+}
+
+.search-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.icon-btn {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.icon-btn:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+}
+
+.icon-btn img {
+    width: 18px;
+    height: 18px;
+}
+
+/* Results */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 25px;
+    margin-bottom: 40px;
+}
+
+.property-card {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+    transition: transform 0.3s, box-shadow 0.3s;
+    text-decoration: none;
+    color: inherit;
+}
+
+.property-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 25px rgba(0,0,0,0.15);
+}
+
+.property-image {
+    position: relative;
+    height: 220px;
+    overflow: hidden;
+}
+
+.property-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s;
+}
+
+.property-card:hover .property-image img {
+    transform: scale(1.05);
+}
+
+.property-status {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    background: #28a745;
+    color: white;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.property-info {
+    padding: 20px;
+}
+
+.property-info h3 {
+    font-size: 18px;
+    margin-bottom: 10px;
+    color: #212529;
+}
+
+.property-address {
+    color: #6c757d;
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+.property-details {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+    font-size: 14px;
+    color: #495057;
+}
+
+.property-price {
+    font-size: 20px;
+    color: #007bff;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.property-meta {
+    font-size: 12px;
+    color: #6c757d;
+    border-top: 1px solid #e9ecef;
+    padding-top: 10px;
+}
+
+.no-results {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.no-results h2 {
+    color: #6c757d;
+    margin-bottom: 15px;
+}
+
+.btn {
+    display: inline-block;
+    background: #007bff;
+    color: white;
+    padding: 12px 25px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    margin-top: 20px;
+}
+
+/* ==================== ОБЩИЕ СТИЛИ ДЛЯ ПОПАПОВ ==================== */
+.popup, .modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.popup-content, .modal-content {
+    background-color: white;
+    padding: 30px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    position: relative;
+    animation: popupAppear 0.3s ease-out;
+}
+
+@keyframes popupAppear {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.close-popup, .close {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 28px;
+    color: #999;
+    cursor: pointer;
+    background: none;
+    border: none;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+.close-popup:hover, .close:hover {
+    background-color: #f5f5f5;
+    color: #333;
+}
+
+/* ==================== ПОПАП ВЫБОРА ГОРОДА ==================== */
+.popup-content h2 {
+    margin: 0 0 20px 0;
+    color: #333;
+    font-size: 24px;
+    text-align: center;
+    font-weight: 600;
+}
+
+.popular-cities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
+    justify-content: center;
+}
+
+.city-btn {
+    background-color: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.city-btn:hover {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.city-search, .guide-search {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.city-search input, .guide-search input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.city-search button, .guide-search button {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+
+.city-search button:hover, .guide-search button:hover {
+    background-color: #0056b3;
+}
+
+/* ==================== ПОПАП РУКОВОДСТВА ==================== */
+.owner-title {
+    color: #28a745;
+    font-size: 20px;
+    margin: 15px 0 5px;
+}
+
+.owner-desc {
+    color: #666;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+.agent-title {
+    color: #007bff;
+    font-size: 20px;
+    margin: 15px 0 5px;
+}
+
+.agent-desc {
+    color: #666;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+.tenant-title {
+    color: #ffc107;
+    font-size: 20px;
+    margin: 15px 0 5px;
+}
+
+.tenant-desc {
+    color: #666;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+.guide-search button {
+    background-color: #28a745;
+}
+
+.guide-search button:hover {
+    background-color: #1e7e34;
+}
+
+/* ==================== МОДАЛЬНОЕ ОКНО ВХОДА ==================== */
+.modal-content {
+    max-width: 400px;
+}
+
+.modal-content h2 {
+    margin: 0 0 25px 0;
+    color: #333;
+    font-size: 24px;
+    text-align: center;
+    font-weight: 600;
+}
+
+.modal-content form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.modal-content .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.modal-content label {
+    font-weight: 500;
+    color: #555;
+    font-size: 14px;
+}
+
+.modal-content input {
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+    width: 100%;
+}
+
+.modal-content input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.modal-content .btn-primary {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    border: none;
+    padding: 14px;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-top: 10px;
+    width: 100%;
+}
+
+.modal-content .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+.modal-content .form-links {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+.modal-content .form-links a {
+    color: #007bff;
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.2s;
+}
+
+.modal-content .form-links a:hover {
+    color: #0056b3;
+    text-decoration: underline;
+}
+
+.social-login {
+    text-align: center;
+    margin-top: 20px;
+    color: #666;
+    font-size: 14px;
+}
+
+.social-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.social-btn {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: transform 0.2s;
+}
+
+.social-btn.facebook {
+    background: #4267B2;
+    color: white;
+}
+
+.social-btn.google {
+    background: #DB4437;
+    color: white;
+}
+
+.social-btn:hover {
+    transform: translateY(-1px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .header {
+        flex-direction: column;
+        gap: 15px;
+        padding: 15px;
+    }
+
+    .menu {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    .search-row {
+        flex-direction: column;
+    }
+
+    .search-group {
+        width: 100%;
+    }
+
+    .results-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-content, .popup-content {
+        width: 95%;
+        padding: 20px;
+    }
+
+    .form-links {
+        flex-direction: column;
+        gap: 10px;
+        align-items: center;
+    }
+}
+/* ==================== ФИЛЬТР ПОИСКА ==================== */
+.filter-section {
+    background: white;
+    border-bottom: 1px solid #e9ecef;
+    padding: 20px 0;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.filter-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.filter-form {
+    width: 100%;
+}
+
+.filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-end;
+}
+
+.filter-group {
+    flex: 1;
+    min-width: 180px;
+}
+
+.filter-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filter-group input,
+.filter-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.3s;
+    background: #f8f9fa;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+    outline: none;
+    border-color: #007bff;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.price-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.price-range input {
+    width: 45%;
+    text-align: center;
+}
+
+.price-range span {
+    color: #6c757d;
+    font-weight: 600;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.filter-btn {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+
+.filter-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+.filter-btn img {
+    width: 16px;
+    height: 16px;
+}
+
+.filter-reset {
+    background: #f8f9fa;
+    border: 1px solid #ced4da;
+    color: #495057;
+    padding: 10px 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+
+.filter-reset:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.advanced-filters {
+    margin-top: 20px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: normal;
+    text-transform: none;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: auto;
+}
+
+.filter-toggle {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.toggle-advanced {
+    background: none;
+    border: none;
+    color: #007bff;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 5px 10px;
+}
+
+.toggle-advanced:hover {
+    text-decoration: underline;
+}
+
+/* ==================== ОСНОВНОЙ КОНТЕЙНЕР ==================== */
+.main-container {
+    max-width: 1200px;
+    margin: 30px auto;
+    padding: 0 20px;
+}
+
+/* ==================== ЗАГОЛОВОК РЕЗУЛЬТАТОВ ==================== */
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.results-count h2 {
+    font-size: 20px;
+    color: #212529;
+    font-weight: 600;
+}
+
+.results-count span {
+    color: #007bff;
+    font-weight: 700;
+}
+
+.results-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.sorting {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sorting label {
+    font-size: 14px;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.sorting select {
+    padding: 8px 30px 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23495057' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+}
+
+.view-toggle {
+    display: flex;
+    gap: 5px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.view-btn {
+    background: white;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.view-btn img {
+    width: 18px;
+    height: 18px;
+    opacity: 0.5;
+}
+
+.view-btn.active {
+    background: #007bff;
+}
+
+.view-btn.active img {
+    opacity: 1;
+    filter: brightness(0) invert(1);
+}
+
+.view-btn:not(.active):hover {
+    background: #e9ecef;
+}
+
+/* ==================== РЕЖИМ СЕТКИ (по умолчанию) ==================== */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 25px;
+    margin-bottom: 40px;
+}
+
+/* ==================== РЕЖИМ СПИСКА (исправленный) ==================== */
+.results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+.results-list .property-card {
+    display: flex;
+    flex-direction: row;
+    height: 220px; /* Немного увеличил высоту */
+    overflow: hidden;
+    width: 100%;
+}
+
+.results-list .property-image {
+    width: 280px; /* Увеличил ширину изображения */
+    height: 100%;
+    flex-shrink: 0;
+    background-color: #f8f9fa;
+}
+
+.results-list .property-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.results-list .property-info {
+    flex: 1;
+    padding: 20px 25px; /* Увеличил отступы */
+    display: flex;
+    flex-direction: column;
+    min-width: 0; /* Для корректной работы с текстом */
+}
+
+.results-list .property-info h3 {
+    font-size: 20px; /* Увеличил заголовок */
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.results-list .property-address {
+    font-size: 15px;
+    margin-bottom: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #6c757d;
+}
+
+.results-list .property-details {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.results-list .property-details span {
+    background: #f8f9fa;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.results-list .property-price {
+    margin-top: auto;
+    font-size: 24px;
+    color: #007bff;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.results-list .property-meta {
+    font-size: 13px;
+    color: #6c757d;
+    border-top: 1px solid #e9ecef;
+    padding-top: 10px;
+}
+
+/* Для карточек в сетке (оставляем как есть) */
+.results-grid .property-card {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+}
+
+.results-grid .property-image {
+    height: 200px;
+    width: 100%;
+}
+
+.results-grid .property-info {
+    padding: 15px;
+}
+
+.results-grid .property-info h3 {
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.results-grid .property-address {
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.results-grid .property-details {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.results-grid .property-details span {
+    font-size: 12px;
+    padding: 3px 8px;
+}
+
+.results-grid .property-price {
+    font-size: 18px;
+}
+
+/* ==================== КАРТОЧКА ОБЪЕКТА ==================== */
+.property-card {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+    transition: transform 0.3s, box-shadow 0.3s;
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid #e9ecef;
+}
+
+.property-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 25px rgba(0,0,0,0.15);
+}
+
+.property-image {
+    position: relative;
+    height: 220px;
+    overflow: hidden;
+    background: #f8f9fa;
+}
+
+.property-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s;
+}
+
+.property-card:hover .property-image img {
+    transform: scale(1.05);
+}
+
+.property-status {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    background: #28a745;
+    color: white;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.property-info {
+    padding: 20px;
+}
+
+.property-info h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: #212529;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.property-address {
+    color: #6c757d;
+    font-size: 14px;
+    margin-bottom: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.property-details {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: #495057;
+}
+
+.property-details span {
+    background: #f8f9fa;
+    padding: 4px 10px;
+    border-radius: 20px;
+}
+
+.property-price {
+    font-size: 20px;
+    color: #007bff;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.property-meta {
+    font-size: 12px;
+    color: #6c757d;
+    border-top: 1px solid #e9ecef;
+    padding-top: 10px;
+}
+
+/* ==================== ПАГИНАЦИЯ ==================== */
+.pagination {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 40px 0 20px;
+}
+
+.page-btn {
+    width: 40px;
+    height: 40px;
+    border: 1px solid #ced4da;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s;
+}
+
+.page-btn:hover:not(.active) {
+    background: #e9ecef;
+    border-color: #007bff;
+}
+
+.page-btn.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+/* ==================== НЕТ РЕЗУЛЬТАТОВ ==================== */
+.no-results {
+    text-align: center;
+    padding: 60px 20px;
+    background: white;
+    border-radius: 12px;
+    grid-column: 1 / -1;
+}
+
+.no-results h2 {
+    color: #6c757d;
+    margin-bottom: 15px;
+}
+
+.btn {
+    display: inline-block;
+    background: #007bff;
+    color: white;
+    padding: 12px 25px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    margin-top: 20px;
+    border: none;
+    cursor: pointer;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .filter-row {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .results-header {
+        flex-direction: column;
+        gap: 15px;
+        align-items: flex-start;
+    }
+
+    .results-controls {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .results-list .property-card {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .results-list .property-image {
+        width: 100%;
+        height: 180px;
+    }
+}
+
+/* Поле поиска может быть шире */
+.search-field {
+    flex: 1.5;
+    min-width: 250px;
+}
+
+.search-field input {
+    background: #f8f9fa url('/static/search.png') no-repeat 10px center;
+    background-size: 16px;
+    padding-left: 35px;
+}
+
+/* Для адаптивности на мобильных */
+@media (max-width: 1024px) {
+    .filter-row {
+        gap: 15px;
+    }
+
+    .filter-group {
+        min-width: 150px;
+    }
+
+    .search-field {
+        min-width: 200px;
+    }
+}
+
+@media (max-width: 768px) {
+    .filter-row {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .search-field {
+        width: 100%;
+    }
+
+    .price-range {
+        flex-wrap: wrap;
+    }
+
+    .price-range input {
+        width: 45%;
+    }
+}

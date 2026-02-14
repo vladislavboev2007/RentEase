@@ -1,0 +1,1 @@
+# https://api.hh.ru/areas

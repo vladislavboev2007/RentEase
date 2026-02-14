@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RentEase - Восстановление пароля</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Глобальные стили для страницы восстановления */
+        body.recovery-body {
+            overflow: hidden;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        .recovery-page {
+            height: calc(100vh - 70px);
+            background-image: url('/static/background-register.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            position: relative;
+            display: flex;
+            align-items: flex-start;
+            padding: 30px 0 30px 5%;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .recovery-page::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.1) 100%);
+            pointer-events: none;
+        }
+
+        .recovery-container {
+            width: 40%;
+            min-width: 450px;
+            max-width: 500px;
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .recovery-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            animation: slideIn 0.5s ease-out;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-height: 100%;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .recovery-header {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            padding: 25px 30px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .recovery-header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .recovery-header p {
+            font-size: 14px;
+            opacity: 0.9;
+            margin: 0;
+        }
+
+        /* Индикатор шагов */
+        .steps-indicator {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            flex-shrink: 0;
+        }
+
+        .step-item {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .step-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 18px;
+            right: -30px;
+            width: 60px;
+            height: 2px;
+            background: #dee2e6;
+        }
+
+        .step-item.active .step-circle {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .step-item.completed .step-circle {
+            background: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+
+        .step-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid #dee2e6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 6px;
+            font-weight: 600;
+            font-size: 16px;
+            color: #6c757d;
+            transition: all 0.3s;
+        }
+
+        .step-label {
+            font-size: 12px;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .step-item.active .step-label {
+            color: #007bff;
+            font-weight: 600;
+        }
+
+        .step-item.completed .step-label {
+            color: #28a745;
+        }
+
+        /* Контейнер с прокруткой */
+        .recovery-form-container {
+            padding: 30px;
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Стилизация скроллбара */
+        .recovery-form-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .recovery-form-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .recovery-form-container::-webkit-scrollbar-thumb {
+            background: #007bff;
+            border-radius: 10px;
+        }
+
+        .recovery-form-container::-webkit-scrollbar-thumb:hover {
+            background: #0056b3;
+        }
+
+        .recovery-form {
+            display: block;
+        }
+
+        .recovery-form.hidden {
+            display: none;
+        }
+
+        .section-title {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .recovery-form p {
+            color: #6c757d;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ced4da;
+            border-radius: 8px;
+            font-size: 15px;
+            transition: all 0.3s;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        }
+
+        .form-group input.error {
+            border-color: #dc3545;
+        }
+
+        /* Стили для кода подтверждения */
+        .code-input-container {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin: 25px 0;
+            flex-wrap: wrap;
+        }
+
+        .code-digit {
+            width: 45px;
+            height: 55px;
+            text-align: center;
+            font-size: 24px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .code-digit:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+            outline: none;
+        }
+
+        .code-separator {
+            font-size: 24px;
+            color: #6c757d;
+            display: flex;
+            align-items: center;
+        }
+
+        .code-timer {
+            text-align: center;
+            color: #6c757d;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        .code-timer span {
+            font-weight: 600;
+            color: #007bff;
+        }
+
+        /* Кнопки */
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 10px 0;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #495057;
+            border: 1px solid #ced4da;
+            padding: 14px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.3s;
+            margin: 10px 0;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+            border-color: #007bff;
+        }
+
+        .btn-link {
+            background: none;
+            border: none;
+            color: #007bff;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            margin: 10px 0;
+            display: inline-block;
+        }
+
+        .btn-link:hover {
+            text-decoration: underline;
+        }
+
+        .form-footer {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .form-footer a {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .form-footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Адаптивность */
+        @media (max-width: 992px) {
+            .recovery-container {
+                width: 50%;
+                min-width: 400px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .recovery-page {
+                justify-content: center;
+                padding: 20px;
+                align-items: center;
+            }
+
+            .recovery-container {
+                width: 100%;
+                max-width: 500px;
+                margin-left: 0;
+            }
+
+            .step-item:not(:last-child)::after {
+                width: 30px;
+                right: -15px;
+            }
+
+            .recovery-form-container {
+                padding: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .step-item:not(:last-child)::after {
+                display: none;
+            }
+
+            .code-digit {
+                width: 40px;
+                height: 45px;
+                font-size: 20px;
+            }
+
+            .code-input-container {
+                gap: 5px;
+            }
+        }
+    </style>
+</head>
+<body class="recovery-body">
+    <div class="header">
+        <div class="logo">RentEase</div>
+        <div class="menu">
+            <a href="/">Каталог объектов</a>
+            <a href="#" onclick="showGuidePopup()">Руководство</a>
+            <a href="#">Контакты</a>
+            <div class="location" onclick="showCityPopup()">
+                <span id="selectedCity">Москва</span>
+                <img src="/static/pin.png" alt="Location">
+            </div>
+            <a href="#" class="login" onclick="showLoginModal()">Войти</a>
+        </div>
+    </div>
+
+    <div class="recovery-page">
+        <div class="recovery-container">
+            <div class="recovery-card">
+                <div class="recovery-header">
+                    <h1>Восстановление доступа</h1>
+                    <p>Мы поможем восстановить пароль к вашему аккаунту</p>
+                </div>
+
+                <!-- Индикатор шагов -->
+                <div class="steps-indicator">
+                    <div class="step-item active" id="step1-indicator">
+                        <div class="step-circle">1</div>
+                        <div class="step-label">Email</div>
+                    </div>
+                    <div class="step-item" id="step2-indicator">
+                        <div class="step-circle">2</div>
+                        <div class="step-label">Код</div>
+                    </div>
+                    <div class="step-item" id="step3-indicator">
+                        <div class="step-circle">3</div>
+                        <div class="step-label">Новый пароль</div>
+                    </div>
+                </div>
+
+                <!-- Контейнер с прокруткой -->
+                <div class="recovery-form-container">
+                    <!-- ШАГ 1: Ввод email -->
+                    <div class="recovery-form" id="step1">
+                        <div class="section-title">Шаг 1 из 3: Введите email</div>
+
+                        <p>На указанный email мы отправим код для подтверждения</p>
+
+                        <div class="form-group">
+                            <label for="email">Email <span class="required">*</span></label>
+                            <input type="email" id="email" placeholder="name@service.com">
+                        </div>
+
+                        <button class="btn-primary" onclick="goToStep(2)">Отправить код</button>
+
+                        <div class="form-footer">
+                            <a href="#" onclick="showLoginModal()">Вспомнили пароль? Войти</a>
+                        </div>
+                    </div>
+
+                    <!-- ШАГ 2: Подтверждение кода -->
+                    <div class="recovery-form" id="step2" style="display: none;">
+                        <div class="section-title">Шаг 2 из 3: Подтверждение</div>
+
+                        <p>На вашу почту <strong id="displayEmail">example@service.com</strong> отправлен код подтверждения</p>
+
+                        <div class="code-input-container">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <span class="code-separator">-</span>
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                            <input type="text" maxlength="1" class="code-digit" pattern="[0-9]">
+                        </div>
+
+                        <div class="code-timer">
+                            Код действителен: <span id="timer">05:00</span>
+                        </div>
+
+                        <button class="btn-primary" onclick="goToStep(3)">Подтвердить</button>
+                        <button class="btn-secondary" id="resendCode">Отправить код повторно</button>
+                        <button class="btn-link" onclick="goToStep(1)">← Назад</button>
+                    </div>
+
+                    <!-- ШАГ 3: Новый пароль -->
+                    <div class="recovery-form" id="step3" style="display: none;">
+                        <div class="section-title">Шаг 3 из 3: Новый пароль</div>
+
+                        <p>Придумайте новый пароль для входа в аккаунт</p>
+
+                        <div class="form-group">
+                            <label for="new-password">Новый пароль <span class="required">*</span></label>
+                            <input type="password" id="new-password" placeholder="Не менее 8 символов">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="confirm-password">Повторите пароль <span class="required">*</span></label>
+                            <input type="password" id="confirm-password" placeholder="Подтвердите пароль">
+                        </div>
+
+                        <button class="btn-primary" onclick="completeRecovery()">Завершить</button>
+                        <button class="btn-link" onclick="goToStep(2)">← Назад</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Всплывающие окна -->
+    <div id="cityPopup" class="popup">
+        <div class="popup-content">
+            <span class="close-popup" onclick="hideCityPopup()">×</span>
+            <h2>Выберите город</h2>
+            <div class="popular-cities">
+                <button class="city-btn">Москва</button>
+                <button class="city-btn">Санкт-Петербург</button>
+                <button class="city-btn">Новосибирск</button>
+                <button class="city-btn">Екатеринбург</button>
+                <button class="city-btn">Казань</button>
+                <button class="city-btn">Нижний Новгород</button>
+                <button class="city-btn">Челябинск</button>
+                <button class="city-btn">Самара</button>
+                <button class="city-btn">Омск</button>
+                <button class="city-btn">Ростов-на-Дону</button>
+            </div>
+            <div class="city-search">
+                <input type="text" id="citySearch" placeholder="Поиск города...">
+                <button type="button" onclick="searchCity()">Найти</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <button class="close" onclick="hideLoginModal()">×</button>
+            <h2>Вход в систему RentEase</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" placeholder="example@service.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Пароль</label>
+                    <input type="password" id="login-password" placeholder="Введите пароль" required>
+                </div>
+                <button type="submit" class="btn-primary">Войти</button>
+                <div class="form-links">
+                    <a href="/recovery">Забыли пароль?</a>
+                    <a href="/register">Создать аккаунт</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Текущий шаг
+        let currentStep = 1;
+        let timerInterval;
+
+        // Функция переключения шагов
+        function goToStep(step) {
+            // Скрываем все шаги
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'none';
+            document.getElementById('step3').style.display = 'none';
+
+            // Показываем нужный шаг
+            document.getElementById(`step${step}`).style.display = 'block';
+
+            // Обновляем индикаторы
+            for (let i = 1; i <= 3; i++) {
+                const indicator = document.getElementById(`step${i}-indicator`);
+                indicator.classList.remove('active', 'completed');
+
+                if (i < step) {
+                    indicator.classList.add('completed');
+                } else if (i === step) {
+                    indicator.classList.add('active');
+                }
+            }
+
+            currentStep = step;
+
+            // Если шаг 2 - запускаем таймер
+            if (step === 2) {
+                startTimer(300);
+                const email = document.getElementById('email').value;
+                if (email) {
+                    document.getElementById('displayEmail').textContent = email;
+                }
+            }
+
+            // Останавливаем таймер при выходе с шага 2
+            if (step !== 2 && timerInterval) {
+                clearInterval(timerInterval);
+            }
+
+            // Прокручиваем контейнер вверх
+            document.querySelector('.recovery-form-container').scrollTop = 0;
+        }
+
+        // Таймер для кода
+        function startTimer(duration) {
+            const timerDisplay = document.getElementById('timer');
+            let timer = duration;
+
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+
+            timerInterval = setInterval(() => {
+                const minutes = Math.floor(timer / 60);
+                const seconds = timer % 60;
+                timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                if (--timer < 0) {
+                    clearInterval(timerInterval);
+                    timerDisplay.textContent = '00:00';
+                    timerDisplay.style.color = '#dc3545';
+                }
+            }, 1000);
+        }
+
+        // Обработка ввода кода
+        document.addEventListener('DOMContentLoaded', function() {
+            const codeInputs = document.querySelectorAll('.code-digit');
+
+            codeInputs.forEach((input, index) => {
+                input.addEventListener('input', function() {
+                    if (this.value.length === 1 && index < codeInputs.length - 1) {
+                        codeInputs[index + 1].focus();
+                    }
+                });
+
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Backspace' && index > 0 && this.value.length === 0) {
+                        codeInputs[index - 1].focus();
+                    }
+                });
+            });
+
+            document.getElementById('resendCode')?.addEventListener('click', function() {
+                startTimer(300);
+                alert('Новый код отправлен на вашу почту');
+            });
+        });
+
+        // Валидация шага 1
+        document.querySelector('#step1 .btn-primary').addEventListener('click', function() {
+            const email = document.getElementById('email').value;
+
+            if (!email) {
+                alert('Введите email');
+                return;
+            }
+
+            if (!email.includes('@') || !email.includes('.')) {
+                alert('Введите корректный email');
+                return;
+            }
+
+            goToStep(2);
+        });
+
+        // Валидация шага 3
+        document.querySelector('#step3 .btn-primary').addEventListener('click', function() {
+            const newPass = document.getElementById('new-password').value;
+            const confirmPass = document.getElementById('confirm-password').value;
+
+            if (!newPass || !confirmPass) {
+                alert('Заполните все поля');
+                return;
+            }
+
+            if (newPass.length < 8) {
+                alert('Пароль должен быть не менее 8 символов');
+                return;
+            }
+
+            if (newPass !== confirmPass) {
+                alert('Пароли не совпадают');
+                return;
+            }
+
+            completeRecovery();
+        });
+
+        // Завершение восстановления
+        function completeRecovery() {
+            alert('Пароль успешно изменен! Теперь вы можете войти с новым паролем.');
+            window.location.href = '/';
+        }
+
+        // Функции для всплывающих окон
+        function showCityPopup() {
+            document.getElementById('cityPopup').style.display = 'flex';
+        }
+
+        function hideCityPopup() {
+            document.getElementById('cityPopup').style.display = 'none';
+        }
+
+        function searchCity() {
+            const searchText = document.getElementById('citySearch').value;
+            if (searchText.length >= 2) {
+                alert(`Поиск города: ${searchText}`);
+            }
+        }
+
+        function showLoginModal() {
+            document.getElementById('loginModal').style.display = 'flex';
+            setTimeout(() => document.getElementById('login-email').focus(), 100);
+        }
+
+        function hideLoginModal() {
+            document.getElementById('loginModal').style.display = 'none';
+        }
+
+        // Закрытие по клику на фон
+        window.addEventListener('click', function(event) {
+            if (event.target.classList.contains('popup')) {
+                event.target.style.display = 'none';
+            }
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        });
+
+        // Выбор города
+        document.querySelectorAll('.city-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const city = this.textContent;
+                document.getElementById('selectedCity').textContent = city;
+                hideCityPopup();
+            });
+        });
+
+        // Обработка входа
+        document.getElementById('loginForm')?.addEventListener('submit', function(e) {
+            e.preventDefault();
+            alert('Вход выполнен успешно!');
+            hideLoginModal();
+            window.location.href = '/';
+        });
+    </script>
+</body>
+</html>

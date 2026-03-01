@@ -326,7 +326,7 @@
             <a href="#">Контакты</a>
             <div class="location" onclick="showCityPopup()">
                 <span id="selectedCity">Москва</span>
-                <img src="/static/pin.png" alt="Location">
+                <img src="/resources/pin.png" alt="Location">
             </div>
             <a href="#" class="login" onclick="showLoginModal()">Войти</a>
         </div>
@@ -334,7 +334,7 @@
 
     <div class="property-detail-page">
         <a href="/" class="back-link">
-            <img src="/static/back-icon.png" alt="Back"> Вернуться к каталогу
+            <img src="/resources/back-icon.png" alt="Back"> Вернуться к каталогу
         </a>
 
         <div class="property-detail-card">
@@ -349,7 +349,7 @@
 
             <div class="property-gallery">
                 <div class="main-image" id="mainImage">
-                    <img src="{{ photos[0].url if photos else '/static/placeholder-image.png' }}"
+                    <img src="{{ photos[0].url if photos else '/resources/placeholder-image.png' }}"
                          alt="{{ property.title }}"
                          id="mainImageImg">
                 </div>
@@ -433,17 +433,17 @@
                         <div class="person-role">Владелец недвижимости</div>
 
                         <div class="contact-detail">
-                            <img src="/static/user-icon.png" alt="Name">
+                            <img src="/resources/user-icon.png" alt="Name">
                             {{ property.owner.full_name if property.owner else 'Не указан' }}
                         </div>
 
                         <div class="contact-detail">
-                            <img src="/static/email-icon.png" alt="Email">
+                            <img src="/resources/email-icon.png" alt="Email">
                             {{ property.owner.email if property.owner else 'Не указан' }}
                         </div>
 
                         <div class="contact-detail">
-                            <img src="/static/phone-icon.png" alt="Phone">
+                            <img src="/resources/phone-icon.png" alt="Phone">
                             {{ property.owner.contact_info.phone if property.owner and property.owner.contact_info else 'Не указан' }}
                         </div>
                     </div>
@@ -454,7 +454,7 @@
                         <div class="person-role">Менеджер объекта</div>
 
                         <div class="contact-detail">
-                            <img src="/static/user-icon.png" alt="Name">
+                            <img src="/resources/user-icon.png" alt="Name">
                             {{ property.agent.full_name }}
                         </div>
 

@@ -1,0 +1,108 @@
+-- 1. ПОЛЬЗОВАТЕЛИ (все роли) - убраны avatar_url и отдельное поле phone_number
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    avatar_url TEXT,
+    full_name VARCHAR(150),
+    user_type VARCHAR(10) NOT NULL CHECK (user_type IN ('tenant', 'owner', 'agent', 'admin')),
+    contact_info JSONB DEFAULT '{}', -- Телефон, город и др. контакты в одном поле
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. ОБЪЕКТЫ НЕДВИЖИМОСТИ - объединены основные поля
+CREATE TABLE properties (
+    property_id SERIAL PRIMARY KEY,
+    owner_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    agent_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
+    
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    address VARCHAR(300) NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    
+    -- Основные характеристики для поиска
+    property_type VARCHAR(20) CHECK (property_type IN ('apartment', 'house', 'commercial')),
+    area DECIMAL(8, 2) NOT NULL,
+    rooms INTEGER,
+    price DECIMAL(10, 2) NOT NULL,
+    interval_pay VARCHAR(20) CHECK (interval_pay IN ('once', 'week', 'month')),
+    
+    -- Статусы
+    status VARCHAR(20) DEFAULT 'draft' 
+        CHECK (status IN ('draft', 'active', 'rented', 'archived')),
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. ФОТОГРАФИИ ОБЪЕКТОВ (минимально)
+CREATE TABLE property_photos (
+    photo_id SERIAL PRIMARY KEY,
+    property_id INTEGER NOT NULL REFERENCES properties(property_id) ON DELETE CASCADE,
+    url VARCHAR(500) NOT NULL,
+    is_main BOOLEAN DEFAULT FALSE,
+    sequence_number INTEGER NOT NULL
+);
+
+-- 4. ЗАЯВКИ НА АРЕНДУ (ядро системы)
+CREATE TABLE applications (
+    application_id SERIAL PRIMARY KEY,
+    property_id INTEGER NOT NULL REFERENCES properties(property_id),
+    tenant_id INTEGER NOT NULL REFERENCES users(user_id),
+    agent_id INTEGER REFERENCES users(user_id),
+    
+    message TEXT,
+    desired_date DATE, -- Дата заселения
+    duration_days INTEGER,
+    answer TEXT,
+    
+    status VARCHAR(20) DEFAULT 'pending' 
+        CHECK (status IN ('pending', 'approved', 'rejected', 'completed')),
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. ДОГОВОРЫ (аренды и купли-продажи в одной таблице)
+CREATE TABLE contracts (
+    contract_id SERIAL PRIMARY KEY,
+    application_id INTEGER UNIQUE REFERENCES applications(application_id),
+    
+    -- Стороны договора
+    property_id INTEGER NOT NULL REFERENCES properties(property_id),
+    tenant_id INTEGER NOT NULL REFERENCES users(user_id),
+    owner_id INTEGER NOT NULL REFERENCES users(user_id),
+    
+    -- Ключевые параметры
+    contract_type VARCHAR(10) CHECK (contract_type IN ('lease', 'sale')),
+    start_date DATE NOT NULL,
+    end_date DATE, -- NULL для договора купли-продажи
+    total_amount DECIMAL(12, 2) NOT NULL,
+    
+    -- Статус подписания
+    signing_status VARCHAR(10) DEFAULT 'draft' 
+        CHECK (signing_status IN ('draft', 'pending', 'signed')),
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. СООБЩЕНИЯ И УВЕДОМЛЕНИЯ (объединённая таблица)
+CREATE TABLE messages (
+    message_id SERIAL PRIMARY KEY,
+    from_user_id INTEGER REFERENCES users(user_id),
+    to_user_id INTEGER REFERENCES users(user_id),
+    content TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 7. ЛОГИ ДЕЙСТВИЙ (для админа)
+CREATE TABLE audit_logs (
+    log_id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(user_id),
+    action VARCHAR(100) NOT NULL, -- Тип действия
+    entity_type VARCHAR(30) NOT NULL, -- Сущность
+    entity_id INTEGER,
+    details JSONB, -- Все детали в одном поле
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

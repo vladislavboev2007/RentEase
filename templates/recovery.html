@@ -559,195 +559,201 @@
     </div>
 
     <script>
-        // Текущий шаг
-        let currentStep = 1;
-        let timerInterval;
+    // Текущий шаг
+    let currentStep = 1;
+    let timerInterval;
+    let userEmail = '';
 
-        // Функция переключения шагов
-        function goToStep(step) {
-            // Скрываем все шаги
-            document.getElementById('step1').style.display = 'none';
-            document.getElementById('step2').style.display = 'none';
-            document.getElementById('step3').style.display = 'none';
+    // Функция переключения шагов
+    function goToStep(step) {
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2').style.display = 'none';
+        document.getElementById('step3').style.display = 'none';
+        document.getElementById(`step${step}`).style.display = 'block';
 
-            // Показываем нужный шаг
-            document.getElementById(`step${step}`).style.display = 'block';
-
-            // Обновляем индикаторы
-            for (let i = 1; i <= 3; i++) {
-                const indicator = document.getElementById(`step${i}-indicator`);
-                indicator.classList.remove('active', 'completed');
-
-                if (i < step) {
-                    indicator.classList.add('completed');
-                } else if (i === step) {
-                    indicator.classList.add('active');
-                }
+        for (let i = 1; i <= 3; i++) {
+            const indicator = document.getElementById(`step${i}-indicator`);
+            indicator.classList.remove('active', 'completed');
+            if (i < step) {
+                indicator.classList.add('completed');
+            } else if (i === step) {
+                indicator.classList.add('active');
             }
-
-            currentStep = step;
-
-            // Если шаг 2 - запускаем таймер
-            if (step === 2) {
-                startTimer(300);
-                const email = document.getElementById('email').value;
-                if (email) {
-                    document.getElementById('displayEmail').textContent = email;
-                }
-            }
-
-            // Останавливаем таймер при выходе с шага 2
-            if (step !== 2 && timerInterval) {
-                clearInterval(timerInterval);
-            }
-
-            // Прокручиваем контейнер вверх
-            document.querySelector('.recovery-form-container').scrollTop = 0;
         }
 
-        // Таймер для кода
-        function startTimer(duration) {
-            const timerDisplay = document.getElementById('timer');
-            let timer = duration;
+        currentStep = step;
+        document.querySelector('.recovery-form-container').scrollTop = 0;
+    }
 
-            if (timerInterval) {
+    // Таймер для кода
+    function startTimer(duration) {
+        const timerDisplay = document.getElementById('timer');
+        let timer = duration;
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            const minutes = Math.floor(timer / 60);
+            const seconds = timer % 60;
+            timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            if (--timer < 0) {
                 clearInterval(timerInterval);
+                timerDisplay.textContent = '00:00';
+                timerDisplay.style.color = '#dc3545';
             }
+        }, 1000);
+    }
 
-            timerInterval = setInterval(() => {
-                const minutes = Math.floor(timer / 60);
-                const seconds = timer % 60;
-                timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
-                if (--timer < 0) {
-                    clearInterval(timerInterval);
-                    timerDisplay.textContent = '00:00';
-                    timerDisplay.style.color = '#dc3545';
+    // Обработка ввода кода
+    document.addEventListener('DOMContentLoaded', function() {
+        const codeInputs = document.querySelectorAll('.code-digit');
+        codeInputs.forEach((input, index) => {
+            input.addEventListener('input', function() {
+                if (this.value.length === 1 && index < codeInputs.length - 1) {
+                    codeInputs[index + 1].focus();
                 }
-            }, 1000);
-        }
-
-        // Обработка ввода кода
-        document.addEventListener('DOMContentLoaded', function() {
-            const codeInputs = document.querySelectorAll('.code-digit');
-
-            codeInputs.forEach((input, index) => {
-                input.addEventListener('input', function() {
-                    if (this.value.length === 1 && index < codeInputs.length - 1) {
-                        codeInputs[index + 1].focus();
-                    }
-                });
-
-                input.addEventListener('keydown', function(e) {
-                    if (e.key === 'Backspace' && index > 0 && this.value.length === 0) {
-                        codeInputs[index - 1].focus();
-                    }
-                });
             });
-
-            document.getElementById('resendCode')?.addEventListener('click', function() {
-                startTimer(300);
-                alert('Новый код отправлен на вашу почту');
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' && index > 0 && this.value.length === 0) {
+                    codeInputs[index - 1].focus();
+                }
             });
         });
+    });
 
-        // Валидация шага 1
-        document.querySelector('#step1 .btn-primary').addEventListener('click', function() {
-            const email = document.getElementById('email').value;
+    // ШАГ 1: Отправка email для получения кода
+document.querySelector('#step1 .btn-primary').addEventListener('click', async function() {
+    const email = document.getElementById('email').value;
+    if (!email) {
+        alert('Введите email');
+        return;
+    }
 
-            if (!email) {
-                alert('Введите email');
-                return;
-            }
+    try {
+        const formData = new FormData();
+        formData.append('email', email);
 
-            if (!email.includes('@') || !email.includes('.')) {
-                alert('Введите корректный email');
-                return;
-            }
+        const response = await fetch('/api/recovery/request', {
+            method: 'POST',
+            body: formData
+        });
 
+        const data = await response.json();
+
+        if (data.success) {
+            userEmail = email;
+            document.getElementById('displayEmail').textContent = email;
+            alert('Код отправлен на вашу почту (смотрите консоль сервера)');
             goToStep(2);
-        });
+            startTimer(300);
+        } else {
+            alert(data.message || 'Ошибка при запросе кода');
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка при запросе кода');
+    }
+});
 
-        // Валидация шага 3
-        document.querySelector('#step3 .btn-primary').addEventListener('click', function() {
-            const newPass = document.getElementById('new-password').value;
-            const confirmPass = document.getElementById('confirm-password').value;
+    // ШАГ 2: Подтверждение кода
+    document.querySelector('#step2 .btn-primary').addEventListener('click', async function() {
+        const codeInputs = document.querySelectorAll('#step2 .code-digit');
+        let code = '';
+        codeInputs.forEach(input => { code += input.value; });
 
-            if (!newPass || !confirmPass) {
-                alert('Заполните все поля');
-                return;
-            }
-
-            if (newPass.length < 8) {
-                alert('Пароль должен быть не менее 8 символов');
-                return;
-            }
-
-            if (newPass !== confirmPass) {
-                alert('Пароли не совпадают');
-                return;
-            }
-
-            completeRecovery();
-        });
-
-        // Завершение восстановления
-        function completeRecovery() {
-            alert('Пароль успешно изменен! Теперь вы можете войти с новым паролем.');
-            window.location.href = '/';
+        if (code.length !== 8) {
+            alert('Введите полный код');
+            return;
         }
 
-        // Функции для всплывающих окон
-        function showCityPopup() {
-            document.getElementById('cityPopup').style.display = 'flex';
-        }
+        try {
+            const formData = new FormData();
+            formData.append('email', userEmail);
+            formData.append('code', code);
 
-        function hideCityPopup() {
-            document.getElementById('cityPopup').style.display = 'none';
-        }
-
-        function searchCity() {
-            const searchText = document.getElementById('citySearch').value;
-            if (searchText.length >= 2) {
-                alert(`Поиск города: ${searchText}`);
-            }
-        }
-
-        function showLoginModal() {
-            document.getElementById('loginModal').style.display = 'flex';
-            setTimeout(() => document.getElementById('login-email').focus(), 100);
-        }
-
-        function hideLoginModal() {
-            document.getElementById('loginModal').style.display = 'none';
-        }
-
-        // Закрытие по клику на фон
-        window.addEventListener('click', function(event) {
-            if (event.target.classList.contains('popup')) {
-                event.target.style.display = 'none';
-            }
-            if (event.target.classList.contains('modal')) {
-                event.target.style.display = 'none';
-            }
-        });
-
-        // Выбор города
-        document.querySelectorAll('.city-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const city = this.textContent;
-                document.getElementById('selectedCity').textContent = city;
-                hideCityPopup();
+            const response = await fetch('/api/recovery/verify', {
+                method: 'POST',
+                body: formData
             });
-        });
 
-        // Обработка входа
-        document.getElementById('loginForm')?.addEventListener('submit', function(e) {
-            e.preventDefault();
-            alert('Вход выполнен успешно!');
-            hideLoginModal();
-            window.location.href = '/';
-        });
-    </script>
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Код подтверждён');
+                goToStep(3);
+            } else {
+                alert(data.message);
+            }
+        } catch (error) {
+            console.error('Ошибка:', error);
+            alert('Ошибка при подтверждении кода');
+        }
+    });
+
+    // Повторная отправка кода
+    document.getElementById('resendCode').addEventListener('click', async function() {
+        try {
+            const formData = new FormData();
+            formData.append('email', userEmail);
+
+            const response = await fetch('/api/recovery/resend', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Новый код отправлен');
+                startTimer(300);
+            } else {
+                alert(data.message);
+            }
+        } catch (error) {
+            console.error('Ошибка:', error);
+            alert('Ошибка при повторной отправке');
+        }
+    });
+
+    // ШАГ 3: Установка нового пароля
+    document.querySelector('#step3 .btn-primary').addEventListener('click', async function() {
+        const newPass = document.getElementById('new-password').value;
+        const confirmPass = document.getElementById('confirm-password').value;
+
+        if (!newPass || !confirmPass) {
+            alert('Заполните все поля');
+            return;
+        }
+        if (newPass.length < 8) {
+            alert('Пароль должен быть не менее 8 символов');
+            return;
+        }
+        if (newPass !== confirmPass) {
+            alert('Пароли не совпадают');
+            return;
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append('email', userEmail);
+            formData.append('password', newPass);
+
+            const response = await fetch('/api/recovery/reset', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Пароль успешно изменён! Теперь вы можете войти.');
+                window.location.href = '/';
+            } else {
+                alert(data.message);
+            }
+        } catch (error) {
+            console.error('Ошибка:', error);
+            alert('Ошибка при сбросе пароля');
+        }
+    });
+</script>
 </body>
 </html>

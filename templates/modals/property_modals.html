@@ -1,0 +1,179 @@
+<!-- ==================== ОБЪЕКТЫ НЕДВИЖИМОСТИ ==================== -->
+
+<!-- МОДАЛЬНОЕ ОКНО: ДЕТАЛЬНЫЙ ПРОСМОТР ОБЪЕКТА -->
+<div id="propertyDetailModal" class="modal">
+    <div class="modal-content" style="max-width: 800px;">
+        <button class="close" onclick="closeModal('propertyDetailModal')">×</button>
+
+        <div class="property-detail-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 id="modalPropertyTitle" style="margin: 0;">ЖК Городской парк</h2>
+            <span id="modalPropertyStatus" class="status-badge status-active" style="padding: 6px 15px; border-radius: 30px; background: #d4edda; color: #155724;">Активно</span>
+        </div>
+
+        <!-- Галерея -->
+        <div class="property-gallery" style="margin-bottom: 20px;">
+            <div class="main-image" style="width: 100%; height: 350px; border-radius: 12px; overflow: hidden; margin-bottom: 10px; background: #f8f9fa;">
+                <img id="modalMainImage" src="/static/house1.png" alt="Property" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/placeholder-image.png'">
+            </div>
+            <div class="thumbnail-container" id="modalThumbnails" style="display: flex; gap: 10px; overflow-x: auto;">
+                <div class="thumbnail active" onclick="changeModalImage('/static/house1.png', this)" style="width: 80px; height: 60px; border-radius: 6px; overflow: hidden; cursor: pointer; border: 2px solid #007bff;">
+                    <img src="/static/house1.png" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <div class="thumbnail" onclick="changeModalImage('/static/house2.png', this)" style="width: 80px; height: 60px; border-radius: 6px; overflow: hidden; cursor: pointer; border: 2px solid transparent;">
+                    <img src="/static/house2.png" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Характеристики -->
+        <div class="info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+            <div class="info-item" style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                <div class="info-label" style="font-size: 12px; color: #6c757d;">Город</div>
+                <div class="info-value" id="modalPropertyCity" style="font-weight: 600;">Москва</div>
+            </div>
+            <div class="info-item" style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                <div class="info-label" style="font-size: 12px; color: #6c757d;">Адрес</div>
+                <div class="info-value" id="modalPropertyAddress" style="font-weight: 600;">ул. Тверская, д. 10</div>
+            </div>
+            <div class="info-item" style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                <div class="info-label" style="font-size: 12px; color: #6c757d;">Площадь</div>
+                <div class="info-value" id="modalPropertyArea" style="font-weight: 600;">55 м²</div>
+            </div>
+            <div class="info-item" style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                <div class="info-label" style="font-size: 12px; color: #6c757d;">Тип</div>
+                <div class="info-value" id="modalPropertyType" style="font-weight: 600;">Квартира</div>
+            </div>
+            <div class="info-item" style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                <div class="info-label" style="font-size: 12px; color: #6c757d;">Комнат</div>
+                <div class="info-value" id="modalPropertyRooms" style="font-weight: 600;">2</div>
+            </div>
+            <div class="info-item" style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                <div class="info-label" style="font-size: 12px; color: #6c757d;">Этаж</div>
+                <div class="info-value" id="modalPropertyFloor" style="font-weight: 600;">5/12</div>
+            </div>
+        </div>
+
+        <!-- Описание -->
+        <div class="description-section" style="margin-bottom: 20px;">
+            <h3 style="font-size: 18px; margin-bottom: 10px;">Описание</h3>
+            <p id="modalPropertyDescription" style="color: #495057; line-height: 1.6;">
+                Просторная квартира в центре города с отличным ремонтом. Вся необходимая техника, мебель. Развитая инфраструктура, рядом метро.
+            </p>
+        </div>
+
+        <!-- Контакты -->
+        <div class="contacts-section" style="margin-bottom: 20px;">
+            <h3 style="font-size: 18px; margin-bottom: 10px;">Контакты</h3>
+            <div style="display: flex; gap: 20px;">
+                <div style="flex: 1; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                    <div style="font-weight: 600; margin-bottom: 5px;">Собственник</div>
+                    <div id="modalOwnerName">Иванов И.И.</div>
+                    <div id="modalOwnerEmail" style="font-size: 13px; color: #007bff;">owner@mail.ru</div>
+                    <div id="modalOwnerPhone" style="font-size: 13px;">+7 (999) 123-45-67</div>
+                </div>
+                <div style="flex: 1; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                    <div style="font-weight: 600; margin-bottom: 5px;">Агент</div>
+                    <div id="modalAgentName">Петрова А.С.</div>
+                    <div id="modalAgentEmail" style="font-size: 13px; color: #007bff;">agent@rentease.ru</div>
+                    <div id="modalAgentPhone" style="font-size: 13px;">+7 (999) 765-43-21</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Кнопки действий -->
+        <div class="modal-actions" style="display: flex; gap: 10px; margin-top: 20px;">
+            <button class="btn-secondary" style="flex: 1; background: white; border: 2px solid #007bff; color: #007bff; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer;" onclick="showContactForm()">Связаться</button>
+            <button class="btn-primary" onclick="showApplicationForm()" style="flex: 1;">Подать заявку</button>
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: МОИ ОБЪЕКТЫ -->
+<div id="myPropertiesModal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <button class="close" onclick="closeModal('myPropertiesModal')">×</button>
+        <h2>Мои объекты</h2>
+
+        <div class="properties-list" id="myPropertiesList">
+            <div class="property-card" style="display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef;">
+                <img src="/static/house1.png" alt="Property" style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 18px;">ЖК Городской парк</div>
+                    <div style="color: #6c757d;">ул. Тверская, д. 10</div>
+                    <div style="margin-top: 8px;">2 комн. • 55 м²</div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+                        <span class="status-badge status-active" style="padding: 4px 12px; border-radius: 20px; background: #d4edda; color: #155724;">Активно</span>
+                        <span style="font-weight: 600; color: #007bff;">45 000 ₽/мес</span>
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 5px;">
+                    <button class="btn-secondary" style="padding: 8px 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" onclick="editProperty(1)">✎ Изменить</button>
+                    <button class="btn-danger" style="padding: 8px 15px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="deleteProperty(1)">× Удалить</button>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-primary" style="width: 100%; margin-top: 20px; padding: 12px; background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%); color: white; border: none; border-radius: 6px; cursor: pointer;" onclick="showAddPropertyModal()">+ Добавить объект</button>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: ДОБАВЛЕНИЕ/РЕДАКТИРОВАНИЕ ОБЪЕКТА -->
+<div id="propertyEditModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <button class="close" onclick="closeModal('propertyEditModal')">×</button>
+        <h2 id="propertyEditTitle">Добавление объекта</h2>
+
+        <form id="propertyEditForm">
+            <input type="text" id="propTitle" placeholder="Название ЖК">
+<input type="text" id="propAddress" placeholder="Адрес">
+<input type="text" id="propCity" placeholder="Город">
+<select id="propType">
+    <option value="apartment">Квартира</option>
+    <option value="house">Дом</option>
+    <option value="commercial">Коммерческая</option>
+</select>
+<input type="number" id="propArea" placeholder="Площадь">
+<input type="number" id="propPrice" placeholder="Цена">
+<select id="propInterval">
+    <option value="month">ежемесячно</option>
+    <option value="week">еженедельно</option>
+    <option value="once">единоразово</option>
+</select>
+<textarea id="propDescription" placeholder="Описание"></textarea>
+<input type="number" id="propRooms" placeholder="Количество комнат">
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">
+                    Фотографии <span id="photoCounter">0/10</span>
+                </label>
+
+                <!-- Кнопка загрузки -->
+                <div style="margin-bottom: 15px;">
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('propPhotos').click()">
+                        📷 Выбрать фотографии
+                    </button>
+                    <input type="file" id="propPhotos" multiple accept="image/*"
+                           style="display: none;" onchange="handlePhotoSelect(event)">
+                    <small style="color: #6c757d; margin-left: 10px;">Можно выбрать до 10 файлов</small>
+                </div>
+
+                <!-- Контейнер для предпросмотра -->
+                <div id="photoPreviewContainer" class="photo-preview-container">
+                    <!-- Блоки с фото будут добавляться сюда динамически -->
+                </div>
+                <!-- Существующие фотографии -->
+<div id="existingPhotosContainer" class="existing-photos-container" style="margin-top: 15px;"></div>
+
+                <!-- Подсказка по форматам -->
+                <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                    Поддерживаются JPG, PNG, GIF. Максимальный размер файла: 5 МБ
+                </div>
+            </div>
+
+            <div class="modal-actions" style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="button" class="btn-secondary" style="flex: 1;" onclick="closeModal('propertyEditModal')">Отмена</button>
+                <button type="submit" class="btn-primary" style="flex: 1;">Опубликовать</button>
+            </div>
+        </form>
+    </div>
+</div>

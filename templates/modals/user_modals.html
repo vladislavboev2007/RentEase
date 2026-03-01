@@ -1,0 +1,106 @@
+<!-- ==================== ПОЛЬЗОВАТЕЛЬСКИЕ МОДАЛЬНЫЕ ОКНА ==================== -->
+
+<!-- МОДАЛЬНОЕ ОКНО: ВХОД -->
+<div id="loginModal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <button class="close" onclick="closeModal('loginModal')">×</button>
+        <h2>Вход в систему RentEase</h2>
+
+        <form id="loginForm">
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="login-email" style="display: block; margin-bottom: 5px; font-weight: 500;">Email</label>
+                <input type="email" id="login-email" name="email" placeholder="example@service.com" required style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="login-password" style="display: block; margin-bottom: 5px; font-weight: 500;">Пароль</label>
+                <input type="password" id="login-password" name="password" placeholder="Введите пароль" required style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px;">
+            </div>
+
+            <button type="submit" class="btn-primary" style="width: 100%; padding: 14px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-bottom: 15px;">Войти</button>
+
+            <div class="form-links" style="display: flex; justify-content: space-between; padding-top: 15px; border-top: 1px solid #eee;">
+                <a href="/register">Регистрация</a>
+             <a href="/recovery">Забыли пароль?</a>
+            </div>
+        </form>
+
+        <div class="social-login" style="text-align: center; margin-top: 20px;">
+            <p style="color: #666; font-size: 14px;">Или войдите с помощью</p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button type="button" style="background: #4267B2; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">Facebook</button>
+                <button type="button" style="background: #DB4437; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">Google</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ -->
+<div id="profileModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <button class="close" onclick="closeModal('profileModal')">×</button>
+        <h2>Мой профиль</h2>
+
+        <!-- Аватар и основная информация -->
+        <div class="profile-header" style="display: flex; align-items: center; gap: 20px; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #e9ecef;">
+            <div class="profile-avatar" style="position: relative;">
+                <div style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; background: #f0f0f0; border: 3px solid #007bff;">
+                    <img id="profileAvatar" src="/resources/placeholder-avatar.png" alt="Avatar" style="width:100%;height:100%;object-fit:cover;">
+                </div>
+                <button class="btn-icon" onclick="document.getElementById('avatarUpload').click()" style="position: absolute; bottom: 0; right: 0; width: 30px; height: 30px; border-radius: 50%; background: #007bff; color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    📷
+                </button>
+                <input type="file" id="avatarUpload" accept="image/*" style="display:none;" onchange="uploadAvatar(this.files[0])">
+            </div>
+            <div style="flex: 1;">
+                <h3 style="margin: 0 0 5px 0; font-size: 18px;" id="profileFullName">Загрузка...</h3>
+                <p style="margin: 0; color: #6c757d;" id="profileEmail">загрузка...</p>
+            </div>
+        </div>
+
+        <!-- Форма профиля -->
+        <form id="profileForm">
+            <!-- Дата рождения -->
+            <div class="form-group">
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Дата рождения</label>
+                <input type="date" id="profileBirthDate" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+
+            <!-- Город -->
+            <div class="form-group">
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Город</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="profileCity" placeholder="Ваш город" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    <button type="button" class="btn-secondary" onclick="synchronizeCity()" style="white-space: nowrap;">🔄 Синхр.</button>
+                </div>
+                <small style="color: #6c757d;">Город будет отображаться в верхней панели</small>
+            </div>
+
+            <!-- Номер телефона -->
+            <div class="form-group">
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Номер телефона</label>
+                <input type="tel" id="profilePhone" placeholder="+7 (999) 123-45-67" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" name="phone">
+            </div>
+
+            <!-- Документы -->
+            <details style="margin-top: 15px;">
+                <summary style="font-weight: 500; cursor: pointer; color: #007bff; padding: 5px 0;">Документы ▼</summary>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                    <div class="form-group">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 500;">Серия и номер паспорта</label>
+                        <input type="text" id="profilePassport" placeholder="01 20 394949" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" name="passport">
+                    </div>
+                    <div class="form-group">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 500;">ИНН</label>
+                        <input type="text" id="profileInn" placeholder="123456789101" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" name="inn">
+                    </div>
+                </div>
+            </details>
+
+            <!-- Кнопка сохранения -->
+            <div style="margin-top: 25px;">
+                <button type="submit" class="btn-primary" style="width: 100%; padding: 14px;">Сохранить изменения</button>
+            </div>
+        </form>
+    </div>
+</div>

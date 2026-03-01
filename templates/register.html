@@ -608,14 +608,14 @@
                     <div class="register-form" id="step3" style="display: none;">
                         <div class="section-title">Шаг 3 из 3: Заполните профиль</div>
 
-                        <!-- Аватарка -->
+                        <!-- Аватарка (уже есть, но обновим) -->
                         <div class="avatar-section">
-                            <div class="avatar-preview" onclick="document.getElementById('avatarInput').click()">
-                                <img src="/static/placeholder-image.png" alt="Avatar" style="display: none;">
+                            <div class="avatar-preview" id="registerAvatarPreview" onclick="document.getElementById('registerAvatarInput').click()">
+                                <img src="/resources/placeholder-avatar.png" alt="Avatar" style="display: none;">
                                 <div class="placeholder">+ Загрузить фото</div>
                             </div>
-                            <input type="file" id="avatarInput" accept="image/*" style="display: none;" onchange="previewAvatar(this)">
-                            <div class="form-hint">Фото повышает доверие к вам (необязательно)</div>
+                            <input type="file" id="registerAvatarInput" accept="image/*" style="display: none;" onchange="previewRegisterAvatar(this)">
+                            <div class="form-hint">Загрузите фото профиля (необязательно)</div>
                         </div>
 
                         <!-- Личные данные -->
@@ -665,205 +665,321 @@
     </div>
 
     <script>
-        // Текущий шаг
-        let currentStep = 1;
-        let timerInterval;
+    // Текущий шаг
+    let currentStep = 1;
+    let timerInterval;
+    let userEmail = '';
 
-        // Функция переключения шагов
-        function goToStep(step) {
-            // Скрываем все шаги
-            document.getElementById('step1').style.display = 'none';
-            document.getElementById('step2').style.display = 'none';
-            document.getElementById('step3').style.display = 'none';
+    // Функция переключения шагов
+    function goToStep(step) {
+        // Скрываем все шаги
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2').style.display = 'none';
+        document.getElementById('step3').style.display = 'none';
 
-            // Показываем нужный шаг
-            document.getElementById(`step${step}`).style.display = 'block';
+        // Показываем нужный шаг
+        document.getElementById(`step${step}`).style.display = 'block';
 
-            // Обновляем индикаторы
-            for (let i = 1; i <= 3; i++) {
-                const indicator = document.getElementById(`step${i}-indicator`);
-                indicator.classList.remove('active', 'completed');
+        // Обновляем индикаторы
+        for (let i = 1; i <= 3; i++) {
+            const indicator = document.getElementById(`step${i}-indicator`);
+            indicator.classList.remove('active', 'completed');
 
-                if (i < step) {
-                    indicator.classList.add('completed');
-                } else if (i === step) {
-                    indicator.classList.add('active');
-                }
+            if (i < step) {
+                indicator.classList.add('completed');
+            } else if (i === step) {
+                indicator.classList.add('active');
             }
-
-            currentStep = step;
-
-            // Если шаг 2 - запускаем таймер
-            if (step === 2) {
-                startTimer(300);
-                const email = document.getElementById('email').value;
-                if (email) {
-                    document.getElementById('displayEmail').textContent = email;
-                }
-            }
-
-            // Останавливаем таймер при выходе с шага 2
-            if (step !== 2 && timerInterval) {
-                clearInterval(timerInterval);
-            }
-
-            // Прокручиваем контейнер формы вверх при смене шага
-            document.querySelector('.register-form-container').scrollTop = 0;
         }
 
-        // Таймер для кода
-        function startTimer(duration) {
-            const timerDisplay = document.getElementById('timer');
-            let timer = duration;
+        currentStep = step;
 
-            if (timerInterval) {
-                clearInterval(timerInterval);
-            }
+        // Прокручиваем контейнер вверх
+        document.querySelector('.register-form-container').scrollTop = 0;
+    }
 
-            timerInterval = setInterval(() => {
-                const minutes = Math.floor(timer / 60);
-                const seconds = timer % 60;
-                timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    // ШАГ 1: Отправка данных и получение кода
+document.querySelector('#step1 .btn-primary').addEventListener('click', async function() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('password-confirm').value;
+    const phone = document.getElementById('phone').value;
+    const agree = document.getElementById('agree').checked;
 
-                if (--timer < 0) {
-                    clearInterval(timerInterval);
-                    timerDisplay.textContent = '00:00';
-                    timerDisplay.style.color = '#dc3545';
-                }
-            }, 1000);
-        }
+    // Валидация
+    if (!email || !password || !confirm) {
+        alert('Заполните все обязательные поля');
+        return;
+    }
 
-        // Обработка ввода кода
-        document.addEventListener('DOMContentLoaded', function() {
-            const codeInputs = document.querySelectorAll('.code-digit');
+    if (password !== confirm) {
+        alert('Пароли не совпадают');
+        return;
+    }
 
-            codeInputs.forEach((input, index) => {
-                input.addEventListener('input', function() {
-                    if (this.value.length === 1 && index < codeInputs.length - 1) {
-                        codeInputs[index + 1].focus();
-                    }
-                });
+    if (password.length < 8) {
+        alert('Пароль должен быть не менее 8 символов');
+        return;
+    }
 
-                input.addEventListener('keydown', function(e) {
-                    if (e.key === 'Backspace' && index > 0 && this.value.length === 0) {
-                        codeInputs[index - 1].focus();
-                    }
-                });
-            });
+    if (!agree) {
+        alert('Необходимо согласиться с условиями использования');
+        return;
+    }
 
-            document.getElementById('resendCode')?.addEventListener('click', function() {
-                startTimer(300);
-                alert('Новый код отправлен на вашу почту');
-            });
+    // Отправка на сервер
+    try {
+        const formData = new FormData();
+        formData.append('email', email);
+        formData.append('password', password);
+        if (phone) formData.append('phone', phone);
+
+        const response = await fetch('/api/register/step1', {
+            method: 'POST',
+            body: formData
         });
 
-        // Предпросмотр аватарки
-        function previewAvatar(input) {
-            const preview = document.querySelector('.avatar-preview');
-            const img = preview.querySelector('img');
-            const placeholder = preview.querySelector('.placeholder');
+        const data = await response.json();
+        console.log('Ответ step1:', data);
 
-            if (input.files && input.files[0]) {
-                const reader = new FileReader();
-
-                reader.onload = function(e) {
-                    if (img) {
-                        img.src = e.target.result;
-                        img.style.display = 'block';
-                        if (placeholder) placeholder.style.display = 'none';
-                    }
-                }
-
-                reader.readAsDataURL(input.files[0]);
-            }
-        }
-
-        // Валидация шага 1
-        document.querySelector('#step1 .btn-primary').addEventListener('click', function() {
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const confirm = document.getElementById('password-confirm').value;
-            const agree = document.getElementById('agree').checked;
-
-            if (!email || !password || !confirm) {
-                alert('Заполните все обязательные поля');
-                return;
-            }
-
-            if (password !== confirm) {
-                alert('Пароли не совпадают');
-                return;
-            }
-
-            if (password.length < 8) {
-                alert('Пароль должен быть не менее 8 символов');
-                return;
-            }
-
-            if (!agree) {
-                alert('Необходимо согласиться с условиями использования');
-                return;
-            }
-
+        if (data.success) {
+            userEmail = email;
+            document.getElementById('displayEmail').textContent = email;
+            alert('Код подтверждения отправлен на вашу почту (в консоли сервера)');
             goToStep(2);
+            startTimer(300); // 5 минут
+        } else {
+            alert(data.message);
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка при регистрации');
+    }
+});
+
+// ШАГ 2: Подтверждение кода
+document.querySelector('#step2 .btn-primary').addEventListener('click', async function() {
+    // Собираем код из полей
+    const codeInputs = document.querySelectorAll('#step2 .code-digit');
+    let code = '';
+    codeInputs.forEach(input => {
+        code += input.value;
+    });
+
+    console.log('Отправка кода:', code, 'для email:', userEmail);
+
+    if (code.length !== 8) {
+        alert('Введите полный код');
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('email', userEmail);
+        formData.append('code', code);
+
+        const response = await fetch('/api/register/step2', {
+            method: 'POST',
+            body: formData
         });
 
-        // Завершение регистрации
-        function completeRegistration() {
-            alert('Регистрация успешно завершена! Добро пожаловать в RentEase!');
+        const data = await response.json();
+        console.log('Ответ step2:', data);
+
+        if (data.success) {
+            alert('Код подтверждён');
+            goToStep(3);
+        } else {
+            alert(data.message);
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка при подтверждении кода');
+    }
+});
+
+
+
+    // Повторная отправка кода
+document.getElementById('resendCode').addEventListener('click', async function() {
+    try {
+        const formData = new FormData();
+        formData.append('email', userEmail);
+
+        const response = await fetch('/api/register/resend-code', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        console.log('Ответ resend:', data);
+
+        if (data.success) {
+            alert('Новый код отправлен');
+            startTimer(300);
+        } else {
+            alert(data.message);
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка при отправке кода');
+    }
+});
+
+// ШАГ 3: Завершение регистрации
+document.querySelector('#step3 .btn-primary').addEventListener('click', async function() {
+    const name = document.getElementById('name').value;
+    const surname = document.getElementById('surname').value;
+    const patronymic = document.getElementById('patronymic').value;
+    const passport = document.getElementById('passport').value;
+    const inn = document.getElementById('inn').value;
+
+    console.log('Завершение регистрации для:', userEmail);
+
+    try {
+        const formData = new FormData();
+        formData.append('email', userEmail);
+        if (name) formData.append('name', name);
+        if (surname) formData.append('surname', surname);
+        if (patronymic) formData.append('patronymic', patronymic);
+        if (passport) formData.append('passport', passport);
+        if (inn) formData.append('inn', inn);
+
+        // Добавляем аватарку, если она выбрана
+        if (window.registerAvatar) {
+            formData.append('avatar', window.registerAvatar);
+        }
+
+        const response = await fetch('/api/register/step3', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        console.log('Ответ step3:', data);
+
+        if (data.success) {
+            alert('Регистрация успешно завершена! Теперь вы можете войти.');
             window.location.href = '/';
+        } else {
+            alert(data.message);
         }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка при завершении регистрации');
+    }
+});
+    // Предпросмотр аватарки при регистрации
+function previewRegisterAvatar(input) {
+    const preview = document.getElementById('registerAvatarPreview');
+    const img = preview.querySelector('img');
+    const placeholder = preview.querySelector('.placeholder');
 
-        // Функции для всплывающих окон
-        function showCityPopup() {
-            document.getElementById('cityPopup').style.display = 'flex';
-        }
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
 
-        function hideCityPopup() {
-            document.getElementById('cityPopup').style.display = 'none';
-        }
-
-        function searchCity() {
-            const searchText = document.getElementById('citySearch').value;
-            if (searchText.length >= 2) {
-                alert(`Поиск города: ${searchText}`);
+        reader.onload = function(e) {
+            if (img) {
+                img.src = e.target.result;
+                img.style.display = 'block';
+                if (placeholder) placeholder.style.display = 'none';
             }
-        }
+        };
 
-        function showLoginModal() {
-            document.getElementById('loginModal').style.display = 'flex';
-            setTimeout(() => document.getElementById('login-email').focus(), 100);
-        }
+        reader.readAsDataURL(input.files[0]);
 
-        function hideLoginModal() {
-            document.getElementById('loginModal').style.display = 'none';
-        }
+        // Сохраняем файл для отправки
+        window.registerAvatar = input.files[0];
+    }
+}
 
-        // Закрытие по клику на фон
-        window.addEventListener('click', function(event) {
-            if (event.target.classList.contains('popup')) {
-                event.target.style.display = 'none';
-            }
-            if (event.target.classList.contains('modal')) {
-                event.target.style.display = 'none';
-            }
+    // Функция "Пропустить и завершить"
+document.querySelector('#step3 .btn-secondary').addEventListener('click', async function() {
+    try {
+        const formData = new FormData();
+        formData.append('email', userEmail);
+
+        const response = await fetch('/api/register/step3', {
+            method: 'POST',
+            body: formData
         });
 
-        // Выбор города
-        document.querySelectorAll('.city-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const city = this.textContent;
-                document.getElementById('selectedCity').textContent = city;
-                hideCityPopup();
+        const data = await response.json();
+        console.log('Ответ step3 (пропуск):', data);
+
+        if (data.success) {
+            alert('Регистрация успешно завершена! Теперь вы можете войти.');
+            window.location.href = '/';
+        } else {
+            alert(data.message);
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        alert('Ошибка при завершении регистрации');
+    }
+});
+
+    // Таймер для кода
+    function startTimer(duration) {
+        const timerDisplay = document.getElementById('timer');
+        let timer = duration;
+
+        if (timerInterval) {
+            clearInterval(timerInterval);
+        }
+
+        timerInterval = setInterval(() => {
+            const minutes = Math.floor(timer / 60);
+            const seconds = timer % 60;
+            timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+            if (--timer < 0) {
+                clearInterval(timerInterval);
+                timerDisplay.textContent = '00:00';
+                timerDisplay.style.color = '#dc3545';
+            }
+        }, 1000);
+    }
+
+    // Обработка ввода кода
+    document.addEventListener('DOMContentLoaded', function() {
+        const codeInputs = document.querySelectorAll('.code-digit');
+
+        codeInputs.forEach((input, index) => {
+            input.addEventListener('input', function() {
+                if (this.value.length === 1 && index < codeInputs.length - 1) {
+                    codeInputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' && index > 0 && this.value.length === 0) {
+                    codeInputs[index - 1].focus();
+                }
             });
         });
+    });
 
-        // Обработка входа
-        document.getElementById('loginForm')?.addEventListener('submit', function(e) {
-            e.preventDefault();
-            alert('Вход выполнен успешно!');
-            hideLoginModal();
-        });
-    </script>
+    // Предпросмотр аватарки (опционально)
+    function previewAvatar(input) {
+        const preview = document.querySelector('.avatar-preview');
+        const img = preview.querySelector('img');
+        const placeholder = preview.querySelector('.placeholder');
+
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                if (img) {
+                    img.src = e.target.result;
+                    img.style.display = 'block';
+                    if (placeholder) placeholder.style.display = 'none';
+                }
+            };
+
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+</script>
 </body>
 </html>

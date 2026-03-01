@@ -1,0 +1,462 @@
+-- ТРИГГЕРЫ
+
+-- 1. Автоматическое обновление статуса объекта при изменении статуса заявки
+CREATE OR REPLACE FUNCTION update_property_status_on_application_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Если заявка одобрена
+    IF NEW.status = 'approved' AND OLD.status != 'approved' THEN
+        UPDATE properties 
+        SET status = 'rented' 
+        WHERE property_id = NEW.property_id;
+    
+    -- Если заявка отклонена или отменена
+    ELSIF NEW.status IN ('rejected', 'cancelled') AND OLD.status = 'approved' THEN
+        UPDATE properties 
+        SET status = 'active' 
+        WHERE property_id = NEW.property_id;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_property_status
+AFTER UPDATE ON applications
+FOR EACH ROW
+EXECUTE FUNCTION update_property_status_on_application_change();
+
+-- 2. Автоматическое создание договора при одобрении заявки
+CREATE OR REPLACE FUNCTION auto_create_contract()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_contract_number VARCHAR(50);
+    v_year VARCHAR(4);
+    v_seq INTEGER;
+    v_total DECIMAL(12,2);
+BEGIN
+    IF NEW.status = 'approved' AND OLD.status != 'approved' THEN
+        -- Генерация номера договора
+        v_year := EXTRACT(YEAR FROM CURRENT_DATE)::VARCHAR;
+        SELECT COALESCE(MAX(SUBSTRING(contract_number FROM '[0-9]+$')::INTEGER), 0) + 1 
+        INTO v_seq
+        FROM contracts 
+        WHERE contract_number LIKE 'Д-' || v_year || '-%';
+        
+        v_contract_number := 'Д-' || v_year || '-' || LPAD(v_seq::VARCHAR, 6, '0');
+        
+        -- Расчет суммы (цена * количество месяцев)
+        SELECT price * CEIL(NEW.duration_days / 30.0) INTO v_total
+        FROM properties WHERE property_id = NEW.property_id;
+        
+        -- Создание договора
+        INSERT INTO contracts (
+            application_id, property_id, tenant_id, owner_id,
+            contract_number, contract_type, start_date, end_date,
+            total_amount, signing_status
+        ) SELECT 
+            NEW.application_id, NEW.property_id, NEW.tenant_id, owner_id,
+            v_contract_number, 'lease', NEW.desired_date,
+            NEW.desired_date + (NEW.duration_days || ' days')::INTERVAL,
+            v_total, 'draft'
+        FROM properties WHERE property_id = NEW.property_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_auto_create_contract
+AFTER UPDATE ON applications
+FOR EACH ROW
+WHEN (NEW.status = 'approved')
+EXECUTE FUNCTION auto_create_contract();
+
+-- 3. Автоматическое логирование действий (аудит)
+CREATE OR REPLACE FUNCTION audit_log_changes()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_user_id INTEGER;
+    v_action VARCHAR(100);
+    v_entity_type VARCHAR(30);
+    v_details JSONB;
+BEGIN
+    -- Определяем пользователя (нужно передавать через set_config)
+    v_user_id := current_setting('app.current_user_id', TRUE)::INTEGER;
+    
+    IF TG_OP = 'INSERT' THEN
+        v_action := 'CREATE';
+        v_details := jsonb_build_object('new', to_jsonb(NEW));
+    ELSIF TG_OP = 'UPDATE' THEN
+        v_action := 'UPDATE';
+        v_details := jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW));
+    ELSIF TG_OP = 'DELETE' THEN
+        v_action := 'DELETE';
+        v_details := jsonb_build_object('old', to_jsonb(OLD));
+    END IF;
+    
+    INSERT INTO audit_logs (
+        user_id, action, entity_type, entity_id, details
+    ) VALUES (
+        v_user_id,
+        v_action || '_' || TG_TABLE_NAME,
+        TG_TABLE_NAME,
+        COALESCE(NEW.application_id, NEW.property_id, NEW.contract_id, NEW.user_id, OLD.application_id, OLD.property_id, OLD.contract_id, OLD.user_id),
+        v_details
+    );
+    
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Применяем триггер к ключевым таблицам
+CREATE TRIGGER audit_applications_trigger
+AFTER INSERT OR UPDATE OR DELETE ON applications
+FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
+
+CREATE TRIGGER audit_properties_trigger
+AFTER INSERT OR UPDATE OR DELETE ON properties
+FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
+
+CREATE TRIGGER audit_contracts_trigger
+AFTER INSERT OR UPDATE OR DELETE ON contracts
+FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
+
+CREATE TRIGGER audit_users_trigger
+AFTER INSERT OR UPDATE OR DELETE ON users
+FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
+
+
+-- ФУНКЦИИ
+-- 1. Проверка доступности объекта на даты
+CREATE OR REPLACE FUNCTION check_property_availability(
+    p_property_id INTEGER,
+    p_start_date DATE,
+    p_end_date DATE
+) RETURNS BOOLEAN AS $$
+DECLARE
+    v_conflict_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO v_conflict_count
+    FROM contracts c
+    WHERE c.property_id = p_property_id
+      AND c.signing_status != 'cancelled'
+      AND (p_start_date, p_end_date) OVERLAPS (c.start_date, c.end_date);
+    
+    RETURN v_conflict_count = 0;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- 2. Расчет статистики для агента
+CREATE OR REPLACE FUNCTION get_agent_statistics(
+    p_agent_id INTEGER,
+    p_start_date DATE,
+    p_end_date DATE
+) RETURNS TABLE(
+    month TEXT,
+    deals_count INTEGER,
+    total_profit DECIMAL,
+    conversion_rate DECIMAL
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH monthly_data AS (
+        SELECT 
+            TO_CHAR(DATE_TRUNC('month', c.created_at), 'YYYY-MM') as month,
+            COUNT(c.contract_id) as deals,
+            COALESCE(SUM(c.total_amount), 0) as profit,
+            COUNT(DISTINCT a.application_id) as total_applications
+        FROM properties p
+        LEFT JOIN applications a ON p.property_id = a.property_id
+        LEFT JOIN contracts c ON a.application_id = c.application_id
+        WHERE p.agent_id = p_agent_id
+          AND c.created_at BETWEEN p_start_date AND p_end_date
+        GROUP BY DATE_TRUNC('month', c.created_at)
+    )
+    SELECT 
+        month,
+        deals::INTEGER,
+        profit,
+        CASE 
+            WHEN total_applications > 0 
+            THEN ROUND((deals::DECIMAL / total_applications * 100), 2)
+            ELSE 0
+        END as conversion_rate
+    FROM monthly_data
+    ORDER BY month DESC;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- 3. Расчет итоговой стоимости аренды
+CREATE OR REPLACE FUNCTION calculate_rent_total(
+    p_price DECIMAL,
+    p_interval_pay VARCHAR,
+    p_duration_days INTEGER
+) RETURNS DECIMAL AS $$
+DECLARE
+    v_total DECIMAL;
+    v_months INTEGER;
+    v_weeks INTEGER;
+BEGIN
+    CASE p_interval_pay
+        WHEN 'month' THEN
+            v_months := CEIL(p_duration_days / 30.0);
+            v_total := p_price * v_months;
+        WHEN 'week' THEN
+            v_weeks := CEIL(p_duration_days / 7.0);
+            v_total := p_price * v_weeks;
+        WHEN 'once' THEN
+            v_total := p_price;
+        ELSE
+            v_total := p_price;
+    END CASE;
+    
+    RETURN v_total;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- 4. Получение активных объектов для пользователя
+CREATE OR REPLACE FUNCTION get_user_active_properties(
+    p_user_id INTEGER,
+    p_user_type VARCHAR
+) RETURNS SETOF properties AS $$
+BEGIN
+    IF p_user_type = 'owner' THEN
+        RETURN QUERY SELECT * FROM properties 
+        WHERE owner_id = p_user_id AND status IN ('active', 'rented');
+    ELSIF p_user_type = 'agent' THEN
+        RETURN QUERY SELECT * FROM properties 
+        WHERE agent_id = p_user_id;
+    ELSE
+        RETURN QUERY SELECT * FROM properties 
+        WHERE status = 'active';
+    END IF;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+
+-- ПРЕДСТАВЛЕНИЯ
+-- 1. Полный каталог объектов для поиска
+CREATE VIEW property_catalog AS
+SELECT 
+    p.property_id,
+    p.title,
+    p.description,
+    p.address,
+    p.city,
+    p.property_type,
+    p.area,
+    p.rooms,
+    p.price,
+    p.interval_pay,
+    p.status,
+    u.full_name as owner_name,
+    u2.full_name as agent_name,
+    (SELECT url FROM property_photos 
+     WHERE property_id = p.property_id AND is_main = TRUE 
+     LIMIT 1) as main_photo_url,
+    (SELECT COUNT(*) FROM property_photos 
+     WHERE property_id = p.property_id) as photos_count
+FROM properties p
+LEFT JOIN users u ON p.owner_id = u.user_id
+LEFT JOIN users u2 ON p.agent_id = u2.user_id
+WHERE p.status = 'active';
+
+-- 2. Статистика по загрузке фонда
+CREATE VIEW property_occupancy_stats AS
+SELECT 
+    p.city,
+    p.property_type,
+    COUNT(*) as total_properties,
+    COUNT(CASE WHEN p.status = 'active' THEN 1 END) as available,
+    COUNT(CASE WHEN p.status = 'rented' THEN 1 END) as occupied,
+    ROUND(COUNT(CASE WHEN p.status = 'rented' THEN 1 END) * 100.0 / COUNT(*), 2) as occupancy_rate,
+    ROUND(AVG(p.price)::NUMERIC, 2) as avg_price
+FROM properties p
+GROUP BY p.city, p.property_type;
+
+-- 3. Финансовая эффективность менеджеров
+CREATE VIEW manager_financial_stats AS
+SELECT 
+    u.user_id,
+    u.full_name as manager_name,
+    COUNT(DISTINCT p.property_id) as managed_properties,
+    COUNT(DISTINCT a.application_id) as total_applications,
+    COUNT(DISTINCT c.contract_id) as successful_deals,
+    COALESCE(SUM(c.total_amount), 0) as total_revenue,
+    ROUND(
+        COUNT(DISTINCT c.contract_id) * 100.0 / 
+        NULLIF(COUNT(DISTINCT a.application_id), 0), 2
+    ) as conversion_rate
+FROM users u
+LEFT JOIN properties p ON u.user_id = p.agent_id
+LEFT JOIN applications a ON p.property_id = a.property_id
+LEFT JOIN contracts c ON a.application_id = c.application_id
+WHERE u.user_type = 'agent'
+GROUP BY u.user_id, u.full_name;
+
+-- 4. Детальная информация о заявках (для админа/менеджера)
+CREATE VIEW application_details AS
+SELECT 
+    a.application_id,
+    a.status,
+    a.created_at as submitted_at,
+    a.responded_at,
+    a.desired_date,
+    a.duration_days,
+    p.title as property_title,
+    p.address as property_address,
+    p.price as property_price,
+    p.city as property_city,
+    tenant.full_name as tenant_name,
+    tenant.email as tenant_email,
+    tenant.contact_info->>'phone' as tenant_phone,
+    owner.full_name as owner_name,
+    agent.full_name as agent_name,
+    CASE 
+        WHEN a.status = 'pending' THEN EXTRACT(EPOCH FROM (NOW() - a.created_at))/3600
+        ELSE EXTRACT(EPOCH FROM (a.responded_at - a.created_at))/3600
+    END as processing_hours
+FROM applications a
+JOIN properties p ON a.property_id = p.property_id
+JOIN users tenant ON a.tenant_id = tenant.user_id
+JOIN users owner ON p.owner_id = owner.user_id
+LEFT JOIN users agent ON p.agent_id = agent.user_id;
+
+-- 5. Активные договоры
+CREATE VIEW active_contracts AS
+SELECT 
+    c.contract_id,
+    c.contract_number,
+    c.start_date,
+    c.end_date,
+    c.total_amount,
+    c.signing_status,
+    p.title as property_title,
+    p.address as property_address,
+    tenant.full_name as tenant_name,
+    tenant.email as tenant_email,
+    owner.full_name as owner_name,
+    owner.email as owner_email,
+    agent.full_name as agent_name,
+    CASE 
+        WHEN c.end_date < CURRENT_DATE THEN 'Просрочен'
+        WHEN c.start_date > CURRENT_DATE THEN 'Ожидает начала'
+        ELSE 'Активен'
+    END as contract_status
+FROM contracts c
+JOIN properties p ON c.property_id = p.property_id
+JOIN users tenant ON c.tenant_id = tenant.user_id
+JOIN users owner ON c.owner_id = owner.user_id
+LEFT JOIN users agent ON p.agent_id = agent.user_id
+WHERE c.signing_status = 'signed';
+
+-- 6. Статистика для дашборда агента (для визуализации)
+CREATE VIEW agent_dashboard_stats AS
+SELECT 
+    p.agent_id,
+    DATE_TRUNC('month', c.created_at)::DATE as month,
+    COUNT(c.contract_id) as deals_count,
+    COALESCE(SUM(c.total_amount), 0) as profit,
+    COUNT(DISTINCT a.application_id) as applications_count,
+    COUNT(DISTINCT CASE WHEN a.status = 'rejected' THEN a.application_id END) as rejected_count,
+    COUNT(DISTINCT p.property_id) as properties_count
+FROM properties p
+LEFT JOIN applications a ON p.property_id = a.property_id
+LEFT JOIN contracts c ON a.application_id = c.application_id
+WHERE p.agent_id IS NOT NULL
+GROUP BY p.agent_id, DATE_TRUNC('month', c.created_at);
+
+
+-- ХРАНИМЫЕ ПРОЦЕДУРЫ
+-- 1. Полный цикл обработки заявки
+CREATE OR REPLACE PROCEDURE process_application(
+    p_application_id INTEGER,
+    p_agent_id INTEGER,
+    p_decision VARCHAR,
+    p_answer TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT NULL
+) AS $$
+DECLARE
+    v_property_id INTEGER;
+    v_tenant_id INTEGER;
+    v_property_price DECIMAL;
+    v_interval_pay VARCHAR;
+    v_total_amount DECIMAL;
+    v_contract_id INTEGER;
+BEGIN
+    -- Начинаем транзакцию
+    BEGIN
+        -- Получаем данные заявки
+        SELECT property_id, tenant_id INTO v_property_id, v_tenant_id
+        FROM applications WHERE application_id = p_application_id;
+        
+        -- Получаем данные объекта
+        SELECT price, interval_pay INTO v_property_price, v_interval_pay
+        FROM properties WHERE property_id = v_property_id;
+        
+        -- Обновляем заявку
+        UPDATE applications 
+        SET 
+            agent_id = p_agent_id,
+            status = p_decision,
+            answer = p_answer,
+            responded_at = NOW()
+        WHERE application_id = p_application_id;
+        
+        -- Если одобрено - создаем договор
+        IF p_decision = 'approved' THEN
+            -- Расчет суммы
+            SELECT calculate_rent_total(
+                v_property_price, 
+                v_interval_pay, 
+                COALESCE(p_start_date, CURRENT_DATE)
+            ) INTO v_total_amount;
+            
+            -- Создание договора (триггер сделает это автоматически)
+            -- Но если нужно сразу получить ID
+        END IF;
+        
+        -- Логируем действие
+        INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
+        VALUES (p_agent_id, 'PROCESS_APPLICATION', 'application', p_application_id,
+                jsonb_build_object('decision', p_decision, 'answer', p_answer));
+        
+        COMMIT;
+    EXCEPTION
+        WHEN OTHERS THEN
+            ROLLBACK;
+            RAISE;
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 2. Ежемесячная архивация данных
+CREATE OR REPLACE PROCEDURE archive_old_data(p_months INTEGER DEFAULT 12) AS $$
+DECLARE
+    v_cutoff_date DATE;
+BEGIN
+    v_cutoff_date := CURRENT_DATE - (p_months || ' months')::INTERVAL;
+    
+    -- Архивация старых завершенных договоров
+    UPDATE properties 
+    SET status = 'archived'
+    WHERE property_id IN (
+        SELECT DISTINCT c.property_id
+        FROM contracts c
+        WHERE c.signing_status = 'signed'
+          AND c.end_date < v_cutoff_date
+    ) AND status = 'rented';
+    
+    -- Помечаем старые заявки как завершенные
+    UPDATE applications 
+    SET status = 'completed'
+    WHERE status IN ('approved', 'rejected')
+      AND created_at < v_cutoff_date;
+    
+    -- Очистка старых логов (оставляем только за последние 3 года)
+    DELETE FROM audit_logs 
+    WHERE created_at < (CURRENT_DATE - INTERVAL '3 years');
+    
+    RAISE NOTICE 'Архивация завершена, обработано объектов старше %', v_cutoff_date;
+END;
+$$ LANGUAGE plpgsql;

@@ -1,0 +1,196 @@
+<!-- ==================== ДОГОВОРЫ ==================== -->
+
+<!-- МОДАЛЬНОЕ ОКНО: МОИ ДОГОВОРЫ -->
+<div id="myContractsModal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <button class="close" onclick="closeModal('myContractsModal')">×</button>
+        <h2>Мои договоры</h2>
+
+        <div class="contracts-list" id="myContractsList">
+            <div class="contract-card" onclick="showContractDetail(1)" style="display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef; cursor: pointer;">
+                <img src="/static/house1.png" alt="Property" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px;" onerror="this.src='/static/placeholder-image.png'">
+                <div style="flex: 1;">
+                    <div style="font-weight: 600;">Договор №Д-2024-001</div>
+                    <div>ЖК Городской парк, 2 комн. • 55 м²</div>
+                    <div style="font-size: 14px; color: #6c757d;">Период: 01.03.2024 - 01.03.2025</div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+                        <span class="status-badge status-active" style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: #d4edda; color: #155724;">Действует</span>
+                        <span style="font-weight: 600; color: #007bff;">450 000 ₽</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-secondary" onclick="closeModal('myContractsModal')" style="margin-top: 20px; width: 100%; padding: 12px;">Закрыть</button>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: ДЕТАЛИ ДОГОВОРА -->
+<div id="contractDetailModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <button class="close" onclick="closeModal('contractDetailModal')">×</button>
+
+        <div class="detail-header" style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <button class="back-button" onclick="showMyContracts()" style="background: none; border: none; font-size: 20px; cursor: pointer;">←</button>
+            <h2 style="margin: 0;">Договор №Д-2024-001</h2>
+        </div>
+
+        <div class="property-summary" style="display: flex; gap: 15px; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+            <img src="/static/house1.png" alt="Property" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px;">
+            <div>
+                <div class="summary-title" style="font-size: 18px; font-weight: 600;">ЖК Городской парк</div>
+                <div class="summary-address" style="color: #6c757d;">ул. Тверская, д. 10</div>
+            </div>
+        </div>
+
+        <div class="info-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+            <div class="info-row">
+                <div class="info-label" style="font-size: 13px; color: #6c757d;">Длительность</div>
+                <div class="info-value" style="font-weight: 600;">12 месяцев</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label" style="font-size: 13px; color: #6c757d;">Дата заселения</div>
+                <div class="info-value" style="font-weight: 600;">01.03.2024</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label" style="font-size: 13px; color: #6c757d;">Дата выселения</div>
+                <div class="info-value" style="font-weight: 600;">01.03.2025</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label" style="font-size: 13px; color: #6c757d;">Статус</div>
+                <div class="info-value">
+                    <span class="status-badge status-active" style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: #d4edda; color: #155724;">Действует</span>
+                </div>
+            </div>
+            <div class="info-row" style="grid-column: span 2;">
+                <div class="info-label" style="font-size: 13px; color: #6c757d;">Общая сумма</div>
+                <div class="info-value price" style="font-weight: 600; color: #007bff; font-size: 24px;">450 000 ₽</div>
+            </div>
+        </div>
+
+        <div class="parties-section" style="margin-bottom: 20px;">
+            <h3 style="font-size: 16px; margin-bottom: 10px;">Стороны договора</h3>
+            <div style="display: flex; gap: 20px;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 600;">Арендатор</div>
+                    <div>Иванов Иван Иванович</div>
+                    <div style="font-size: 13px; color: #6c757d;">ivanov@mail.ru</div>
+                </div>
+                <div style="flex: 1;">
+                    <div style="font-weight: 600;">Собственник</div>
+                    <div>Петров Петр Петрович</div>
+                    <div style="font-size: 13px; color: #6c757d;">petrov@mail.ru</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="documents-section" style="margin-bottom: 20px;">
+            <h3 style="font-size: 16px; margin-bottom: 10px;">Документы</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn-secondary" style="padding: 8px 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">📄 Договор (PDF)</button>
+                <button class="btn-secondary" style="padding: 8px 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">📄 Акт приема-передачи</button>
+            </div>
+        </div>
+
+        <div class="signature-status" style="margin-bottom: 20px;">
+            <h3 style="font-size: 16px; margin-bottom: 10px;">Подписание</h3>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="width: 100px;">Арендатор:</span>
+                    <span style="color: #28a745;">✓ Подписано</span>
+                    <span style="font-size: 12px; color: #999;">15.02.2024</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="width: 100px;">Собственник:</span>
+                    <span style="color: #ffc107;">⏳ Ожидает</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="width: 100px;">Агент:</span>
+                    <span style="color: #28a745;">✓ Подписано</span>
+                    <span style="font-size: 12px; color: #999;">15.02.2024</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-actions" style="display: flex; gap: 10px; margin-top: 20px;">
+            <button class="btn-danger" style="flex: 1; background: #dc3545; color: white; border: none; padding: 12px; border-radius: 6px;" onclick="cancelContract()">Расторгнуть</button>
+            <button class="btn-primary" style="flex: 1; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; padding: 12px; border-radius: 6px;" onclick="signContract()">Поставить подпись</button>
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: СПИСОК ДИАЛОГОВ -->
+<div id="dialogsListModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <button class="close" onclick="closeModal('dialogsListModal')">×</button>
+        <h2 style="margin-bottom: 25px;">Сообщения</h2>
+
+        <div class="dialogs-list" id="dialogsList" style="max-height: 500px; overflow-y: auto;">
+            <!-- Динамическая загрузка диалогов -->
+            <!-- Пример структуры одного элемента:
+            <div class="dialog-item" onclick="openChat(1)" style="display: flex; align-items: center; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef; cursor: pointer;">
+                <div class="dialog-avatar" style="width: 50px; height: 50px; border-radius: 50%; overflow: hidden; background: #f0f0f0;">
+                    <img src="/resources/placeholder-avatar.png" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <div class="dialog-info" style="flex: 1;">
+                    <div class="dialog-name" style="font-weight: 600;">Иван Петров</div>
+                    <div class="dialog-last-message" style="color: #6c757d; font-size: 14px;">Последнее сообщение...</div>
+                </div>
+                <div class="dialog-actions" style="display: flex; gap: 10px;">
+                    <button class="icon-btn" onclick="openChat(1); event.stopPropagation();" title="Открыть чат">
+                        <img src="/resources/chat-icon.png" style="width: 20px; height: 20px;">
+                    </button>
+                    <button class="icon-btn" onclick="deleteDialog(1); event.stopPropagation();" title="Удалить диалог">
+                        <img src="/resources/delete-icon.png" style="width: 20px; height: 20px;">
+                    </button>
+                </div>
+            </div>
+            -->
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: ЧАТ С ПОЛЬЗОВАТЕЛЕМ -->
+<div id="chatModal" class="modal">
+    <div class="modal-content" style="max-width: 600px; height: 700px; display: flex; flex-direction: column; padding: 0;">
+        <!-- Шапка чата -->
+        <div style="display: flex; align-items: center; padding: 15px 20px; border-bottom: 1px solid #e9ecef; background: white; border-radius: 12px 12px 0 0;">
+            <button class="back-button" onclick="closeChat()" style="background: none; border: none; font-size: 24px; cursor: pointer; margin-right: 15px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">←</button>
+
+            <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                <!-- Аватар -->
+                <div style="width: 45px; height: 45px; border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #007bff, #0056b3); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;" id="chatAvatarContainer">
+                    <span id="chatAvatarInitials">?</span>
+                </div>
+
+                <!-- Имя и статус -->
+                <div>
+                    <div id="chatUserName" style="font-weight: 600; font-size: 16px;">Загрузка...</div>
+                    <div id="chatUserStatus" style="font-size: 13px; display: flex; align-items: center; gap: 5px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: #28a745; display: inline-block;"></span>
+                        <span style="color: #28a745;">В сети</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Область сообщений с прокруткой -->
+        <div id="chatMessagesContainer" style="flex: 1; overflow-y: auto; padding: 20px; background: #f8f9fa;">
+            <div id="chatMessages" style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- Сообщения будут загружаться сюда -->
+            </div>
+        </div>
+
+        <!-- Поле ввода сообщения -->
+<div style="padding: 15px 20px; border-top: 1px solid #e9ecef; background: white; border-radius: 0 0 12px 12px;">
+    <form id="sendMessageForm" style="position: relative; width: 100%;">
+        <input type="text" id="messageInput" placeholder="Напишите сообщение..."
+               style="width: 100%; height: 50px; padding: 0 50px 0 15px; border: 1px solid #ddd; border-radius: 25px; outline: none; font-size: 14px; box-sizing: border-box;">
+        <button type="submit"
+                style="position: absolute; right: 5px; top: 5px; width: 40px; height: 40px; border-radius: 50%; background: #007bff; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+            <img src="/resources/send-icon.png" style="width: 20px; height: 20px; filter: brightness(0) invert(1);">
+        </button>
+    </form>
+</div>
+    </div>
+</div>

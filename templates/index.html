@@ -5,24 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RentEase - Аренда недвижимости</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:,">
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
     <script src="/static/script.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
-    <div class="header">
-        <div class="logo">RentEase</div>
-        <div class="menu">
-            <a href="/">Каталог объектов</a>
-            <a href="#" onclick="showGuidePopup()">Руководство</a>
-            <a href="#">Контакты</a>
-            <div class="location" onclick="showCityPopup()">
-                <span id="selectedCity">Москва</span>
-                <img src="/static/pin.png" alt="Location">
-            </div>
-            <a href="#" class="login" onclick="showLoginModal()">Войти</a>
+<div class="header">
+    <div class="logo">RentEase</div>
+    <div class="menu">
+        <a href="/">Каталог объектов</a>
+        <a href="#" onclick="showGuidePopup()">Руководство</a>
+        <a href="#">Контакты</a>
+        <div class="location" onclick="showCityPopup()">
+            <span id="selectedCity">Москва</span>
+            <img src="/resources/pin.png" alt="Location">
         </div>
+
+        {% if current_user %}
+            <!-- Пользователь авторизован -->
+            {% if current_user.user_type in ['owner', 'agent'] %}
+        <div id="user-data" data-user-id="{{ current_user.user_id }}" style="display: none;"></div>
+            <div class="dashboard-menu">
+                <button class="dashboard-btn" onclick="toggleDashboardMenu(event)">
+                    Панель управления ▼
+                </button>
+                <div id="dashboardDropdown" class="dropdown-content">
+                    <a href="#" onclick="showMyApplications(); return false;">📋 Заявки</a>
+                    <a href="#" onclick="showMyContracts(); return false;">📄 Договоры</a>
+                    <a href="#" onclick="showMyProperties(); return false;">🏠 Объекты</a>
+                    {% if current_user.user_type == 'agent' %}
+                    <a href="#" onclick="showAgentStats(); return false;">📊 Статистика</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Аватар с инициалами и выпадающим меню -->
+            <div class="user-menu">
+                <div class="user-avatar" onclick="toggleUserMenu(event)" id="userAvatarContainer" data-initials="{{ user_initials }}">
+                    {% if current_user and current_user.avatar_url %}
+                        <img src="{{ current_user.avatar_url }}" alt="Avatar" class="user-avatar-img">
+                    {% else %}
+                        <span class="user-initials">{{ user_initials }}</span>
+                    {% endif %}
+                </div>
+                <div id="userDropdown" class="dropdown-content user-dropdown">
+                    <div class="dropdown-header">
+                        <div class="dropdown-user-info">
+                            <span class="dropdown-user-name">{{ current_user.full_name or current_user.email }}</span>
+                            <span class="dropdown-user-email">{{ current_user.email }}</span>
+                        </div>
+                    </div>
+                    <div class="dropdown-divider"></div>
+                    <a href="#" onclick="showProfileModal(); return false;">
+                        <span class="dropdown-icon">👤</span> Мой профиль
+                    </a>
+                    <a href="#" onclick="showMyApplications(); return false;">
+                        <span class="dropdown-icon">📋</span> Мои заявки
+                    </a>
+                    <a href="#" onclick="showMyContracts(); return false;">
+                        <span class="dropdown-icon">📄</span> Мои договоры
+                    </a>
+                    <a href="#" onclick="showDialogsList(); return false;">
+                        <span class="dropdown-icon">💬</span> Сообщения
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <a href="#" onclick="logout(); return false;" class="logout-link">
+                        <span class="dropdown-icon">🚪</span> Выйти
+                    </a>
+                </div>
+            </div>
+        {% else %}
+            <!-- Пользователь не авторизован -->
+            <a href="#" class="login" onclick="showLoginModal(); return false;">Войти</a>
+        {% endif %}
     </div>
+</div>
 
     <!-- ФИЛЬТР ПОИСКА -->
     <div class="filter-section">
@@ -95,7 +155,7 @@
 
                     <div class="filter-group filter-actions">
                         <button type="submit" class="filter-btn">
-                            <img src="/static/search.png" alt="Search"> Найти
+                            <img src="/resources/search.png" alt="Search"> Найти
                         </button>
                         <button type="button" class="filter-reset" onclick="resetFilters()">Сбросить</button>
                     </div>
@@ -124,26 +184,28 @@
                 </div>
                 <div class="view-toggle">
                     <button class="view-btn active" onclick="setViewMode('grid')" title="Сетка" id="gridViewBtn">
-                        <img src="/static/grid.png" alt="Grid">
+                        <img src="/resources/grid.png" alt="Grid">
                     </button>
                     <button class="view-btn" onclick="setViewMode('list')" title="Список" id="listViewBtn">
-                        <img src="/static/line.png" alt="List">
+                        <img src="/resources/line.png" alt="List">
                     </button>
                 </div>
             </div>
         </div>
 
+        <!-- КОНТЕЙНЕР ДЛЯ ОБЪЕКТОВ (grid/list) -->
         <div class="results-grid" id="propertiesContainer">
             {% if properties %}
                 {% for property in properties %}
-                <a href="/property/{{ property.property_id }}" class="property-card"
-                   data-price="{{ property.price }}"
-                   data-area="{{ property.area }}"
-                   data-created="{{ property.created_at }}">
+                <a href="javascript:void(0);" class="property-card"
+                       onclick="showPropertyDetails({{ property.property_id }})"
+                       data-price="{{ property.price }}"
+                       data-area="{{ property.area }}"
+                       data-created="{{ property.created_at }}">
                     <div class="property-image">
                         <img src="{{ property.main_photo_url }}"
                              alt="{{ property.title }}"
-                             onerror="this.src='/static/placeholder-image.png'">
+                             onerror="this.src='/resources/placeholder-image.png'">
                         <div class="property-status">{{ property.status }}</div>
                     </div>
                     <div class="property-info">
@@ -159,8 +221,15 @@
                             </span>
                         </div>
                         <div class="property-price">
-                            <strong>{{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽</strong>
-                            {% if property.interval_pay == 'month' %}/мес{% endif %}
+                            <strong>
+                                {% if property.interval_pay == 'month' %}
+                                    {{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽/мес
+                                {% elif property.interval_pay == 'week' %}
+                                    {{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽/нед
+                                {% else %}
+                                    {{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽
+                                {% endif %}
+                            </strong>
                         </div>
                         <div class="property-meta">
                             <span>Добавлено: {{ property.created_at.strftime('%d.%m.%Y') if property.created_at else 'сегодня' }}</span>
@@ -230,27 +299,112 @@
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ВХОДА -->
-    <div id="loginModal" class="modal">
-        <div class="modal-content">
-            <button class="close" onclick="hideLoginModal()">×</button>
-            <h2>Вход в систему RentEase</h2>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="login-email">Email</label>
-                    <input type="email" id="login-email" placeholder="example@service.com" required>
+
+    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЬНОГО ПРОСМОТРА ОБЪЕКТА -->
+    <div id="propertyModal" class="modal property-modal">
+        <div class="modal-content property-modal-content">
+            <button class="close" onclick="hidePropertyModal()">×</button>
+
+            <!-- Индикатор загрузки -->
+            <div id="propertyModalLoader" class="modal-loader" style="display: none;">
+                <div class="loader"></div>
+                <p>Загрузка данных...</p>
+            </div>
+
+            <!-- Контент объекта (заполняется динамически) -->
+            <div id="propertyModalContent" style="display: none;">
+                <!-- Заголовок и статус -->
+                <div class="property-modal-header">
+                    <h2 id="modalPropertyTitle">Название объекта</h2>
+                    <span id="modalPropertyStatus" class="property-status-badge">Активно</span>
                 </div>
-                <div class="form-group">
-                    <label for="login-password">Пароль</label>
-                    <input type="password" id="login-password" placeholder="Введите пароль" required>
+
+                <!-- Галерея изображений -->
+                <div class="property-modal-gallery">
+                    <div class="modal-main-image" id="modalMainImage">
+                        <img src="/resources/placeholder-image.png" alt="Main image" id="modalMainImageImg">
+                    </div>
+                    <div class="modal-thumbnail-container" id="modalThumbnailContainer">
+                        <!-- Миниатюры будут добавляться динамически -->
+                    </div>
                 </div>
-                <button type="submit" class="btn-primary">Войти</button>
-                <div class="form-links">
-                    <a href="/recovery">Забыли пароль?</a>
-                    <a href="/register">Создать аккаунт</a>
+
+                <!-- Детальная информация -->
+                <div class="property-modal-info">
+                    <div class="modal-info-grid">
+                        <div class="modal-info-item">
+                            <div class="modal-info-label">Город</div>
+                            <div class="modal-info-value" id="modalPropertyCity">-</div>
+                        </div>
+                        <!--<div class="modal-info-item">
+                            <div class="modal-info-label">Район</div>
+                            <div class="modal-info-value" id="modalPropertyDistrict">-</div>
+                        </div>-->
+                        <div class="modal-info-item">
+                            <div class="modal-info-label">Адрес</div>
+                            <div class="modal-info-value" id="modalPropertyAddress">-</div>
+                        </div>
+                        <div class="modal-info-item">
+                            <div class="modal-info-label">Площадь</div>
+                            <div class="modal-info-value" id="modalPropertyArea">-</div>
+                        </div>
+                        <div class="modal-info-item">
+                            <div class="modal-info-label">Тип</div>
+                            <div class="modal-info-value" id="modalPropertyType">-</div>
+                        </div>
+                        <div class="modal-info-item">
+                            <div class="modal-info-label">Комнат</div>
+                            <div class="modal-info-value" id="modalPropertyRooms">-</div>
+                        </div>
+                        <div class="modal-info-item full-width">
+                            <div class="modal-info-label">Стоимость</div>
+                            <div class="modal-info-value price" id="modalPropertyPrice">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Описание -->
+                    <div class="modal-description">
+                        <h3>Описание</h3>
+                        <p id="modalPropertyDescription">-</p>
+                    </div>
+
+                    <!-- Контакты -->
+                    <div class="modal-contacts">
+                        <h3>Контакты</h3>
+
+                        <div class="modal-contact-person" id="modalOwnerInfo">
+                            <div class="contact-person-name">Собственник</div>
+                            <div class="contact-person-details">
+                                <span id="modalOwnerName">-</span>
+                                <span id="modalOwnerEmail" class="contact-email">-</span>
+                                <span id="modalOwnerPhone" class="contact-phone">-</span>
+                            </div>
+                        </div>
+
+                        <div class="modal-contact-person" id="modalAgentInfo" style="display: none;">
+                            <div class="contact-person-name">Агент</div>
+                            <div class="contact-person-details">
+                                <span id="modalAgentName">-</span>
+                                <span id="modalAgentEmail" class="contact-email">-</span>
+                                <span id="modalAgentPhone" class="contact-phone">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Кнопки действий -->
+                    <div class="modal-actions">
+                        <button class="btn-primary" onclick="showContactForm()">Связаться</button>
+                        <button class="btn-secondary" onclick="showApplicationForm()">Подать заявку</button>
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
+    <!-- Подключение всех модальных окон -->
+    {% include "modals/user_modals.html" %}
+    {% include "modals/property_modals.html" %}
+    {% include "modals/application_modals.html" %}
+    {% include "modals/contract_modals.html" %}
+    {% include "modals/chat_modals.html" %}
 </body>
 </html>

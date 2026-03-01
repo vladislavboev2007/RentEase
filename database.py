@@ -2,6 +2,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, Date, DateTime, Boolean, DECIMAL, ForeignKey, \
     CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -34,7 +35,7 @@ class User(Base):
     avatar_url = Column(Text)
     full_name = Column(String(150))
     user_type = Column(String(10), nullable=False)
-    contact_info = Column(JSONB, default=dict)
+    contact_info = Column(MutableDict.as_mutable(JSONB), default=dict)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -168,7 +169,6 @@ class Contract(Base):
     owner_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
 
     # Ключевые параметры
-    contract_type = Column(String(10))
     start_date = Column(Date, nullable=False)
     end_date = Column(Date)
     total_amount = Column(DECIMAL(12, 2), nullable=False)
@@ -181,21 +181,8 @@ class Contract(Base):
     # Связи
     application = relationship("Application", back_populates="contract")
     property = relationship("Property", back_populates="contracts")
-    tenant_user = relationship("User", foreign_keys=[tenant_id])
-    owner_user = relationship("User", foreign_keys=[owner_id])
-
-    # Check constraints
-    __table_args__ = (
-        CheckConstraint(
-            "contract_type IN ('lease', 'sale')",
-            name="contract_type_check"
-        ),
-        CheckConstraint(
-            "signing_status IN ('draft', 'pending', 'signed')",
-            name="signing_status_check"
-        ),
-        CheckConstraint("total_amount >= 0", name="amount_positive"),
-    )
+    tenant = relationship("User", foreign_keys=[tenant_id])
+    owner = relationship("User", foreign_keys=[owner_id])
 
 
 class Message(Base):

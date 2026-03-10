@@ -1836,3 +1836,216 @@ input[type="file"]::file-selector-button:hover {
     25% { transform: translateX(-5px); }
     75% { transform: translateX(5px); }
 }
+
+/* ==================== ИКОНКИ В ШАПКЕ ==================== */
+.header-icons {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-right: 10px;
+}
+
+.icon-wrapper {
+    position: relative;
+    cursor: pointer;
+}
+
+.header-icon {
+    width: 24px;
+    height: 24px;
+    filter: brightness(0) invert(1);
+    transition: transform 0.2s;
+}
+
+.header-icon:hover {
+    transform: scale(1.1);
+}
+
+.icon-badge {
+    position: relative;
+}
+
+.badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: #dc3545;
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    border: 2px solid #0056b3;
+}
+
+/* Дропдаун для уведомлений и сообщений */
+.notifications-dropdown,
+.messages-dropdown {
+    display: none;
+    position: absolute;
+    top: 40px;
+    right: -10px;
+    width: 350px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    z-index: 1002;
+    overflow: hidden;
+}
+
+.notifications-dropdown.show,
+.messages-dropdown.show {
+    display: block;
+    animation: dropdownFade 0.2s ease;
+}
+
+.dropdown-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+}
+
+.dropdown-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #212529;
+}
+
+.mark-read-btn {
+    background: none;
+    border: none;
+    color: #007bff;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+.mark-read-btn:hover {
+    background: #e7f1ff;
+}
+
+.notifications-list,
+.messages-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.notification-item,
+.message-item {
+    padding: 15px 20px;
+    border-bottom: 1px solid #e9ecef;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.notification-item:hover,
+.message-item:hover {
+    background: #f8f9fa;
+}
+
+.notification-item.unread,
+.message-item.unread {
+    background: #e7f1ff;
+}
+
+.notification-item.unread:hover,
+.message-item.unread:hover {
+    background: #d4e4ff;
+}
+
+.notification-content,
+.message-content {
+    font-size: 14px;
+    color: #212529;
+    margin-bottom: 5px;
+}
+
+.notification-time,
+.message-time {
+    font-size: 11px;
+    color: #6c757d;
+}
+
+.notification-item.loading,
+.message-item.loading {
+    text-align: center;
+    color: #6c757d;
+    padding: 30px 20px;
+}
+
+.dropdown-footer {
+    padding: 12px 20px;
+    border-top: 1px solid #e9ecef;
+    text-align: center;
+    background: #f8f9fa;
+}
+
+.dropdown-footer a {
+    color: #007bff;
+    text-decoration: none;
+    font-size: 13px;
+}
+
+.dropdown-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Индикатор для сообщений */
+.message-sender {
+    font-weight: 600;
+    font-size: 13px;
+    color: #007bff;
+    margin-bottom: 3px;
+}
+
+.message-preview {
+    font-size: 13px;
+    color: #495057;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .notifications-dropdown,
+    .messages-dropdown {
+        position: fixed;
+        top: 70px;
+        right: 10px;
+        left: 10px;
+        width: auto;
+    }
+}
+
+.btn-warning {
+    background: #ffc107;
+    color: #212529;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-warning:hover {
+    background: #e0a800;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(255, 193, 7, 0.3);
+}
+
+.btn-warning:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}

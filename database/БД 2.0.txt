@@ -15,7 +15,6 @@ CREATE TABLE users (
 CREATE TABLE properties (
     property_id SERIAL PRIMARY KEY,
     owner_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
-    agent_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
     
     title VARCHAR(200) NOT NULL,
     description TEXT,
@@ -27,7 +26,7 @@ CREATE TABLE properties (
     area DECIMAL(8, 2) NOT NULL,
     rooms INTEGER,
     price DECIMAL(10, 2) NOT NULL,
-    interval_pay VARCHAR(20) CHECK (interval_pay IN ('once', 'week', 'month')),
+    interval_pay VARCHAR(20) CHECK (interval_pay IN ('week', 'month')),
     
     -- Статусы
     status VARCHAR(20) DEFAULT 'draft' 
@@ -50,15 +49,15 @@ CREATE TABLE applications (
     application_id SERIAL PRIMARY KEY,
     property_id INTEGER NOT NULL REFERENCES properties(property_id),
     tenant_id INTEGER NOT NULL REFERENCES users(user_id),
-    agent_id INTEGER REFERENCES users(user_id),
     
     message TEXT,
     desired_date DATE, -- Дата заселения
     duration_days INTEGER,
     answer TEXT,
+    responded_at TIMESTAMP,
     
     status VARCHAR(20) DEFAULT 'pending' 
-        CHECK (status IN ('pending', 'approved', 'rejected', 'completed')),
+        CHECK (status IN ('pending', 'approved', 'rejected', 'completed', 'cancelled')),
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -67,14 +66,8 @@ CREATE TABLE applications (
 CREATE TABLE contracts (
     contract_id SERIAL PRIMARY KEY,
     application_id INTEGER UNIQUE REFERENCES applications(application_id),
-    
-    -- Стороны договора
-    property_id INTEGER NOT NULL REFERENCES properties(property_id),
-    tenant_id INTEGER NOT NULL REFERENCES users(user_id),
-    owner_id INTEGER NOT NULL REFERENCES users(user_id),
-    
+   
     -- Ключевые параметры
-    contract_type VARCHAR(10) CHECK (contract_type IN ('lease', 'sale')),
     start_date DATE NOT NULL,
     end_date DATE, -- NULL для договора купли-продажи
     total_amount DECIMAL(12, 2) NOT NULL,
@@ -82,6 +75,10 @@ CREATE TABLE contracts (
     -- Статус подписания
     signing_status VARCHAR(10) DEFAULT 'draft' 
         CHECK (signing_status IN ('draft', 'pending', 'signed')),
+
+    -- Подписи
+    tenant_signed BOOLEAN,
+    owner_signed BOOLEAN,
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

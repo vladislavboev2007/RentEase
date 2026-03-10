@@ -1,14 +1,15 @@
 from fastapi import (FastAPI, Request, Form,
                      Depends, HTTPException, status,
                      Cookie, Response, UploadFile,
-                     File, WebSocket, WebSocketDisconnect)
-from fastapi.responses import HTMLResponse, RedirectResponse
+                     File, WebSocket, WebSocketDisconnect, Header, Query)
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer
+from starlette.middleware.base import BaseHTTPMiddleware
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, func, desc
+from sqlalchemy import or_, and_, func, desc, text
 from sqlalchemy.orm.attributes import flag_modified
 from passlib.context import CryptContext
 from pathlib import Path
@@ -22,9 +23,26 @@ import os
 import shutil
 import asyncio
 import json
+import jwt
 from uuid import uuid4
+import uuid
 from typing import Optional, List, Dict, Any, Set
 from pydantic import BaseModel, EmailStr, field_validator  # Важно: field_validator для Pydantic v2
+from docx import Document
+from docx.shared import Inches, Pt, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from openpyxl import Workbook
+from openpyxl.chart import BarChart, PieChart, Reference
+from openpyxl.styles import Font, Alignment
+import shutil
+import io
+import tempfile
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from database import SessionLocal, User, Property, PropertyPhoto, Application, Contract, Message, AuditLog
 from schemas import (
@@ -32,6 +50,11 @@ from schemas import (
     UserProfileUpdate, PasswordRecoveryRequest, PasswordRecoveryVerify,
     PasswordRecoveryReset, PropertyCreate, ApplicationCreate,
     ApplicationResponse, MessageCreate
+)
+from reports import (
+    generate_contract_docx,  # правильное имя функции
+    generate_act_pdf,
+    generate_agent_stats_excel
 )
 
 # ==================== НАСТРОЙКИ ====================
@@ -70,6 +93,24 @@ app.mount("/resources", CachedStaticFiles(directory=str(resources_dir)), name="r
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
+TEMP_DIR = BASE_DIR / "temp"
+TEMP_DIR.mkdir(exist_ok=True)
+
+def cleanup_temp_files():
+    """Очистка временных файлов старше 1 часа"""
+    temp_dir = BASE_DIR / "temp"
+    if temp_dir.exists():
+        now = datetime.now()
+        for file in temp_dir.glob("*"):
+            if file.is_file():
+                file_time = datetime.fromtimestamp(file.stat().st_mtime)
+                if (now - file_time).seconds > 3600:  # 1 час
+                    file.unlink()
+
+# Запускаем планировщик для очистки
+scheduler = BackgroundScheduler()
+scheduler.add_job(cleanup_temp_files, 'interval', hours=1)
+scheduler.start()
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
@@ -99,20 +140,48 @@ def verify_token(token: str):
         return None
 
 
-async def get_current_user(token: Optional[str] = Cookie(None, alias="access_token"), db: Session = Depends(get_db)):
-    if not token:
-        print("❌ Нет токена в cookies")
+async def get_current_user(
+        token: Optional[str] = Cookie(None, alias="access_token"),
+        authorization: Optional[str] = Header(None),
+        db: Session = Depends(get_db)
+):
+    # Пробуем получить токен из разных мест
+    access_token = token
+
+    # Если нет в куках, пробуем из заголовка
+    if not access_token and authorization:
+        if authorization.startswith("Bearer "):
+            access_token = authorization.replace("Bearer ", "")
+
+    if not access_token:
+        print("❌ Нет токена ни в куках, ни в заголовке")
         return None
-    email = verify_token(token)
-    if not email:
-        print("❌ Неверный токен")
+
+    try:
+        payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+
+        if email is None:
+            return None
+
+        user = db.query(User).filter(User.email == email).first()
+
+        if user:
+            # Обновляем время последней активности
+            user.last_activity = datetime.utcnow()
+            db.commit()
+            print(f"✅ Найден пользователь: {user.email} (ID: {user.user_id})")
+            return user
+        else:
+            print(f"❌ Пользователь с email {email} не найден")
+            return None
+
+    except jwt.ExpiredSignatureError:
+        print("❌ Токен истек")
         return None
-    user = db.query(User).filter(User.email == email).first()
-    if user:
-        print(f"✅ Найден пользователь: {user.email} (ID: {user.user_id}, тип: {user.user_type})")
-    else:
-        print(f"❌ Пользователь с email {email} не найден")
-    return user
+    except jwt.JWTError as e:
+        print(f"❌ Ошибка валидации токена: {e}")
+        return None
 
 
 def hash_password(password: str) -> str:
@@ -272,23 +341,81 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
         manager.disconnect(user_id)
         await manager.broadcast_online_status(user_id, False)
 
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Пропускаем статические файлы и открытые эндпоинты
+        if request.url.path in ["/", "/register", "/recovery", "/api/login"] or \
+                request.url.path.startswith("/static/") or \
+                request.url.path.startswith("/resources/"):
+            return await call_next(request)
+
+        # Проверяем токен из разных источников
+        token = request.cookies.get("access_token")
+
+        # Если нет в куках, пробуем из заголовка Authorization
+        if not token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.replace("Bearer ", "")
+
+        if token:
+            try:
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                request.state.user_email = payload.get("sub")
+                request.state.user_id = payload.get("user_id")
+            except jwt.ExpiredSignatureError:
+                # Токен истек, но не блокируем сразу
+                pass
+            except jwt.JWTError:
+                pass
+
+        response = await call_next(request)
+        return response
+
+
+# Подключаем middleware
+app.add_middleware(AuthMiddleware)
+
 # ==================== ОСНОВНЫЕ МАРШРУТЫ ====================
 
 @app.get("/", response_class=HTMLResponse)
-async def home_page(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def home_page(
+    request: Request,
+    page: int = 1,
+    per_page: int = 12,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     try:
-        properties = get_properties_from_db(db)
+        query = db.query(Property).filter(Property.status == 'active').order_by(Property.created_at.desc())
+        total = query.count()
+        properties = query.offset((page - 1) * per_page).limit(per_page).all()
+
+        for prop in properties:
+            main_photo = db.query(PropertyPhoto).filter(
+                PropertyPhoto.property_id == prop.property_id,
+                PropertyPhoto.is_main == True
+            ).first()
+            prop.main_photo_url = main_photo.url if main_photo else "/resources/placeholder-image.png"
     except Exception as e:
         print(f"Ошибка получения данных из БД: {e}")
         properties = []
+        total = 0
+
     cities = get_default_cities()
+    total_pages = (total + per_page - 1) // per_page if per_page > 0 else 1
 
     return templates.TemplateResponse("index.html", {
         "request": request,
         "properties": properties,
         "cities": cities,
         "current_user": current_user,
-        "user_initials": get_user_initials(current_user) if current_user else None
+        "user_initials": get_user_initials(current_user) if current_user else None,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": total_pages
     })
 
 
@@ -647,29 +774,51 @@ async def update_user_profile(
 # ==================== ВХОД ====================
 
 @app.post("/api/login")
-async def login(response: Response, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+async def login(
+        response: Response,
+        email: str = Form(...),
+        password: str = Form(...),
+        db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.email == email).first()
+
     if not user or not verify_password(password, user.password_hash):
-        return {"success": False, "message": "Неверный email или пароль"}
+        return JSONResponse(
+            status_code=401,
+            content={"success": False, "message": "Неверный email или пароль"}
+        )
+
     if not user.is_active:
-        return {"success": False, "message": "Аккаунт деактивирован"}
-    access_token = create_access_token(data={"sub": user.email})
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Аккаунт деактивирован"}
+        )
+
+    # Создаем токен
+    access_token = create_access_token(data={"sub": user.email, "user_id": user.user_id})
+
+    # Устанавливаем куку с максимальными параметрами безопасности
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        expires=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        expires=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+        secure=False,  # Для localhost можно False, для продакшена True
+        samesite="lax"
     )
+
+    # Также возвращаем токен в теле ответа для надежности
     return {
         "success": True,
         "message": "Вход выполнен успешно",
+        "access_token": access_token,  # Дублируем для надежности
         "user": {
             "id": user.user_id,
             "email": user.email,
             "name": user.full_name,
-            "type": user.user_type,
-            "initials": get_user_initials(user)
+            "type": user.user_type
         }
     }
 
@@ -681,78 +830,184 @@ async def logout(response: Response):
     response.delete_cookie("access_token")
     return {"success": True, "message": "Выход выполнен успешно"}
 
-
-# ==================== ПОИСК И ФИЛЬТРАЦИЯ ====================
-
-@app.post("/search", response_class=HTMLResponse)
-async def search_properties(
-        request: Request,
-        search: str = Form(None),
-        city: str = Form(None),
-        property_type: str = Form(None),
-        rooms: str = Form(None),
-        min_price: float = Form(None),
-        max_price: float = Form(None),
-        min_area: float = Form(None),
-        max_area: float = Form(None),
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+@app.get("/api/admin/users")
+async def get_users(
+    page: int = 1,
+    per_page: int = 20,
+    search: Optional[str] = None,
+    user_type: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    query = db.query(Property).filter(Property.status == 'active')
+    """Список пользователей для администратора"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    query = db.query(User)
 
     if search:
         query = query.filter(
             or_(
-                Property.title.ilike(f"%{search}%"),
-                Property.address.ilike(f"%{search}%"),
-                Property.description.ilike(f"%{search}%")
+                User.email.ilike(f"%{search}%"),
+                User.full_name.ilike(f"%{search}%")
             )
         )
-    if city:
-        query = query.filter(Property.city.ilike(f"%{city}%"))
-    if property_type and property_type != "all":
-        query = query.filter(Property.property_type == property_type)
-    if rooms and rooms != "all":
-        if rooms == "4":
-            query = query.filter(Property.rooms >= 4)
-        else:
-            query = query.filter(Property.rooms == int(rooms))
-    if min_price:
-        query = query.filter(Property.price >= min_price)
-    if max_price:
-        query = query.filter(Property.price <= max_price)
-    if min_area:
-        query = query.filter(Property.area >= min_area)
-    if max_area:
-        query = query.filter(Property.area <= max_area)
+    if user_type:
+        query = query.filter(User.user_type == user_type)
 
-    properties = query.order_by(Property.created_at.desc()).limit(50).all()
+    total = query.count()
+    users = query.order_by(User.user_id).offset((page-1)*per_page).limit(per_page).all()
 
-    for prop in properties:
-        main_photo = db.query(PropertyPhoto).filter(
-            PropertyPhoto.property_id == prop.property_id,
-            PropertyPhoto.is_main == True
-        ).first()
-        prop.main_photo_url = main_photo.url if main_photo else "/resources/placeholder-image.png"
+    return {
+        "users": [{
+            "id": u.user_id,
+            "email": u.email,
+            "full_name": u.full_name,
+            "user_type": u.user_type,
+            "is_active": u.is_active,
+            "avatar_url": u.avatar_url,
+            "created_at": u.created_at.isoformat() if u.created_at else None
+        } for u in users],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page
+    }
 
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "properties": properties,
-            "cities": get_default_cities(),
-            "search_text": search,
-            "search_city": city,
-            "search_type": property_type,
-            "search_rooms": rooms,
-            "search_min_price": min_price,
-            "search_max_price": max_price,
-            "search_min_area": min_area,
-            "search_max_area": max_area,
-            "current_user": current_user,
-            "user_initials": get_user_initials(current_user) if current_user else None
-        }
-    )
+@app.patch("/api/admin/users/{user_id}/toggle-block")
+async def toggle_user_block(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Блокировка/разблокировка пользователя"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+
+    user.is_active = not user.is_active
+    db.commit()
+
+    return {"success": True, "is_active": user.is_active}
+
+# ==================== ПОИСК И ФИЛЬТРАЦИЯ ====================
+
+@app.get("/search", response_class=HTMLResponse)
+async def search_properties(
+        request: Request,
+        search: Optional[str] = None,
+        city: Optional[str] = None,
+        property_type: Optional[str] = None,
+        rooms: Optional[str] = None,
+        min_price: Optional[str] = None,  # меняем на str, потом конвертируем
+        max_price: Optional[str] = None,
+        min_area: Optional[str] = None,
+        max_area: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 12,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    try:
+        print(f"Параметры поиска: search={search}, city={city}, type={property_type}, rooms={rooms}")
+
+        query = db.query(Property).filter(Property.status == 'active')
+
+        # Конвертируем строки в числа, если они есть
+        try:
+            min_price_val = float(min_price) if min_price else None
+            max_price_val = float(max_price) if max_price else None
+            min_area_val = float(min_area) if min_area else None
+            max_area_val = float(max_area) if max_area else None
+        except ValueError:
+            # Если не удалось преобразовать, игнорируем эти фильтры
+            min_price_val = max_price_val = min_area_val = max_area_val = None
+
+        if search:
+            query = query.filter(
+                or_(
+                    Property.title.ilike(f"%{search}%"),
+                    Property.address.ilike(f"%{search}%"),
+                    Property.description.ilike(f"%{search}%")
+                )
+            )
+        if city:
+            query = query.filter(Property.city.ilike(f"%{city}%"))
+        if property_type and property_type != "all":
+            query = query.filter(Property.property_type == property_type)
+        if rooms and rooms != "all":
+            if rooms == "4":
+                query = query.filter(Property.rooms >= 4)
+            else:
+                try:
+                    query = query.filter(Property.rooms == int(rooms))
+                except:
+                    pass
+        if min_price_val is not None:
+            query = query.filter(Property.price >= min_price_val)
+        if max_price_val is not None:
+            query = query.filter(Property.price <= max_price_val)
+        if min_area_val is not None:
+            query = query.filter(Property.area >= min_area_val)
+        if max_area_val is not None:
+            query = query.filter(Property.area <= max_area_val)
+
+        total = query.count()
+        properties = query.order_by(Property.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+        for prop in properties:
+            main_photo = db.query(PropertyPhoto).filter(
+                PropertyPhoto.property_id == prop.property_id,
+                PropertyPhoto.is_main == True
+            ).first()
+            prop.main_photo_url = main_photo.url if main_photo else "/resources/placeholder-image.png"
+
+        total_pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "properties": properties,
+                "cities": get_default_cities(),
+                "search_text": search,
+                "search_city": city,
+                "search_type": property_type,
+                "search_rooms": rooms,
+                "search_min_price": min_price,
+                "search_max_price": max_price,
+                "search_min_area": min_area,
+                "search_max_area": max_area,
+                "current_user": current_user,
+                "user_initials": get_user_initials(current_user) if current_user else None,
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": total_pages
+            }
+        )
+    except Exception as e:
+        print(f"Ошибка поиска: {e}")
+        import traceback
+        traceback.print_exc()
+        # В случае ошибки возвращаем пустой результат
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "properties": [],
+                "cities": get_default_cities(),
+                "current_user": current_user,
+                "user_initials": get_user_initials(current_user) if current_user else None,
+                "page": 1,
+                "per_page": per_page,
+                "total": 0,
+                "total_pages": 1
+            }
+        )
 
 @app.get("/search", response_class=HTMLResponse)
 async def search_properties_get(
@@ -795,7 +1050,6 @@ async def get_property_api(property_id: int, db: Session = Depends(get_db)):
     photos = db.query(PropertyPhoto).filter(PropertyPhoto.property_id == property_id).order_by(
         PropertyPhoto.sequence_number).all()
     owner = db.query(User).filter(User.user_id == property.owner_id).first()
-    agent = db.query(User).filter(User.user_id == property.agent_id).first() if property.agent_id else None
 
     return {
         "property_id": property.property_id,
@@ -814,12 +1068,7 @@ async def get_property_api(property_id: int, db: Session = Depends(get_db)):
             "full_name": owner.full_name if owner else None,
             "email": owner.email if owner else None,
             "contact_info": owner.contact_info if owner else {}
-        } if owner else None,
-        "agent": {
-            "full_name": agent.full_name if agent else None,
-            "email": agent.email if agent else None,
-            "contact_info": agent.contact_info if agent else {}
-        } if agent else None
+        } if owner else None
     }
 
 
@@ -830,10 +1079,9 @@ async def get_my_properties(current_user: User = Depends(get_current_user), db: 
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
-    if current_user.user_type == 'owner':
+    # Владелец или агент видят объекты, где они указаны в owner_id
+    if current_user.user_type in ['owner', 'agent']:
         properties = db.query(Property).filter(Property.owner_id == current_user.user_id).all()
-    elif current_user.user_type == 'agent':
-        properties = db.query(Property).filter(Property.agent_id == current_user.user_id).all()
     else:
         properties = []
 
@@ -849,64 +1097,105 @@ async def get_my_properties(current_user: User = Depends(get_current_user), db: 
 
 @app.post("/api/properties")
 async def create_property(
-    data: PropertyCreate,  # Pydantic валидирует цену, площадь, тип и т.д.
-    photos: List[UploadFile] = File(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
 ):
-    print(f"\n🔵 СОЗДАНИЕ ОБЪЕКТА (упрощённо)")
+    """Создание нового объекта недвижимости"""
+    print(f"\n🔵 СОЗДАНИЕ ОБЪЕКТА")
     print(f"👤 Пользователь: {current_user.email if current_user else 'None'}")
 
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
-    if not current_user or current_user.user_type not in ['owner', 'agent']:
+    if current_user.user_type not in ['owner', 'agent']:
         raise HTTPException(403, "Недостаточно прав")
 
-    # Создаём объект - данные уже проверены Pydantic
-    new_prop = Property(
-        owner_id=current_user.user_id if current_user.user_type == 'owner' else None,
-        agent_id=current_user.user_id if current_user.user_type == 'agent' else None,
-        title=data.title,
-        description=data.description,
-        address=data.address,
-        city=data.city,
-        property_type=data.property_type,
-        area=data.area,
-        rooms=data.rooms,
-        price=data.price,
-        interval_pay=data.interval_pay,
-        status='draft'
+    try:
+        # Получаем данные из FormData
+        form = await request.form()
+
+        # Извлекаем поля
+        title = form.get('title')
+        description = form.get('description')
+        address = form.get('address')
+        city = form.get('city')
+        property_type = form.get('property_type')
+        area = form.get('area')
+        rooms = form.get('rooms')
+        price = form.get('price')
+        interval_pay = form.get('interval_pay')
+        status = form.get('status', 'draft')  # Получаем статус, по умолчанию 'draft'
+
+        # Валидация
+        if not all([title, address, city, property_type, area, price, interval_pay]):
+            raise HTTPException(400, "Заполните все обязательные поля")
+
+        # Преобразование типов
+        try:
+            area = float(area)
+            price = float(price)
+            rooms = int(rooms) if rooms else 0
+        except ValueError:
+            raise HTTPException(400, "Неверный формат числовых полей")
+
+        # Создаём объект
+        new_prop = Property(
+            owner_id=current_user.user_id,
+            title=title,
+            description=description,
+            address=address,
+            city=city,
+            property_type=property_type,
+            area=area,
+            rooms=rooms,
+            price=price,
+            interval_pay=interval_pay,
+            status=status  # Устанавливаем полученный статус
         )
 
-    db.add(new_prop)
-    db.commit()
-    db.refresh(new_prop)
+        db.add(new_prop)
+        db.commit()
+        db.refresh(new_prop)
 
-    print(f"✅ Объект создан с ID: {new_prop.property_id}")
-    print(f"📊 Данные: {title}, {address}, {city}, {price}")
+        print(f"✅ Объект создан с ID: {new_prop.property_id}, статус: {status}")
 
-    # Фотографии игнорируем пока
-    if photos:
-        print(f"📸 Получено {len(photos)} файлов, но они пока не сохраняются")
+        # Обработка фотографий
+        photos = []
+        for key, value in form.items():
+            if key == 'photos' and hasattr(value, 'filename') and value.filename:
+                photos.append(value)
 
-    return {"success": True, "property_id": new_prop.property_id}
+        if photos:
+            for idx, photo in enumerate(photos):
+                try:
+                    file_url = await save_upload_file(photo, subdir=f"properties/{new_prop.property_id}")
+                    db.add(PropertyPhoto(
+                        property_id=new_prop.property_id,
+                        url=file_url,
+                        is_main=(idx == 0),
+                        sequence_number=idx + 1
+                    ))
+                    print(f"  ✅ Фото {idx + 1} сохранено")
+                except Exception as e:
+                    print(f"  ❌ Ошибка сохранения фото: {e}")
+            db.commit()
+            print(f"✅ Сохранено {len(photos)} фотографий")
+
+        return {"success": True, "property_id": new_prop.property_id, "status": status}
+
+    except Exception as e:
+        print(f"❌ Ошибка при создании объекта: {e}")
+        db.rollback()
+        raise HTTPException(500, f"Ошибка сервера: {str(e)}")
+
 
 @app.put("/api/properties/{property_id}")
 async def update_property(
-    property_id: int,
-    title: str = Form(...),
-    description: str = Form(None),
-    address: str = Form(...),
-    city: str = Form(...),
-    property_type: str = Form(...),
-    area: float = Form(...),
-    rooms: int = Form(...),
-    price: float = Form(...),
-    interval_pay: str = Form(...),
-    photos: List[UploadFile] = File(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+        property_id: int,
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
 ):
     if not current_user:
         raise HTTPException(401, "Не авторизован")
@@ -915,50 +1204,85 @@ async def update_property(
     if not prop:
         raise HTTPException(404, "Объект не найден")
 
-    # ✅ НОВАЯ проверка прав
-    if current_user.user_id not in [prop.owner_id, prop.agent_id]:
+    # Проверка прав - только владелец может редактировать
+    if prop.owner_id != current_user.user_id:
         raise HTTPException(403, "Нет прав на редактирование")
 
-    prop.title = title
-    prop.description = description
-    prop.address = address
-    prop.city = city
-    prop.property_type = property_type
-    prop.area = area
-    prop.rooms = rooms
-    prop.price = price
-    prop.interval_pay = interval_pay
+    try:
+        # Получаем данные из FormData
+        form = await request.form()
 
-    db.commit()
+        # Извлекаем поля
+        title = form.get('title')
+        description = form.get('description')
+        address = form.get('address')
+        city = form.get('city')
+        property_type = form.get('property_type')
+        area = form.get('area')
+        rooms = form.get('rooms')
+        price = form.get('price')
+        interval_pay = form.get('interval_pay')
+        status = form.get('status', prop.status)  # Получаем статус или оставляем текущий
 
-    # обновление фото
-    if photos and any(p.filename for p in photos):
-        old_photos = db.query(PropertyPhoto).filter(
-            PropertyPhoto.property_id == property_id
-        ).all()
+        # Валидация
+        if not all([title, address, city, property_type, area, price, interval_pay]):
+            raise HTTPException(400, "Заполните все обязательные поля")
 
-        for old in old_photos:
-            file_path = BASE_DIR / old.url.lstrip('/')
-            if file_path.exists():
-                file_path.unlink()
-            db.delete(old)
+        # Преобразование типов
+        try:
+            area = float(area)
+            price = float(price)
+            rooms = int(rooms) if rooms else 0
+        except ValueError:
+            raise HTTPException(400, "Неверный формат числовых полей")
+
+        # Обновляем объект
+        prop.title = title
+        prop.description = description
+        prop.address = address
+        prop.city = city
+        prop.property_type = property_type
+        prop.area = area
+        prop.rooms = rooms
+        prop.price = price
+        prop.interval_pay = interval_pay
+        prop.status = status
 
         db.commit()
 
-        for idx, photo in enumerate(photos):
-            if photo.filename:
-                file_url = await save_upload_file(photo, subdir=f"properties/{property_id}")
-                db.add(PropertyPhoto(
-                    property_id=property_id,
-                    url=file_url,
-                    is_main=(idx == 0),
-                    sequence_number=idx + 1
-                ))
+        print(f"✅ Объект {property_id} обновлён, новый статус: {status}")
 
-        db.commit()
+        # Обработка новых фотографий
+        photos = []
+        for key, value in form.items():
+            if key == 'photos' and hasattr(value, 'filename') and value.filename:
+                photos.append(value)
 
-    return {"success": True}
+        if photos:
+            # Получаем текущее максимальное значение sequence_number
+            max_seq = db.query(func.max(PropertyPhoto.sequence_number)).filter(
+                PropertyPhoto.property_id == property_id
+            ).scalar() or 0
 
+            for idx, photo in enumerate(photos):
+                try:
+                    file_url = await save_upload_file(photo, subdir=f"properties/{property_id}")
+                    db.add(PropertyPhoto(
+                        property_id=property_id,
+                        url=file_url,
+                        is_main=(max_seq + idx == 0 and max_seq == 0),
+                        sequence_number=max_seq + idx + 1
+                    ))
+                except Exception as e:
+                    print(f"❌ Ошибка сохранения фото: {e}")
+            db.commit()
+
+        return {"success": True, "property_id": property_id, "status": status}
+
+    except Exception as e:
+        print(f"❌ Ошибка при обновлении объекта: {e}")
+        db.rollback()
+        raise HTTPException(500, f"Ошибка сервера: {str(e)}")
 
 @app.delete("/api/properties/{property_id}")
 async def delete_property(
@@ -973,22 +1297,22 @@ async def delete_property(
     if not prop:
         raise HTTPException(404, "Объект не найден")
 
-    # ✅ НОВАЯ проверка прав
-    if current_user.user_id not in [prop.owner_id, prop.agent_id]:
+    # Проверка прав - только владелец может удалять
+    if prop.owner_id != current_user.user_id:
         raise HTTPException(403, "Нет прав на удаление")
+
 
     db.delete(prop)
     db.commit()
 
     return {"success": True}
 
-
 @app.post("/api/properties/{property_id}/photos")
 async def upload_property_photos(
-        property_id: int,
-        photos: List[UploadFile] = File(...),
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+    property_id: int,
+    photos: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     print(f"\n📸 ЗАГРУЗКА ФОТО ДЛЯ ОБЪЕКТА ID={property_id}")
 
@@ -1001,8 +1325,7 @@ async def upload_property_photos(
         raise HTTPException(404, "Объект не найден")
 
     # Проверка прав
-    if (current_user.user_type == 'owner' and property.owner_id != current_user.user_id) or \
-            (current_user.user_type == 'agent' and property.agent_id != current_user.user_id):
+    if property.owner_id != current_user.user_id:
         raise HTTPException(403, "Нет прав на редактирование этого объекта")
 
     saved_count = 0
@@ -1037,10 +1360,32 @@ async def upload_property_photos(
         db.commit()
         print(f"✅ Сохранено {saved_count} фотографий в БД")
 
+
     return {
         "success": True,
         "uploaded": saved_count,
         "urls": uploaded_urls
+    }
+
+@app.get("/api/property/{property_id}/responsible")
+async def get_property_responsible(property_id: int, db: Session = Depends(get_db)):
+    """Получить информацию об ответственной стороне (собственник или агент)"""
+    property = db.query(Property).filter(Property.property_id == property_id).first()
+    if not property:
+        raise HTTPException(404, "Объект не найден")
+
+    # Получаем владельца (который может быть как собственником, так и агентом)
+    owner = db.query(User).filter(User.user_id == property.owner_id).first()
+    if not owner:
+        raise HTTPException(404, "Ответственная сторона не найдена")
+
+    return {
+        "id": owner.user_id,
+        "name": owner.full_name,
+        "email": owner.email,
+        "phone": owner.contact_info.get("phone") if owner.contact_info else None,
+        "type": owner.user_type,  # может быть 'owner' или 'agent'
+        "avatar": owner.avatar_url
     }
 
 # ==================== УПРАВЛЕНИЕ ЗАЯВКАМИ ====================
@@ -1051,10 +1396,25 @@ async def get_my_applications(current_user: User = Depends(get_current_user), db
         raise HTTPException(status_code=401, detail="Не авторизован")
 
     if current_user.user_type == 'tenant':
-        applications = db.query(Application).filter(Application.tenant_id == current_user.user_id).all()
-    elif current_user.user_type in ['owner', 'agent']:
-        applications = db.query(Application).join(Property).filter(
-            (Property.owner_id == current_user.user_id) | (Property.agent_id == current_user.user_id)
+        # Арендатор видит свои заявки
+        applications = db.query(Application).filter(
+            Application.tenant_id == current_user.user_id
+        ).all()
+
+    elif current_user.user_type == 'owner':
+        # Собственник видит заявки на свои объекты
+        applications = db.query(Application).join(
+            Property, Application.property_id == Property.property_id
+        ).filter(
+            Property.owner_id == current_user.user_id
+        ).all()
+
+    elif current_user.user_type == 'agent':
+        # Агент видит заявки на объекты, которые он ведёт
+        applications = db.query(Application).join(
+            Property, Application.property_id == Property.property_id
+        ).filter(
+            Property.owner_id == current_user.user_id
         ).all()
     else:
         applications = []
@@ -1070,14 +1430,31 @@ async def get_my_applications(current_user: User = Depends(get_current_user), db
             PropertyPhoto.is_main == True
         ).first()
 
+        # Определяем, кто ответственный за объект (для отображения)
+        responsible_party = None
+        if property.owner_id:
+            owner = db.query(User).filter(User.user_id == property.owner_id).first()
+            responsible_party = {
+                "id": owner.user_id,
+                "name": owner.full_name,
+                "type": "owner"
+            }
+        elif property.agent_id:
+            agent = db.query(User).filter(User.user_id == property.agent_id).first()
+            responsible_party = {
+                "id": agent.user_id,
+                "name": agent.full_name,
+                "type": "agent"
+            }
+
         result.append({
             "application_id": app.application_id,
             "property_id": app.property_id,
             "property_title": property.title if property else None,
             "property_address": property.address if property else None,
             "property_photo": main_photo.url if main_photo else None,
-            "price": float(property.price) if property and property.price else 0,  # ДОБАВЛЕНО
-            "interval_pay": property.interval_pay if property else None,  # ДОБАВЛЕНО
+            "price": float(property.price) if property and property.price else 0,
+            "interval_pay": property.interval_pay if property else None,
             "tenant_name": tenant.full_name if tenant else None,
             "tenant_email": tenant.email if tenant else None,
             "desired_date": app.desired_date.isoformat() if app.desired_date else None,
@@ -1085,7 +1462,9 @@ async def get_my_applications(current_user: User = Depends(get_current_user), db
             "message": app.message,
             "answer": app.answer,
             "status": app.status,
-            "created_at": app.created_at.isoformat() if app.created_at else None
+            "created_at": app.created_at.isoformat() if app.created_at else None,
+            "responded_at": app.responded_at.isoformat() if app.responded_at else None,
+            "responsible_party": responsible_party  # Кто отвечает за объект
         })
 
     return result
@@ -1096,29 +1475,47 @@ async def create_application(app_data: ApplicationCreate, current_user: User = D
                              db: Session = Depends(get_db)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
+
+    # Только арендаторы могут создавать заявки
     if current_user.user_type != 'tenant':
         raise HTTPException(403, "Только арендаторы могут создавать заявки")
+
+    # Проверяем, что объект существует и активен
     property = db.query(Property).filter(
         Property.property_id == app_data.property_id,
-        Property.status == 'active'
+        Property.status == 'active'  # Только активные объекты
     ).first()
     if not property:
-        raise HTTPException(400, "Объект недоступен")
+        raise HTTPException(400, "Объект недоступен для аренды")
+
+    # Проверяем, нет ли уже активной заявки от этого арендатора на этот объект
+    existing_app = db.query(Application).filter(
+        Application.property_id == app_data.property_id,
+        Application.tenant_id == current_user.user_id,
+        Application.status.in_(['pending', 'approved'])
+    ).first()
+    if existing_app:
+        raise HTTPException(400, "У вас уже есть активная заявка на этот объект")
+
     try:
         desired_date = datetime.strptime(app_data.desired_date, "%Y-%m-%d").date()
     except:
         raise HTTPException(400, "Неверный формат даты")
+
     new_app = Application(
         property_id=app_data.property_id,
         tenant_id=current_user.user_id,
         desired_date=desired_date,
         duration_days=app_data.duration_days,
         message=app_data.message,
-        status='pending'
+        status='pending',
+        created_at=datetime.now()
     )
     db.add(new_app)
     db.commit()
     db.refresh(new_app)
+
+
     return {"success": True, "application_id": new_app.application_id}
 
 
@@ -1190,24 +1587,64 @@ async def respond_application(
         app_id: int,
         status: str = Form(...),
         answer: str = Form(None),
+        duration_days: Optional[int] = Form(None),
+        desired_date: Optional[str] = Form(None),
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
+
     if current_user.user_type not in ['owner', 'agent']:
         raise HTTPException(403, "Только собственники и агенты могут отвечать на заявки")
+
     app = db.query(Application).filter(Application.application_id == app_id).first()
     if not app:
         raise HTTPException(404, "Заявка не найдена")
+
     property = db.query(Property).filter(Property.property_id == app.property_id).first()
-    if property.owner_id != current_user.user_id and property.agent_id != current_user.user_id:
-        raise HTTPException(403, "Нет прав")
+    if not property:
+        raise HTTPException(404, "Объект не найден")
+
+    # Проверка прав
+    if property.owner_id != current_user.user_id:
+        raise HTTPException(403, "У вас нет прав для ответа на эту заявку")
+
+    if app.status != 'pending':
+        raise HTTPException(400, f"Нельзя ответить на заявку в статусе {app.status}")
+
+    # Обновляем заявку
     app.status = status
     app.answer = answer
-    db.commit()
-    return {"success": True}
+    app.responded_at = datetime.now()
 
+    if duration_days is not None and duration_days > 0:
+        app.duration_days = duration_days
+
+    if desired_date:
+        try:
+            app.desired_date = datetime.strptime(desired_date, "%Y-%m-%d").date()
+        except:
+            pass
+
+    db.commit()
+
+    # Создаём уведомление арендатору
+    notification_content = f"**Заявка {status}** на объект '{property.title}'. "
+    if answer:
+        notification_content += f"Ответ: {answer}"
+
+    notification = Message(
+        from_user_id=None,  # системное
+        to_user_id=app.tenant_id,
+        content=notification_content,
+        is_read=False,
+        created_at=datetime.now()
+    )
+    db.add(notification)
+    db.commit()
+
+    return {"success": True}
 
 # ==================== УПРАВЛЕНИЕ ДОГОВОРАМИ ====================
 
@@ -1250,46 +1687,52 @@ async def create_contract(app_id: int, current_user: User = Depends(get_current_
 
 @app.get("/api/my/contracts")
 async def get_my_contracts(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Получить договоры для текущего пользователя (все)"""
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
-    if current_user.user_type == 'tenant':
-        contracts = db.query(Contract).filter(Contract.tenant_id == current_user.user_id).all()
-    elif current_user.user_type == 'owner':
-        contracts = db.query(Contract).filter(Contract.owner_id == current_user.user_id).all()
-    elif current_user.user_type == 'agent':
-        contracts = db.query(Contract).join(Property, Contract.property_id == Property.property_id).filter(
-            Property.agent_id == current_user.user_id).all()
-    else:
-        contracts = []
+    # Базовый запрос с JOIN
+    query = db.query(
+        Contract, Application, Property, PropertyPhoto
+    ).join(
+        Application, Contract.application_id == Application.application_id
+    ).join(
+        Property, Application.property_id == Property.property_id
+    ).outerjoin(
+        PropertyPhoto, (PropertyPhoto.property_id == Property.property_id) & (PropertyPhoto.is_main == True)
+    )
+
+    results = query.all()
 
     result = []
-    for contract in contracts:
-        property = db.query(Property).filter(Property.property_id == contract.property_id).first()
+    for contract, app, property, photo in results:
+        # Определяем, является ли текущий пользователь стороной договора
+        is_tenant = (app.tenant_id == current_user.user_id)
+        is_owner = (property.owner_id == current_user.user_id)
 
-        # Получаем главное фото
-        main_photo = db.query(PropertyPhoto).filter(
-            PropertyPhoto.property_id == contract.property_id,
-            PropertyPhoto.is_main == True
-        ).first()
+        if not (is_tenant or is_owner):
+            continue  # Пропускаем, если пользователь не имеет отношения к договору
 
-        # Генерируем номер договора из ID
         contract_number = f"Д-{contract.contract_id:06d}"
 
         result.append({
             "contract_id": contract.contract_id,
             "contract_number": contract_number,
-            "property_id": contract.property_id,
+            "property_id": property.property_id,
             "property_title": property.title if property else None,
             "property_address": property.address if property else None,
-            "property_photo": main_photo.url if main_photo else None,
-            # contract_type УДАЛЁН
+            "property_photo": photo.url if photo else "/resources/placeholder-image.png",
             "start_date": contract.start_date.isoformat() if contract.start_date else None,
             "end_date": contract.end_date.isoformat() if contract.end_date else None,
             "total_amount": float(contract.total_amount) if contract.total_amount else 0,
             "signing_status": contract.signing_status,
-            "created_at": contract.created_at.isoformat() if contract.created_at else None
+            "tenant_signed": contract.tenant_signed,
+            "owner_signed": contract.owner_signed,
+            "created_at": contract.created_at.isoformat() if contract.created_at else None,
+            "is_tenant": is_tenant,  # флаг для фронтенда
+            "is_owner": is_owner
         })
+
     return result
 
 
@@ -1298,24 +1741,38 @@ async def get_contract(contract_id: int, current_user: User = Depends(get_curren
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
+    # Получаем договор
     contract = db.query(Contract).filter(Contract.contract_id == contract_id).first()
     if not contract:
         raise HTTPException(404, "Договор не найден")
 
-    property = db.query(Property).filter(Property.property_id == contract.property_id).first()
+    # Получаем связанную заявку
+    app = db.query(Application).filter(Application.application_id == contract.application_id).first()
+    if not app:
+        raise HTTPException(404, "Связанная заявка не найдена")
+
+    # Получаем объект недвижимости через заявку
+    property = db.query(Property).filter(Property.property_id == app.property_id).first()
+    if not property:
+        raise HTTPException(404, "Объект недвижимости не найден")
+
+    # Получаем пользователей
+    tenant = db.query(User).filter(User.user_id == app.tenant_id).first()
+    owner = db.query(User).filter(User.user_id == property.owner_id).first()
 
     # Проверка доступа
-    if not (contract.tenant_id == current_user.user_id or
-            contract.owner_id == current_user.user_id or
-            (property and property.agent_id == current_user.user_id)):
-        raise HTTPException(403, "Нет доступа")
+    has_access = False
+    if current_user.user_type == 'tenant':
+        has_access = (app.tenant_id == current_user.user_id)
+    elif current_user.user_type in ['owner', 'agent']:
+        has_access = (property.owner_id == current_user.user_id)
 
-    tenant = db.query(User).filter(User.user_id == contract.tenant_id).first()
-    owner = db.query(User).filter(User.user_id == contract.owner_id).first()
+    if not has_access:
+        raise HTTPException(403, "Нет доступа к договору")
 
     # Получаем главное фото
     main_photo = db.query(PropertyPhoto).filter(
-        PropertyPhoto.property_id == contract.property_id,
+        PropertyPhoto.property_id == property.property_id,
         PropertyPhoto.is_main == True
     ).first()
 
@@ -1325,7 +1782,7 @@ async def get_contract(contract_id: int, current_user: User = Depends(get_curren
     return {
         "contract_id": contract.contract_id,
         "contract_number": contract_number,
-        "property_id": contract.property_id,
+        "property_id": property.property_id,
         "property_title": property.title if property else None,
         "property_address": property.address if property else None,
         "property_city": property.city if property else None,
@@ -1333,17 +1790,18 @@ async def get_contract(contract_id: int, current_user: User = Depends(get_curren
         "property_rooms": property.rooms if property else None,
         "property_area": float(property.area) if property and property.area else None,
         "property_photo": main_photo.url if main_photo else None,
-        # contract_type УДАЛЁН
         "start_date": contract.start_date.isoformat() if contract.start_date else None,
         "end_date": contract.end_date.isoformat() if contract.end_date else None,
         "total_amount": float(contract.total_amount) if contract.total_amount else 0,
         "signing_status": contract.signing_status,
-        "tenant_id": contract.tenant_id,
+        "tenant_id": app.tenant_id,
         "tenant_name": tenant.full_name if tenant else None,
         "tenant_email": tenant.email if tenant else None,
-        "owner_id": contract.owner_id,
+        "owner_id": property.owner_id,
         "owner_name": owner.full_name if owner else None,
         "owner_email": owner.email if owner else None,
+        "tenant_signed": contract.tenant_signed,
+        "owner_signed": contract.owner_signed,
         "created_at": contract.created_at.isoformat() if contract.created_at else None
     }
 
@@ -1352,16 +1810,80 @@ async def sign_contract(contract_id: int, current_user: User = Depends(get_curre
                         db: Session = Depends(get_db)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
+
     contract = db.query(Contract).filter(Contract.contract_id == contract_id).first()
     if not contract:
         raise HTTPException(404, "Договор не найден")
-    if contract.tenant_id == current_user.user_id or contract.owner_id == current_user.user_id:
-        contract.signing_status = 'signed'
-        db.commit()
-        return {"success": True}
+
+    app = contract.application
+    if not app:
+        raise HTTPException(404, "Связанная заявка не найдена")
+
+    property = app.property
+    if not property:
+        raise HTTPException(404, "Объект недвижимости не найден")
+
+    # Определяем, кто подписывает
+    if current_user.user_id == app.tenant_id:
+        if contract.tenant_signed:
+            raise HTTPException(400, "Вы уже подписали этот договор")
+        contract.tenant_signed = True
+        # Если есть поле с датой подписания
+    elif current_user.user_id == property.owner_id:
+        if contract.owner_signed:
+            raise HTTPException(400, "Вы уже подписали этот договор")
+        contract.owner_signed = True
     else:
         raise HTTPException(403, "Вы не являетесь стороной договора")
 
+    db.commit()
+
+
+    return {"success": True}
+
+@app.post("/api/contracts/{contract_id}/cancel")
+async def cancel_contract(
+    contract_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+
+    contract = db.query(Contract).filter(Contract.contract_id == contract_id).first()
+    if not contract:
+        raise HTTPException(404, "Договор не найден")
+
+    app = db.query(Application).filter(Application.application_id == contract.application_id).first()
+    if not app:
+        raise HTTPException(404, "Связанная заявка не найдена")
+
+    property = db.query(Property).filter(Property.property_id == app.property_id).first()
+    if not property:
+        raise HTTPException(404, "Объект не найден")
+
+    # Проверка прав (только собственник или агент могут отменить)
+    if property.owner_id != current_user.user_id:
+        raise HTTPException(403, "Только собственник может отменить договор")
+
+    if contract.signing_status == 'cancelled':
+        raise HTTPException(400, "Договор уже отменён")
+
+    contract.signing_status = 'cancelled'
+    db.commit()
+
+    # Создаём уведомление арендатору
+    notification = Message(
+        from_user_id=None,
+        to_user_id=app.tenant_id,
+        content=f"**Договор отменён** на объект '{property.title}'. Договор №{contract.contract_id}",
+        is_read=False,
+        created_at=datetime.now()
+    )
+    db.add(notification)
+    db.commit()
+
+    return {"success": True}
 
 # ==================== СООБЩЕНИЯ ====================
 
@@ -1617,107 +2139,70 @@ async def update_user_profile(
 
 @app.get("/api/agent/stats")
 async def agent_stats(
-        months: int = 6,
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+    months: int = 6,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
+    """Ежемесячная статистика агента"""
     if not current_user or current_user.user_type != 'agent':
         raise HTTPException(status_code=403, detail="Только для агентов")
 
-    start_date = datetime.now() - timedelta(days=30 * months)
+    try:
+        result = db.execute(
+            text("SELECT * FROM get_agent_monthly_stats(:aid, :months)"),
+            {"aid": current_user.user_id, "months": months}
+        ).fetchall()
 
-    monthly = db.query(
-        func.date_trunc('month', Contract.created_at).label('month'),
-        func.count(Contract.contract_id).label('deals'),
-        func.sum(Contract.total_amount).label('profit')
-    ).join(Property, Contract.property_id == Property.property_id).filter(
-        Property.agent_id == current_user.user_id,
-        Contract.signing_status == 'signed',
-        Contract.created_at >= start_date
-    ).group_by('month').order_by('month').all()
-
-    result = []
-    for r in monthly:
-        month_str = r.month.strftime("%Y-%m") if r.month else None
-        result.append({
-            "month": month_str,
-            "deals": r.deals,
-            "profit": float(r.profit) if r.profit else 0
-        })
-
-    return result
-
+        return [dict(r._mapping) for r in result]
+    except Exception as e:
+        print(f"Ошибка статистики: {e}")
+        # Возвращаем пустой массив, чтобы фронтенд не падал
+        return []
 
 @app.get("/api/agent/performance")
 async def agent_performance(
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+    months: int = 6,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
+    """KPI агента"""
     if not current_user or current_user.user_type != 'agent':
         raise HTTPException(status_code=403, detail="Только для агентов")
 
-    # Общая статистика
-    total_deals = db.query(Contract).join(Property).filter(
-        Property.agent_id == current_user.user_id,
-        Contract.signing_status == 'signed'
-    ).count()
+    result = db.execute(
+        text("SELECT * FROM get_agent_performance_stats(:aid, :months)"),
+        {"aid": current_user.user_id, "months": months}
+    ).first()
 
-    total_profit = db.query(func.sum(Contract.total_amount)).join(Property).filter(
-        Property.agent_id == current_user.user_id,
-        Contract.signing_status == 'signed'
-    ).scalar() or 0
+    if not result:
+        return {}
+    return dict(result._mapping)
 
-    # Средний доход на объект
-    properties_count = db.query(Property).filter(
-        Property.agent_id == current_user.user_id
-    ).count()
 
-    avg_profit = total_profit / properties_count if properties_count > 0 else 0
+@app.get("/api/agent/rejection-reasons")
+async def agent_rejection_stats(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Статистика по статусам заявок для круговой диаграммы"""
+    if not current_user or current_user.user_type != 'agent':
+        raise HTTPException(status_code=403, detail="Только для агентов")
 
-    # Загрузка фонда
-    active_properties = db.query(Property).filter(
-        Property.agent_id == current_user.user_id,
-        Property.status == 'active'
-    ).count()
+    ninety_days_ago = datetime.now() - timedelta(days=90)
 
-    total_managed = db.query(Property).filter(
-        Property.agent_id == current_user.user_id
-    ).count()
+    # Получаем статистику по всем статусам
+    status_counts = db.query(
+        Application.status,
+        func.count(Application.application_id).label('count')
+    ).join(Property, Application.property_id == Property.property_id).filter(
+        Property.owner_id == current_user.user_id,
+        Application.created_at >= ninety_days_ago
+    ).group_by(Application.status).all()
 
-    occupancy_rate = ((total_managed - active_properties) / total_managed * 100) if total_managed > 0 else 0
+    # Преобразуем в список словарей
+    result = [{"status": r.status, "count": r.count} for r in status_counts]
 
-    # Обработанные заявки
-    processed_apps = db.query(Application).join(Property).filter(
-        Property.agent_id == current_user.user_id,
-        Application.status.in_(['approved', 'rejected'])
-    ).count()
-
-    # Среднее время реакции
-    avg_response = db.query(
-        func.avg(
-            func.extract('epoch', Application.responded_at - Application.created_at) / 3600
-        )
-    ).join(Property).filter(
-        Property.agent_id == current_user.user_id,
-        Application.responded_at.isnot(None)
-    ).scalar() or 0
-
-    # Конверсия
-    total_apps = db.query(Application).join(Property).filter(
-        Property.agent_id == current_user.user_id
-    ).count()
-
-    conversion_rate = (total_deals / total_apps * 100) if total_apps > 0 else 0
-
-    return {
-        "total_profit": float(total_profit),
-        "avg_profit": float(avg_profit),
-        "total_deals": total_deals,
-        "occupancy_rate": round(occupancy_rate, 1),
-        "processed_applications": processed_apps,
-        "avg_response_hours": round(avg_response, 1),
-        "conversion_rate": round(conversion_rate, 1)
-    }
+    return result
 
 @app.get("/api/agent/rejection-reasons")
 async def rejection_reasons(
@@ -1734,12 +2219,400 @@ async def rejection_reasons(
         Application.status,
         func.count(Application.application_id).label('count')
     ).join(Property, Application.property_id == Property.property_id).filter(
-        Property.agent_id == current_user.user_id,
+        Property.owner_id == current_user.user_id,
         Application.created_at >= ninety_days_ago
     ).group_by(Application.status).all()
 
     return [{"status": r.status, "count": r.count} for r in status_counts]
 
+# ==================== АУДИТ ЛОГ ====================
+
+@app.get("/api/admin/audit-logs")
+async def get_audit_logs(
+    request: Request,
+    page: int = 1,
+    per_page: int = 50,
+    user_id: Optional[int] = None,
+    action: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получить аудит логи с фильтрацией (только для admin)"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    # Базовый запрос
+    query = db.query(AuditLog).join(User, AuditLog.user_id == User.user_id, isouter=True)
+
+    # Фильтры
+    if user_id:
+        query = query.filter(AuditLog.user_id == user_id)
+
+    if action:
+        query = query.filter(AuditLog.action == action)
+
+    if entity_type:
+        query = query.filter(AuditLog.entity_type == entity_type)
+
+    if date_from:
+        try:
+            date_from_obj = datetime.strptime(date_from, "%Y-%m-%d")
+            query = query.filter(AuditLog.created_at >= date_from_obj)
+        except:
+            pass
+
+    if date_to:
+        try:
+            date_to_obj = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(AuditLog.created_at <= date_to_obj)
+        except:
+            pass
+
+    if search:
+        query = query.filter(
+            or_(
+                AuditLog.action.ilike(f"%{search}%"),
+                AuditLog.entity_type.ilike(f"%{search}%"),
+                User.email.ilike(f"%{search}%"),
+                User.full_name.ilike(f"%{search}%")
+            )
+        )
+
+    # Пагинация
+    total = query.count()
+    logs = query.order_by(AuditLog.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+    # Формируем результат
+    result = []
+    for log in logs:
+        # Получаем IP из details если есть
+        ip_address = log.details.get('ip_address') if log.details else None
+
+        # Форматируем изменения для отображения
+        changes = ""
+        if log.details and 'changes' in log.details:
+            changes_dict = log.details['changes']
+            changes_list = []
+            for field, values in changes_dict.items():
+                if isinstance(values, dict) and 'old' in values and 'new' in values:
+                    changes_list.append(f"{field}: {values['old']} → {values['new']}")
+            changes = ", ".join(changes_list)
+
+        result.append({
+            "log_id": log.log_id,
+            "user_id": log.user_id,
+            "user_email": log.user.email if log.user else "Система",
+            "user_name": log.user.full_name if log.user else "Система",
+            "action": log.action,
+            "entity_type": log.entity_type,
+            "entity_id": log.entity_id,
+            "changes": changes,
+            "ip_address": ip_address or "Неизвестно",
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "details": log.details
+        })
+
+    return {
+        "logs": result,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page
+    }
+
+@app.get("/api/admin/audit-logs/filters")
+async def get_audit_filters(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получить доступные фильтры для аудита"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    # Уникальные действия
+    actions = db.query(AuditLog.action).distinct().all()
+    actions = [a[0] for a in actions if a[0]]
+
+    # Уникальные типы сущностей
+    entity_types = db.query(AuditLog.entity_type).distinct().all()
+    entity_types = [e[0] for e in entity_types if e[0]]
+
+    # Пользователи
+    users = db.query(User.user_id, User.email, User.full_name).filter(User.user_type != 'admin').all()
+    users = [{"id": u[0], "email": u[1], "name": u[2]} for u in users]
+
+    return {
+        "actions": actions,
+        "entity_types": entity_types,
+        "users": users
+    }
+
+# Функция для логирования действий
+def log_action(
+    db: Session,
+    user_id: Optional[int],
+    action: str,
+    entity_type: str,
+    entity_id: Optional[int] = None,
+    changes: Optional[dict] = None,
+    request: Optional[Request] = None
+):
+    """Создать запись в аудит логе"""
+    details = {}
+
+    if changes:
+        details['changes'] = changes
+
+    if request:
+        details['ip_address'] = request.client.host if request.client else None
+        details['user_agent'] = request.headers.get('user-agent')
+
+    log = AuditLog(
+        user_id=user_id,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        details=details if details else None
+    )
+    db.add(log)
+    db.commit()
+
+@app.get("/admin/audit", response_class=HTMLResponse)
+async def admin_audit_page(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Страница аудит-лога для администратора"""
+    if not current_user or current_user.user_type != 'admin':
+        return RedirectResponse(url="/")
+
+    return templates.TemplateResponse("admin_audit.html", {
+        "request": request,
+        "current_user": current_user,
+        "user_initials": get_user_initials(current_user)
+    })
+
+# ==================== ГЕНЕРАЦИЯ ДОКУМЕНТОВ ====================
+
+@app.post("/api/contracts/{contract_id}/generate-contract")
+async def generate_contract_document(
+    contract_id: int,
+    format: str = Query("docx", regex="^(docx)$"),  # только docx
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Генерация договора аренды в Word"""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+
+    contract = db.query(Contract).filter(Contract.contract_id == contract_id).first()
+    if not contract:
+        raise HTTPException(404, "Договор не найден")
+
+    # Получаем связанные данные через application -> property
+    app = db.query(Application).filter(Application.application_id == contract.application_id).first()
+    if not app:
+        raise HTTPException(404, "Заявка не найдена")
+
+    property = db.query(Property).filter(Property.property_id == app.property_id).first()
+    if not property:
+        raise HTTPException(404, "Объект не найден")
+
+    tenant = db.query(User).filter(User.user_id == app.tenant_id).first()
+    owner = db.query(User).filter(User.user_id == property.owner_id).first()
+
+    # Проверка прав
+    if not (current_user.user_id == app.tenant_id or current_user.user_id == property.owner_id):
+        raise HTTPException(403, "Нет доступа к договору")
+
+    # Подготовка данных
+    today = datetime.now()
+    months = ["января", "февраля", "марта", "апреля", "мая", "июня",
+              "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+    contract_data = {
+        "number": f"Д-{contract.contract_id}",
+        "day": today.strftime("%d"),
+        "month": months[today.month - 1],
+        "year": today.strftime("%Y"),
+        "start_day": contract.start_date.strftime("%d") if contract.start_date else "___",
+        "start_month": months[contract.start_date.month - 1] if contract.start_date else "_____",
+        "start_year": contract.start_date.strftime("%Y") if contract.start_date else "___",
+        "end_day": contract.end_date.strftime("%d") if contract.end_date else "___",
+        "end_month": months[contract.end_date.month - 1] if contract.end_date else "_____",
+        "end_year": contract.end_date.strftime("%Y") if contract.end_date else "___",
+        "duration_months": str((contract.end_date.year - contract.start_date.year) * 12 +
+                               (contract.end_date.month - contract.start_date.month)) if contract.end_date and contract.start_date else "___",
+        "monthly_price": str(int(property.price)) if property.price else "___",
+        "payment_day": "10",
+        "deposit": str(int(property.price) * 2) if property.price else "___",
+        "purpose": "проживания" if property.property_type in ['apartment', 'house'] else "коммерческой деятельности",
+        "tenant_signed": contract.tenant_signed,
+        "owner_signed": contract.owner_signed
+    }
+
+    tenant_contact = tenant.contact_info if tenant else {}
+    owner_contact = owner.contact_info if owner else {}
+
+    tenant_data = {
+        "name": tenant.full_name if tenant else "___________",
+        "rep": tenant.full_name if tenant else "___________",
+        "basis": "паспорта",
+        "passport": tenant_contact.get("passport", "___________")
+    }
+
+    owner_data = {
+        "name": owner.full_name if owner else "___________",
+        "rep": owner.full_name if owner else "___________",
+        "basis": "паспорта",
+        "passport": owner_contact.get("passport", "___________")
+    }
+
+    property_data = {
+        "address": property.address if property else "_______________",
+        "city": property.city if property else "Москва",
+        "area": str(property.area) if property and property.area else "___",
+        "rooms": str(property.rooms) if property and property.rooms else "___",
+        "type": property.property_type if property else "apartment",
+        "interval": property.interval_pay if property else "month"
+    }
+
+    # Генерируем файл
+    try:
+        file_path = generate_contract_docx(contract_data, property_data, tenant_data, owner_data)
+        filename = f"contract_{contract.contract_id}.docx"
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+        return FileResponse(
+            path=file_path,
+            filename=filename,
+            media_type=media_type
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка генерации договора: {str(e)}")
+
+
+@app.post("/api/contracts/{contract_id}/generate-act")
+async def generate_act_document(
+    contract_id: int,
+    format: str = Query("pdf", regex="^(pdf)$"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Генерация акта приема-передачи в PDF"""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+
+    contract = db.query(Contract).filter(Contract.contract_id == contract_id).first()
+    if not contract:
+        raise HTTPException(404, "Договор не найден")
+
+    app = db.query(Application).filter(Application.application_id == contract.application_id).first()
+    if not app:
+        raise HTTPException(404, "Заявка не найдена")
+
+    property = db.query(Property).filter(Property.property_id == app.property_id).first()
+    if not property:
+        raise HTTPException(404, "Объект не найден")
+
+    tenant = db.query(User).filter(User.user_id == app.tenant_id).first()
+    owner = db.query(User).filter(User.user_id == property.owner_id).first()
+
+    if not (current_user.user_id == app.tenant_id or current_user.user_id == property.owner_id):
+        raise HTTPException(403, "Нет доступа к акту")
+
+    today = datetime.now()
+    months = ["января", "февраля", "марта", "апреля", "мая", "июня",
+              "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+    contract_data = {
+        "number": f"Д-{contract.contract_id}",
+        "day": today.strftime("%d"),
+        "month": months[today.month - 1],
+        "year": today.strftime("%Y"),
+        "start_day": contract.start_date.strftime("%d") if contract.start_date else "___",
+        "start_month": months[contract.start_date.month - 1] if contract.start_date else "_____",
+        "start_year": contract.start_date.strftime("%Y") if contract.start_date else "___",
+        "purpose": "проживания" if property.property_type in ['apartment', 'house'] else "коммерческой деятельности",
+        "tenant_signed": contract.tenant_signed,
+        "owner_signed": contract.owner_signed
+    }
+
+    tenant_contact = tenant.contact_info if tenant else {}
+    owner_contact = owner.contact_info if owner else {}
+
+    tenant_data = {
+        "name": tenant.full_name if tenant else "___________",
+        "rep": tenant.full_name if tenant else "___________",
+        "basis": "паспорта",
+        "passport": tenant_contact.get("passport", "___________")
+    }
+
+    owner_data = {
+        "name": owner.full_name if owner else "___________",
+        "rep": owner.full_name if owner else "___________",
+        "basis": "паспорта",
+        "passport": owner_contact.get("passport", "___________")
+    }
+
+    property_data = {
+        "address": property.address if property else "_______________",
+        "city": property.city if property else "Москва",
+        "area": str(property.area) if property and property.area else "___"
+    }
+
+    try:
+        file_path = generate_act_pdf(contract_data, property_data, tenant_data, owner_data)
+        filename = f"act_{contract.contract_id}.pdf"
+        return FileResponse(path=file_path, filename=filename, media_type="application/pdf")
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка генерации акта: {str(e)}")
+
+@app.get("/api/agent/export-stats")
+async def export_agent_stats(
+    months: int = 6,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Экспорт статистики агента в Excel"""
+    if not current_user or current_user.user_type != 'agent':
+        raise HTTPException(status_code=403, detail="Только для агентов")
+
+    try:
+        # Получаем данные через функции БД
+        monthly = db.execute(
+            text("SELECT * FROM get_agent_monthly_stats(:aid, :months)"),
+            {"aid": current_user.user_id, "months": months}
+        ).fetchall()
+
+        perf = db.execute(
+            text("SELECT * FROM get_agent_performance_stats(:aid, :months)"),
+            {"aid": current_user.user_id, "months": months}
+        ).first()
+
+        status = db.execute(
+            text("SELECT * FROM get_agent_application_status_stats(:aid, 90)"),
+            {"aid": current_user.user_id}
+        ).fetchall()
+
+        # Используем функцию из reports.py
+        from reports import generate_agent_stats_excel
+        file_path = generate_agent_stats_excel(current_user.user_id, months, monthly, perf, status)
+
+        return FileResponse(
+            path=file_path,
+            filename=f"agent_stats_{current_user.user_id}_{months}months.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    except Exception as e:
+        print(f"Ошибка экспорта: {e}")
+        raise HTTPException(500, f"Ошибка экспорта: {str(e)}")
 
 # ==================== ЗАПУСК ====================
 

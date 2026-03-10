@@ -41,10 +41,7 @@ class User(Base):
 
     # Связи
     owned_properties = relationship("Property", back_populates="owner", foreign_keys="Property.owner_id")
-    managed_properties = relationship("Property", back_populates="agent", foreign_keys="Property.agent_id")
     applications = relationship("Application", back_populates="tenant", foreign_keys="Application.tenant_id")
-    managed_applications = relationship("Application", back_populates="assigned_agent",
-                                        foreign_keys="Application.agent_id")
     sent_messages = relationship("Message", back_populates="sender", foreign_keys="Message.from_user_id")
     received_messages = relationship("Message", back_populates="receiver", foreign_keys="Message.to_user_id")
 
@@ -63,7 +60,6 @@ class Property(Base):
 
     property_id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
-    agent_id = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"))
 
     title = Column(String(200), nullable=False)
     description = Column(Text)
@@ -84,10 +80,8 @@ class Property(Base):
 
     # Связи
     owner = relationship("User", back_populates="owned_properties", foreign_keys=[owner_id])
-    agent = relationship("User", back_populates="managed_properties", foreign_keys=[agent_id])
     photos = relationship("PropertyPhoto", back_populates="property", cascade="all, delete-orphan")
     applications = relationship("Application", back_populates="property", cascade="all, delete-orphan")
-    contracts = relationship("Contract", back_populates="property")
 
     # Check constraints
     __table_args__ = (
@@ -96,7 +90,7 @@ class Property(Base):
             name="property_type_check"
         ),
         CheckConstraint(
-            "interval_pay IN ('once', 'week', 'month')",
+            "interval_pay IN ('week', 'month')",
             name="interval_pay_check"
         ),
         CheckConstraint(
@@ -129,12 +123,12 @@ class Application(Base):
     application_id = Column(Integer, primary_key=True, index=True)
     property_id = Column(Integer, ForeignKey("properties.property_id"), nullable=False)
     tenant_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
-    agent_id = Column(Integer, ForeignKey("users.user_id"))
 
     message = Column(Text)
     desired_date = Column(Date)
     duration_days = Column(Integer)
     answer = Column(Text)
+    responded_at = Column(DateTime, nullable=True)  # Когда ответили на заявку
 
     status = Column(String(20), default='pending')
 
@@ -142,14 +136,13 @@ class Application(Base):
 
     # Связи
     property = relationship("Property", back_populates="applications")
-    tenant = relationship("User", back_populates="applications", foreign_keys=[tenant_id])
-    assigned_agent = relationship("User", back_populates="managed_applications", foreign_keys=[agent_id])
+    tenant = relationship("User", foreign_keys=[tenant_id])
     contract = relationship("Contract", back_populates="application", uselist=False)
 
     # Check constraints
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'approved', 'rejected', 'completed')",
+            "status IN ('pending', 'approved', 'rejected', 'completed', 'cancelled')",
             name="application_status_check"
         ),
         CheckConstraint("duration_days > 0", name="duration_positive"),
@@ -157,16 +150,11 @@ class Application(Base):
 
 
 class Contract(Base):
-    """Модель договоров (аренды и купли-продажи)"""
+    """Модель договоров"""
     __tablename__ = "contracts"
 
     contract_id = Column(Integer, primary_key=True, index=True)
     application_id = Column(Integer, ForeignKey("applications.application_id"), unique=True)
-
-    # Стороны договора
-    property_id = Column(Integer, ForeignKey("properties.property_id"), nullable=False)
-    tenant_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
-    owner_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
 
     # Ключевые параметры
     start_date = Column(Date, nullable=False)
@@ -176,13 +164,23 @@ class Contract(Base):
     # Статус подписания
     signing_status = Column(String(10), default='draft')
 
+    # Подписи
+    tenant_signed = Column(Boolean, default=False)
+    owner_signed = Column(Boolean, default=False)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Связи
     application = relationship("Application", back_populates="contract")
-    property = relationship("Property", back_populates="contracts")
-    tenant = relationship("User", foreign_keys=[tenant_id])
-    owner = relationship("User", foreign_keys=[owner_id])
+
+    # Check constraints
+    __table_args__ = (
+        CheckConstraint(
+            "signing_status IN ('draft', 'pending', 'signed', 'cancelled')",
+            name="signing_status_check"
+        ),
+        CheckConstraint("total_amount >= 0", name="amount_positive"),
+    )
 
 
 class Message(Base):

@@ -13,14 +13,14 @@
         <!-- Галерея -->
         <div class="property-gallery" style="margin-bottom: 20px;">
             <div class="main-image" style="width: 100%; height: 350px; border-radius: 12px; overflow: hidden; margin-bottom: 10px; background: #f8f9fa;">
-                <img id="modalMainImage" src="/static/house1.png" alt="Property" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/static/placeholder-image.png'">
+                <img id="modalMainImage" src="/resources/house1.png" alt="Property" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/resources/placeholder-image.png'">
             </div>
             <div class="thumbnail-container" id="modalThumbnails" style="display: flex; gap: 10px; overflow-x: auto;">
-                <div class="thumbnail active" onclick="changeModalImage('/static/house1.png', this)" style="width: 80px; height: 60px; border-radius: 6px; overflow: hidden; cursor: pointer; border: 2px solid #007bff;">
-                    <img src="/static/house1.png" style="width: 100%; height: 100%; object-fit: cover;">
+                <div class="thumbnail active" onclick="changeModalImage('/resources/house1.png', this)" style="width: 80px; height: 60px; border-radius: 6px; overflow: hidden; cursor: pointer; border: 2px solid #007bff;">
+                    <img src="/resources/house1.png" style="width: 100%; height: 100%; object-fit: cover;">
                 </div>
-                <div class="thumbnail" onclick="changeModalImage('/static/house2.png', this)" style="width: 80px; height: 60px; border-radius: 6px; overflow: hidden; cursor: pointer; border: 2px solid transparent;">
-                    <img src="/static/house2.png" style="width: 100%; height: 100%; object-fit: cover;">
+                <div class="thumbnail" onclick="changeModalImage('/resources/house2.png', this)" style="width: 80px; height: 60px; border-radius: 6px; overflow: hidden; cursor: pointer; border: 2px solid transparent;">
+                    <img src="/resources/house2.png" style="width: 100%; height: 100%; object-fit: cover;">
                 </div>
             </div>
         </div>
@@ -62,20 +62,13 @@
         </div>
 
         <!-- Контакты -->
-        <div class="contacts-section" style="margin-bottom: 20px;">
-            <h3 style="font-size: 18px; margin-bottom: 10px;">Контакты</h3>
-            <div style="display: flex; gap: 20px;">
-                <div style="flex: 1; background: #f8f9fa; padding: 15px; border-radius: 8px;">
-                    <div style="font-weight: 600; margin-bottom: 5px;">Собственник</div>
-                    <div id="modalOwnerName">Иванов И.И.</div>
-                    <div id="modalOwnerEmail" style="font-size: 13px; color: #007bff;">owner@mail.ru</div>
-                    <div id="modalOwnerPhone" style="font-size: 13px;">+7 (999) 123-45-67</div>
-                </div>
-                <div style="flex: 1; background: #f8f9fa; padding: 15px; border-radius: 8px;">
-                    <div style="font-weight: 600; margin-bottom: 5px;">Агент</div>
-                    <div id="modalAgentName">Петрова А.С.</div>
-                    <div id="modalAgentEmail" style="font-size: 13px; color: #007bff;">agent@rentease.ru</div>
-                    <div id="modalAgentPhone" style="font-size: 13px;">+7 (999) 765-43-21</div>
+        <div class="modal-contacts">
+            <h3>Контакты</h3>
+            <div id="responsiblePartyInfo" class="modal-contact-person">
+                <div class="contact-person-name" id="responsiblePartyName">Загрузка...</div>
+                <div class="contact-person-details">
+                    <span id="responsiblePartyEmail" class="contact-email">-</span>
+                    <span id="responsiblePartyPhone" class="contact-phone">-</span>
                 </div>
             </div>
         </div>
@@ -96,7 +89,7 @@
 
         <div class="properties-list" id="myPropertiesList">
             <div class="property-card" style="display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef;">
-                <img src="/static/house1.png" alt="Property" style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px;">
+                <img src="/resources/house1.png" alt="Property" style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px;">
                 <div style="flex: 1;">
                     <div style="font-weight: 600; font-size: 18px;">ЖК Городской парк</div>
                     <div style="color: #6c757d;">ул. Тверская, д. 10</div>
@@ -124,23 +117,71 @@
         <h2 id="propertyEditTitle">Добавление объекта</h2>
 
         <form id="propertyEditForm">
-            <input type="text" id="propTitle" placeholder="Название ЖК">
-<input type="text" id="propAddress" placeholder="Адрес">
-<input type="text" id="propCity" placeholder="Город">
-<select id="propType">
-    <option value="apartment">Квартира</option>
-    <option value="house">Дом</option>
-    <option value="commercial">Коммерческая</option>
-</select>
-<input type="number" id="propArea" placeholder="Площадь">
-<input type="number" id="propPrice" placeholder="Цена">
-<select id="propInterval">
-    <option value="month">ежемесячно</option>
-    <option value="week">еженедельно</option>
-    <option value="once">единоразово</option>
-</select>
-<textarea id="propDescription" placeholder="Описание"></textarea>
-<input type="number" id="propRooms" placeholder="Количество комнат">
+            <input type="hidden" id="propStatus" name="status" value="draft">
+            <input type="hidden" id="propCurrentStatus" name="current_status" value="">
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="propTitle">Название *</label>
+                <input type="text" id="propTitle" placeholder="Название ЖК" required
+                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="propDescription">Описание</label>
+                <textarea id="propDescription" placeholder="Описание" rows="3"
+                          style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;"></textarea>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="propAddress">Адрес *</label>
+                <input type="text" id="propAddress" placeholder="Адрес" required
+                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="propCity">Город *</label>
+                <input type="text" id="propCity" placeholder="Город" required
+                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+
+            <div class="form-row" style="display: flex; gap: 15px; margin-bottom: 15px;">
+                <div class="form-group" style="flex: 1;">
+                    <label for="propType">Тип *</label>
+                    <select id="propType" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="apartment">Квартира</option>
+                        <option value="house">Дом</option>
+                        <option value="commercial">Коммерческая</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="flex: 1;">
+                    <label for="propArea">Площадь (м²) *</label>
+                    <input type="number" id="propArea" step="0.1" min="0" required
+                           style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+            </div>
+
+            <div class="form-row" style="display: flex; gap: 15px; margin-bottom: 15px;">
+                <div class="form-group" style="flex: 1;">
+                    <label for="propRooms">Комнат</label>
+                    <input type="number" id="propRooms" min="0"
+                           style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+
+                <div class="form-group" style="flex: 1;">
+                    <label for="propPrice">Цена *</label>
+                    <input type="number" id="propPrice" step="0.01" min="0" required
+                           style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+
+                <div class="form-group" style="flex: 1;">
+                    <label for="propInterval">Интервал *</label>
+                    <select id="propInterval" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="month">ежемесячно</option>
+                        <option value="week">еженедельно</option>
+                    </select>
+                </div>
+            </div>
 
             <div class="form-group" style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-weight: 500;">
@@ -159,10 +200,8 @@
 
                 <!-- Контейнер для предпросмотра -->
                 <div id="photoPreviewContainer" class="photo-preview-container">
-                    <!-- Блоки с фото будут добавляться сюда динамически -->
+                    <div class="empty-preview">Фотографии не выбраны</div>
                 </div>
-                <!-- Существующие фотографии -->
-<div id="existingPhotosContainer" class="existing-photos-container" style="margin-top: 15px;"></div>
 
                 <!-- Подсказка по форматам -->
                 <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
@@ -170,9 +209,20 @@
                 </div>
             </div>
 
+            <!-- Кнопки действий -->
             <div class="modal-actions" style="display: flex; gap: 10px; margin-top: 20px;">
-                <button type="button" class="btn-secondary" style="flex: 1;" onclick="closeModal('propertyEditModal')">Отмена</button>
-                <button type="submit" class="btn-primary" style="flex: 1;">Опубликовать</button>
+                <button type="button" class="btn-secondary" onclick="closeModal('propertyEditModal')"
+                        style="flex: 1; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                    Отмена
+                </button>
+                <button type="button" class="btn-warning" onclick="submitPropertyForm('draft')"
+                        style="flex: 1; padding: 12px; background: #ffc107; color: #212529; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                    💾 Сохранить как черновик
+                </button>
+                <button type="button" class="btn-primary" onclick="submitPropertyForm('active')"
+                        style="flex: 1; padding: 12px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                    📢 Опубликовать
+                </button>
             </div>
         </form>
     </div>

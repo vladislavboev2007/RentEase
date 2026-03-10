@@ -111,6 +111,96 @@ function setViewMode(mode) {
     currentViewMode = mode;
 }
 
+function changePage(newPage) {
+    const form = document.getElementById('searchForm');
+    const pageInput = document.getElementById('pageInput');
+    if (pageInput) {
+        pageInput.value = newPage;
+    } else {
+        // Если нет скрытого поля (на главной), создадим временную форму
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', newPage);
+        window.location.href = url.toString();
+        return;
+    }
+    form.submit();
+}
+
+
+
+function updateModalGallery(photos) {
+    console.log('updateModalGallery вызвана с фото:', photos);
+    const mainImage = document.getElementById('modalMainImageImg');
+    const thumbnailContainer = document.getElementById('modalThumbnailContainer');
+
+    if (photos && photos.length > 0) {
+        mainImage.src = photos[0].url || '/resources/placeholder-image.png';
+
+        thumbnailContainer.innerHTML = '';
+        photos.forEach((photo, index) => {
+            const thumb = document.createElement('div');
+            thumb.className = `modal-thumbnail ${index === 0 ? 'active' : ''}`;
+            thumb.onclick = () => changeModalImage(photo.url, thumb);
+            thumb.innerHTML = `<img src="${photo.url}" alt="Thumbnail ${index + 1}">`;
+            thumbnailContainer.appendChild(thumb);
+        });
+    } else {
+        mainImage.src = '/resources/placeholder-image.png';
+        thumbnailContainer.innerHTML = '';
+    }
+}
+
+// ==================== ПОЛНОЭКРАННАЯ ГАЛЕРЕЯ ====================
+let currentGalleryIndex = 0;
+let galleryPhotos = [];
+
+function openFullscreenGallery() {
+    if (galleryPhotos.length === 0) return;
+    currentGalleryIndex = 0;
+    updateFullscreenImage();
+    document.getElementById('fullscreenGalleryModal').style.display = 'flex';
+}
+
+function closeFullscreenGallery() {
+    document.getElementById('fullscreenGalleryModal').style.display = 'none';
+}
+
+function nextGalleryImage() {
+    if (galleryPhotos.length > 0) {
+        currentGalleryIndex = (currentGalleryIndex + 1) % galleryPhotos.length;
+        updateFullscreenImage();
+    }
+}
+
+function prevGalleryImage() {
+    if (galleryPhotos.length > 0) {
+        currentGalleryIndex = (currentGalleryIndex - 1 + galleryPhotos.length) % galleryPhotos.length;
+        updateFullscreenImage();
+    }
+}
+
+function updateFullscreenImage() {
+    if (galleryPhotos.length > 0) {
+        document.getElementById('fullscreenImage').src = galleryPhotos[currentGalleryIndex].url;
+        document.getElementById('galleryCounter').textContent = `${currentGalleryIndex + 1} / ${galleryPhotos.length}`;
+    }
+}
+
+// Обновляем updateModalGallery для сохранения фотографий
+const originalUpdateModalGallery = updateModalGallery;
+updateModalGallery = function(photos) {
+    originalUpdateModalGallery(photos);
+    galleryPhotos = photos;
+};
+
+function changeModalImage(imageUrl, thumbnail) {
+    document.getElementById('modalMainImageImg').src = imageUrl;
+    document.querySelectorAll('.modal-thumbnail').forEach(thumb => {
+        thumb.classList.remove('active');
+    });
+    thumbnail.classList.add('active');
+}
+
 // ==================== УПРАВЛЕНИЕ МОДАЛЬНЫМ ОКНОМ ОБЪЕКТА ====================
 
 function showPropertyDetails(propertyId) {
@@ -146,6 +236,8 @@ function hidePropertyModal() {
     document.getElementById('propertyModal').style.display = 'none';
 }
 
+
+
 function fillPropertyModal(data) {
     document.getElementById('modalPropertyTitle').textContent = data.title || 'Без названия';
 
@@ -175,53 +267,18 @@ function fillPropertyModal(data) {
 
     updateModalGallery(data.photos || []);
 
-    if (data.owner) {
-        document.getElementById('modalOwnerName').textContent = data.owner.full_name || 'Не указан';
-        document.getElementById('modalOwnerEmail').textContent = data.owner.email || 'Не указан';
-        const ownerPhone = data.owner.contact_info?.phone || 'Не указан';
-        document.getElementById('modalOwnerPhone').textContent = ownerPhone;
-    }
-
-    if (data.agent) {
-        document.getElementById('modalAgentName').textContent = data.agent.full_name || 'Не указан';
-        document.getElementById('modalAgentEmail').textContent = data.agent.email || 'Не указан';
-        const agentPhone = data.agent.contact_info?.phone || 'Не указан';
-        document.getElementById('modalAgentPhone').textContent = agentPhone;
-        document.getElementById('modalAgentInfo').style.display = 'block';
-    } else {
-        document.getElementById('modalAgentInfo').style.display = 'none';
-    }
+    // Загружаем ответственное лицо
+    fetch(`/api/property/${data.property_id}/responsible`, { credentials: 'same-origin' })
+        .then(res => res.json())
+        .then(responsible => {
+            document.getElementById('modalResponsibleName').textContent = responsible.name || 'Не указан';
+            document.getElementById('modalResponsibleEmail').textContent = responsible.email || '-';
+            document.getElementById('modalResponsiblePhone').textContent = responsible.phone || '-';
+        })
+        .catch(err => console.error('Ошибка загрузки ответственной стороны:', err));
 }
 
-function updateModalGallery(photos) {
-    const mainImage = document.getElementById('modalMainImageImg');
-    const thumbnailContainer = document.getElementById('modalThumbnailContainer');
 
-    if (photos && photos.length > 0) {
-        mainImage.src = photos[0].url || '/static/placeholder-image.png';
-
-        thumbnailContainer.innerHTML = '';
-        photos.forEach((photo, index) => {
-            const thumb = document.createElement('div');
-            thumb.className = `modal-thumbnail ${index === 0 ? 'active' : ''}`;
-            thumb.onclick = () => changeModalImage(photo.url, thumb);
-            thumb.innerHTML = `<img src="${photo.url}" alt="Thumbnail ${index + 1}">`;
-            thumbnailContainer.appendChild(thumb);
-        });
-    } else {
-        mainImage.src = '/static/placeholder-image.png';
-        thumbnailContainer.innerHTML = '';
-    }
-}
-
-function changeModalImage(imageUrl, thumbnail) {
-    document.getElementById('modalMainImageImg').src = imageUrl;
-
-    document.querySelectorAll('.modal-thumbnail').forEach(thumb => {
-        thumb.classList.remove('active');
-    });
-    thumbnail.classList.add('active');
-}
 
 function showContactForm() {
     if (!isUserLoggedIn()) {
@@ -230,18 +287,24 @@ function showContactForm() {
         return;
     }
 
-    // Получаем ID агента или собственника из модального окна
-    // (нужно добавить data-атрибуты)
-    const agentId = document.getElementById('modalAgentId')?.value;
-    const ownerId = document.getElementById('modalOwnerId')?.value;
-    const userId = agentId || ownerId;
-    const userName = agentId ? 'агентом' : 'собственником';
-
-    if (userId) {
-        openChat(parseInt(userId));
-    } else {
-        showNotification('Не удалось определить получателя', 'error');
+    if (!currentPropertyId) {
+        showNotification('Ошибка: не указан объект', 'error');
+        return;
     }
+
+    // Получаем информацию об ответственной стороне
+    fetch(`/api/property/${currentPropertyId}/responsible`, { credentials: 'same-origin' })
+        .then(response => {
+            if (!response.ok) throw new Error('Не удалось определить получателя');
+            return response.json();
+        })
+        .then(responsible => {
+            openChat(responsible.id);
+        })
+        .catch(error => {
+            console.error('Ошибка:', error);
+            showNotification('Не удалось определить получателя', 'error');
+        });
 }
 
 // Функция для показа формы подачи заявки
@@ -374,6 +437,119 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
+// ==================== ОТЧЕТНОСТЬ =====================
+async function downloadContract() {
+    const contractId = document.getElementById('contractDetailModal').dataset.contractId;
+    if (!contractId) {
+        showNotification('Ошибка: не указан договор', 'error');
+        return;
+    }
+
+    try {
+        showNotification('Генерация договора...', 'info');
+
+        const response = await fetch(`/api/contracts/${contractId}/generate-contract?format=docx`, {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка генерации');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `contract_${contractId}.docx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        showNotification('Договор успешно сгенерирован', 'success');
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+async function downloadAct() {
+    const contractId = document.getElementById('contractDetailModal').dataset.contractId;
+    if (!contractId) {
+        showNotification('Ошибка: не указан договор', 'error');
+        return;
+    }
+
+    try {
+        showNotification('Генерация акта...', 'info');
+
+        const response = await fetch(`/api/contracts/${contractId}/generate-act?format=pdf`, {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка генерации');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `act_${contractId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        showNotification('Акт успешно сгенерирован', 'success');
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+async function exportAgentStats() {
+    const period = document.getElementById('statsPeriod').value;
+
+    try {
+        showNotification('Генерация отчета...', 'info');
+
+        const response = await fetch(`/api/agent/export-stats?months=${period}`, {
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка экспорта');
+        }
+
+        // Получаем blob из ответа
+        const blob = await response.blob();
+
+        // Создаем ссылку для скачивания
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `agent_stats_${period}months.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        showNotification('Отчет успешно скачан', 'success');
+
+    } catch (error) {
+        console.error('Ошибка экспорта:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
 // ==================== ФУНКЦИИ ДЛЯ МОДАЛЬНЫХ ОКОН ====================
 
 function showMyApplications() {
@@ -383,15 +559,266 @@ function showMyApplications() {
     loadMyApplications(); // Загружаем свежие данные
     openModal('myApplicationsModal');
 }
+async function showContractDetail(contractId, source = 'contracts') {
+    try {
+        const response = await fetch(`/api/contracts/${contractId}`, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки договора');
 
+        const contract = await response.json();
+        console.log('Детали договора:', contract);
+
+        // Сохраняем ID и источник в dataset
+        const modal = document.getElementById('contractDetailModal');
+        modal.dataset.contractId = contractId;
+        modal.dataset.source = source;
+
+        // Фото объекта
+        const photoUrl = contract.property_photo || '/resources/placeholder-image.png';
+        document.getElementById('contractDetailImage').src = photoUrl;
+
+        // Номер договора
+        document.getElementById('contractDetailNumber').textContent = contract.contract_number || `Договор №${contract.contract_id}`;
+
+        // Информация об объекте
+        document.getElementById('contractDetailTitle').textContent = contract.property_title || 'Без названия';
+
+        const fullAddress = contract.property_city ? `${contract.property_city}, ${contract.property_address}` : (contract.property_address || 'Адрес не указан');
+        document.getElementById('contractDetailAddress').textContent = fullAddress;
+
+        let propertyType = '';
+        if (contract.property_type === 'apartment') propertyType = 'Квартира';
+        else if (contract.property_type === 'house') propertyType = 'Дом';
+        else if (contract.property_type === 'commercial') propertyType = 'Коммерческая';
+
+        document.getElementById('contractDetailPropertyDetails').textContent =
+            `${propertyType} • ${contract.property_rooms || '?'} комн. • ${contract.property_area || '?'} м²`;
+
+        // Длительность
+        if (contract.start_date && contract.end_date) {
+            const start = new Date(contract.start_date);
+            const end = new Date(contract.end_date);
+            const diffTime = Math.abs(end - start);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const diffMonths = Math.round(diffDays / 30);
+            document.getElementById('contractDetailDuration').textContent = `${diffMonths} месяцев (${diffDays} дней)`;
+        } else {
+            document.getElementById('contractDetailDuration').textContent = '-';
+        }
+
+        // Даты
+        const startDate = contract.start_date ? new Date(contract.start_date).toLocaleDateString('ru-RU') : '-';
+        const endDate = contract.end_date ? new Date(contract.end_date).toLocaleDateString('ru-RU') : '-';
+        const createdDate = contract.created_at ? new Date(contract.created_at).toLocaleDateString('ru-RU') : '-';
+
+        document.getElementById('contractDetailStartDate').textContent = startDate;
+        document.getElementById('contractDetailStartDate2').textContent = startDate;
+        document.getElementById('contractDetailEndDate').textContent = endDate;
+        document.getElementById('contractDetailCreated').textContent = createdDate;
+
+        // Сумма
+        const amount = contract.total_amount ? Number(contract.total_amount).toLocaleString('ru-RU') : '0';
+        document.getElementById('contractDetailAmount').textContent = `${amount} ₽`;
+
+        // Статус договора
+        const statusConfig = {
+            'draft': { bg: '#e9ecef', color: '#6c757d', text: '📄 Черновик' },
+            'pending': { bg: '#fff3cd', color: '#856404', text: '⏳ Ожидает подписи' },
+            'signed': { bg: '#d4edda', color: '#155724', text: '✅ Подписан' },
+            'cancelled': { bg: '#f8d7da', color: '#721c24', text: '🚫 Отменён' }
+        };
+        const status = statusConfig[contract.signing_status] || { bg: '#e9ecef', color: '#6c757d', text: contract.signing_status };
+        document.getElementById('contractDetailStatus').innerHTML = `<span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${status.bg}; color: ${status.color};">${status.text}</span>`;
+
+        // Информация о сторонах
+        document.getElementById('contractDetailTenantName').textContent = contract.tenant_name || 'Не указан';
+        document.getElementById('contractDetailTenantEmail').textContent = contract.tenant_email || '';
+        document.getElementById('contractDetailOwnerName').textContent = contract.owner_name || 'Не указан';
+        document.getElementById('contractDetailOwnerEmail').textContent = contract.owner_email || '';
+
+        // ===== ОТОБРАЖЕНИЕ ПОДПИСЕЙ =====
+        const tenantSignEl = document.getElementById('contractDetailTenantSign');
+        const ownerSignEl = document.getElementById('contractDetailOwnerSign');
+
+        // Подпись арендатора
+        if (contract.tenant_signed) {
+            tenantSignEl.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #28a745; font-size: 18px;">✓</span>
+                    <span style="color: #28a745; font-weight: 500;">Подписано</span>
+                </div>
+            `;
+        } else {
+            tenantSignEl.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #ffc107; font-size: 18px;">⏳</span>
+                    <span style="color: #6c757d;">Ожидает подписания</span>
+                </div>
+            `;
+        }
+
+        // Подпись собственника
+        if (contract.owner_signed) {
+            ownerSignEl.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #28a745; font-size: 18px;">✓</span>
+                    <span style="color: #28a745; font-weight: 500;">Подписано</span>
+                </div>
+            `;
+        } else {
+            ownerSignEl.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #ffc107; font-size: 18px;">⏳</span>
+                    <span style="color: #6c757d;">Ожидает подписания</span>
+                </div>
+            `;
+        }
+
+        // ===== ЛОГИКА ОТОБРАЖЕНИЯ КНОПОК =====
+        const currentUser = window.currentUser;
+        const isOwner = currentUser && (currentUser.type === 'owner' || currentUser.type === 'agent');
+
+        const signButton = document.getElementById('contractSignButton');
+        const cancelBtn = document.getElementById('cancelContractBtn');
+        const downloadContractBtn = document.getElementById('downloadContractBtn');
+        const downloadActBtn = document.getElementById('downloadActBtn');
+
+        // Сбрасываем видимость всех кнопок
+        if (signButton) signButton.style.display = 'none';
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        if (downloadContractBtn) downloadContractBtn.style.display = 'none';
+        if (downloadActBtn) downloadActBtn.style.display = 'none';
+
+        if (contract.signing_status === 'cancelled') {
+            // Договор отменён - ничего не показываем
+            // Кнопки уже скрыты
+        } else if (contract.signing_status === 'signed') {
+            // Договор полностью подписан - показываем кнопки скачивания и отмены
+            if (cancelBtn) cancelBtn.style.display = 'block';
+            if (downloadContractBtn) downloadContractBtn.style.display = 'block';
+            if (downloadActBtn) downloadActBtn.style.display = 'block';
+        } else {
+            // Договор ещё не подписан полностью
+            let canSign = false;
+
+            if (currentUser && currentUser.type === 'tenant' && !contract.tenant_signed) {
+                canSign = true;
+            }
+            if (isOwner && !contract.owner_signed) {
+                canSign = true;
+            }
+
+            if (canSign && signButton) {
+                signButton.style.display = 'block';
+            }
+
+            if (isOwner && cancelBtn) {
+                cancelBtn.style.display = 'block';
+            }
+        }
+
+        // Закрываем предыдущие модальные окна и открываем детали договора
+        closeModal('myContractsModal');
+        closeModal('incomingContractsModal');
+        openModal('contractDetailModal');
+
+    } catch (error) {
+        console.error('Ошибка загрузки деталей договора:', error);
+        showNotification('Ошибка загрузки деталей договора', 'error');
+    }
+}
 // ==================== ДОГОВОРЫ ====================
+// Общая функция загрузки договоров
+async function loadContracts(containerId, myOnly) {
+    try {
+        const response = await fetch('/api/my/contracts', { credentials: 'same-origin' });
+        if (!response.ok) {
+            if (response.status === 401) {
+                showNotification('Необходимо авторизоваться', 'warning');
+                showLoginModal();
+                return;
+            }
+            throw new Error('Ошибка загрузки');
+        }
+
+        const contracts = await response.json();
+        console.log('Договоры:', contracts);
+
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        // Фильтруем договоры
+        let filteredContracts = contracts;
+        if (myOnly) {
+            filteredContracts = contracts.filter(c => c.is_tenant);
+        } else {
+            filteredContracts = contracts.filter(c => c.is_owner);
+        }
+
+        if (filteredContracts.length === 0) {
+            container.innerHTML = '<p style="text-align: center; padding: 40px; color: #6c757d;">Нет договоров</p>';
+            return;
+        }
+
+        let html = '';
+        filteredContracts.forEach(contract => {
+            const statusConfig = {
+                'draft': { bg: '#e9ecef', color: '#6c757d', text: '📄 Черновик' },
+                'pending': { bg: '#fff3cd', color: '#856404', text: '⏳ Ожидает подписи' },
+                'signed': { bg: '#d4edda', color: '#155724', text: '✅ Подписан' },
+                'cancelled': { bg: '#f8d7da', color: '#721c24', text: '🚫 Отменён' }
+            };
+            const status = statusConfig[contract.signing_status] || { bg: '#e9ecef', color: '#6c757d', text: contract.signing_status };
+
+            const startDate = contract.start_date ? new Date(contract.start_date).toLocaleDateString('ru-RU') : '?';
+            const endDate = contract.end_date ? new Date(contract.end_date).toLocaleDateString('ru-RU') : '?';
+            const amount = contract.total_amount ? Number(contract.total_amount).toLocaleString('ru-RU') : '0';
+
+            // Статус подписания сторон
+            let signedStatus = '';
+            if (contract.signing_status === 'signed') {
+                signedStatus = '✓ Подписан обеими сторонами';
+            } else if (contract.tenant_signed && !contract.owner_signed) {
+                signedStatus = '⏳ Арендатор подписал, ожидает собственника';
+            } else if (!contract.tenant_signed && contract.owner_signed) {
+                signedStatus = '⏳ Собственник подписал, ожидает арендатора';
+            } else {
+                signedStatus = '⏳ Ожидает подписания';
+            }
+
+            html += `
+                <div class="contract-item" onclick="showContractDetail(${contract.contract_id}, 'contracts')" style="display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef; cursor: pointer; align-items: center;">
+                    <div style="width: 80px; height: 80px; flex-shrink: 0;">
+                        <img src="${contract.property_photo}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;" onerror="this.src='/resources/placeholder-image.png'">
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; font-size: 16px;">${contract.contract_number}</div>
+                        <div style="color: #212529;">${contract.property_title || 'Без названия'}</div>
+                        <div style="color: #6c757d; font-size: 14px;">Период: ${startDate} - ${endDate}</div>
+                        <div style="font-size: 13px; color: #495057; margin-top: 4px;">${signedStatus}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="margin-bottom: 8px;">
+                            <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${status.bg}; color: ${status.color};">${status.text}</span>
+                        </div>
+                        <div style="font-weight: 700; color: #28a745; font-size: 16px;">${amount} ₽</div>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+
+    } catch (error) {
+        console.error('Ошибка загрузки договоров:', error);
+        showNotification('Ошибка загрузки договоров', 'error');
+    }
+}
 
 // Показать мои договоры
 function showMyContracts() {
     console.log('showMyContracts вызван');
     document.getElementById('userDropdown')?.classList.remove('show');
     document.getElementById('dashboardDropdown')?.classList.remove('show');
-    loadMyContracts();
+    loadContracts('myContractsList', true); // true - мои договоры (где я арендатор)
     openModal('myContractsModal');
 }
 
@@ -469,103 +896,26 @@ async function loadMyContracts() {
     }
 }
 
-async function showContractDetail(contractId) {
-    try {
-        const response = await fetch(`/api/contracts/${contractId}`, { credentials: 'same-origin' });
-        if (!response.ok) throw new Error('Ошибка загрузки договора');
 
-        const contract = await response.json();
-        console.log('Детали договора:', contract);
-
-        // Сохраняем ID в dataset
-        document.getElementById('contractDetailModal').dataset.contractId = contractId;
-
-        // Фото объекта
-        const photoUrl = contract.property_photo || '/resources/placeholder-image.png';
-        document.getElementById('contractDetailImage').src = photoUrl;
-
-        // Номер договора
-        document.getElementById('contractDetailNumber').textContent = contract.contract_number || `Договор №${contract.contract_id}`;
-
-        // Информация об объекте
-        document.getElementById('contractDetailTitle').textContent = contract.property_title || 'Без названия';
-
-        const fullAddress = contract.property_city ? `${contract.property_city}, ${contract.property_address}` : (contract.property_address || 'Адрес не указан');
-        document.getElementById('contractDetailAddress').textContent = fullAddress;
-
-        let propertyType = '';
-        if (contract.property_type === 'apartment') propertyType = 'Квартира';
-        else if (contract.property_type === 'house') propertyType = 'Дом';
-        else if (contract.property_type === 'commercial') propertyType = 'Коммерческая';
-
-        document.getElementById('contractDetailPropertyDetails').textContent =
-            `${propertyType} • ${contract.property_rooms || '?'} комн. • ${contract.property_area || '?'} м²`;
-
-        // Длительность
-        if (contract.start_date && contract.end_date) {
-            const start = new Date(contract.start_date);
-            const end = new Date(contract.end_date);
-            const diffTime = Math.abs(end - start);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            const diffMonths = Math.round(diffDays / 30);
-            document.getElementById('contractDetailDuration').textContent = `${diffMonths} месяцев (${diffDays} дней)`;
-        } else {
-            document.getElementById('contractDetailDuration').textContent = '-';
-        }
-
-        // Даты
-        const startDate = contract.start_date ? new Date(contract.start_date).toLocaleDateString('ru-RU') : '-';
-        const endDate = contract.end_date ? new Date(contract.end_date).toLocaleDateString('ru-RU') : '-';
-        const createdDate = contract.created_at ? new Date(contract.created_at).toLocaleDateString('ru-RU') : '-';
-
-        document.getElementById('contractDetailStartDate').textContent = startDate;
-        document.getElementById('contractDetailStartDate2').textContent = startDate;
-        document.getElementById('contractDetailEndDate').textContent = endDate;
-        document.getElementById('contractDetailCreated').textContent = createdDate;
-
-        // Сумма
-        const amount = contract.total_amount ? Number(contract.total_amount).toLocaleString('ru-RU') : '0';
-        document.getElementById('contractDetailAmount').textContent = `${amount} ₽`;
-
-        // Статус
-        const statusConfig = {
-            'draft': { bg: '#e9ecef', color: '#6c757d', text: 'Черновик' },
-            'pending': { bg: '#fff3cd', color: '#856404', text: 'Ожидает подписи' },
-            'signed': { bg: '#d4edda', color: '#155724', text: 'Подписан' }
-        };
-        const status = statusConfig[contract.signing_status] || { bg: '#e9ecef', color: '#6c757d', text: contract.signing_status };
-        document.getElementById('contractDetailStatus').innerHTML = `<span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${status.bg}; color: ${status.color};">${status.text}</span>`;
-
-        // Информация о сторонах
-        document.getElementById('contractDetailTenantName').textContent = contract.tenant_name || 'Не указан';
-        document.getElementById('contractDetailTenantEmail').textContent = contract.tenant_email || '';
-        document.getElementById('contractDetailOwnerName').textContent = contract.owner_name || 'Не указан';
-        document.getElementById('contractDetailOwnerEmail').textContent = contract.owner_email || '';
-
-        // Статусы подписания (упрощённо)
-        // В реальности нужно добавить поля tenant_signed, owner_signed в модель
-
-        // Показываем кнопку подписания, если статус не 'signed'
-        const signButton = document.getElementById('contractSignButton');
-        if (contract.signing_status !== 'signed') {
-            signButton.style.display = 'block';
-        } else {
-            signButton.style.display = 'none';
-        }
-
-        closeModal('myContractsModal');
-        openModal('contractDetailModal');
-
-    } catch (error) {
-        console.error('Ошибка загрузки деталей договора:', error);
-        showNotification('Ошибка загрузки деталей договора', 'error');
-    }
-}
 
 // Закрыть детали и вернуться к списку
 function closeContractDetailAndShowList() {
+    const modal = document.getElementById('contractDetailModal');
+    const source = modal.dataset.source || 'contracts';
+
     closeModal('contractDetailModal');
-    showMyContracts();
+
+    if (source === 'incoming-applications') {
+        showIncomingApplications(); // Возвращаемся к входящим заявкам
+    } else {
+        // По умолчанию возвращаемся к соответствующему списку договоров
+        const currentUser = window.currentUser;
+        if (currentUser && (currentUser.type === 'owner' || currentUser.type === 'agent')) {
+            showIncomingContracts(); // Для собственника/агента - входящие договоры
+        } else {
+            showMyContracts(); // Для арендатора - мои договоры
+        }
+    }
 }
 
 // Подписать договор
@@ -590,11 +940,14 @@ async function signContract() {
         showNotification('Договор подписан!', 'success');
 
         // Обновляем отображение
-        showContractDetail(contractId);
+        await showContractDetail(contractId);
 
-        // Если открыт список, обновляем его
+        // Обновляем списки договоров, если они открыты
         if (document.getElementById('myContractsModal').style.display === 'flex') {
-            loadMyContracts();
+            loadContracts('myContractsList', true);
+        }
+        if (document.getElementById('incomingContractsModal').style.display === 'flex') {
+            loadContracts('incomingContractsList', false);
         }
 
     } catch (error) {
@@ -603,17 +956,301 @@ async function signContract() {
     }
 }
 
+function showIncomingApplications() {
+    console.log('showIncomingApplications вызван');
+    document.getElementById('userDropdown')?.classList.remove('show');
+    document.getElementById('dashboardDropdown')?.classList.remove('show');
+    loadIncomingApplications();
+    openModal('incomingApplicationsModal');
+}
+
+async function loadIncomingApplications() {
+    try {
+        const response = await fetch('/api/my/applications', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки');
+
+        const applications = await response.json();
+        console.log('Входящие заявки:', applications);
+
+        const container = document.getElementById('incomingApplicationsList');
+        if (!container) return;
+
+        const pendingApps = applications.filter(app => app.status === 'pending');
+
+        if (pendingApps.length === 0) {
+            container.innerHTML = '<p style="text-align: center; padding: 40px; color: #6c757d;">Нет входящих заявок</p>';
+            return;
+        }
+
+        let html = '';
+        pendingApps.forEach(app => {
+            const desiredDate = app.desired_date ? new Date(app.desired_date).toLocaleDateString('ru-RU') : 'не указана';
+
+            html += `
+                <div class="application-card" onclick="showRespondModal(${app.application_id})"
+                     style="display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef; cursor: pointer;">
+                    <img src="${app.property_photo || '/resources/placeholder-image.png'}"
+                         style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">${app.property_title || 'Без названия'}</div>
+                        <div style="color: #6c757d; font-size: 13px; margin-bottom: 6px;">${app.property_address || ''}</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; font-size: 13px;">
+                            <span style="background: #e9ecef; padding: 2px 8px; border-radius: 12px;">
+                                👤 ${app.tenant_name || 'Неизвестно'}
+                            </span>
+                            <span style="background: #e9ecef; padding: 2px 8px; border-radius: 12px;">
+                                📅 ${desiredDate}
+                            </span>
+                            <span style="background: #e9ecef; padding: 2px 8px; border-radius: 12px;">
+                                ⏱ ${app.duration_days || '?'} дн.
+                            </span>
+                        </div>
+                        <div style="font-size: 13px; color: #495057; background: #f8f9fa; padding: 6px; border-radius: 6px; margin-top: 4px;">
+                            💬 ${app.message || 'Нет сообщения'}
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
+                        <span style="background: #fff3cd; color: #856404; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; text-align: center;">
+                            Требует ответа
+                        </span>
+                        <button class="btn-primary" onclick="event.stopPropagation(); showRespondModal(${app.application_id})"
+                                style="padding: 8px 16px; font-size: 13px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                            Ответить
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Ошибка загрузки входящих заявок:', error);
+        showNotification('Ошибка загрузки входящих заявок', 'error');
+    }
+}
+
+
 // Заглушки для остальных функций
-function cancelContract() {
-    showNotification('Функция отмены договора будет доступна позже', 'info');
+async function cancelContract() {
+    if (!confirm('Вы уверены, что хотите отменить договор? Это действие нельзя отменить.')) return;
+
+    const contractId = document.getElementById('contractDetailModal').dataset.contractId;
+    if (!contractId) {
+        showNotification('Ошибка: не указан договор', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/contracts/${contractId}/cancel`, {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка отмены договора');
+        }
+
+        showNotification('Договор отменён', 'success');
+
+        // Закрываем модальное окно
+        closeModal('contractDetailModal');
+
+        // Обновляем списки
+        if (document.getElementById('myContractsModal').style.display === 'flex') {
+            loadContracts('myContractsList', true);
+        }
+        if (document.getElementById('incomingContractsModal').style.display === 'flex') {
+            loadContracts('incomingContractsList', false);
+        }
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
+    }
 }
 
-function downloadAct() {
-    showNotification('Скачивание акта будет доступно позже', 'info');
-}
+async function loadAgentStats() {
+    const period = document.getElementById('statsPeriod').value;
 
-function downloadContract() {
-    showNotification('Скачивание договора будет доступно позже', 'info');
+    try {
+        // Загружаем месячные данные
+        const monthlyRes = await fetch(`/api/agent/stats?months=${period}`, { credentials: 'same-origin' });
+        if (!monthlyRes.ok) throw new Error('Ошибка загрузки месячной статистики');
+        const monthlyData = await monthlyRes.json();
+
+        // Загружаем KPI
+        const perfRes = await fetch(`/api/agent/performance?months=${period}`, { credentials: 'same-origin' });
+        if (!perfRes.ok) throw new Error('Ошибка загрузки KPI');
+        const perfData = await perfRes.json();
+
+        // Загружаем статусы
+        const statusRes = await fetch(`/api/agent/rejection-reasons`, { credentials: 'same-origin' });
+        if (!statusRes.ok) throw new Error('Ошибка загрузки статусов');
+        const statusData = await statusRes.json();
+
+        // Обновляем KPI
+        document.getElementById('statsTotalProfit').textContent = perfData.total_profit ? Number(perfData.total_profit).toLocaleString() + ' ₽' : '0 ₽';
+        document.getElementById('statsAvgProfit').textContent = perfData.avg_profit_per_property ? Number(perfData.avg_profit_per_property).toLocaleString() + ' ₽' : '0 ₽';
+        document.getElementById('statsTotalDeals').textContent = perfData.total_deals || 0;
+        document.getElementById('statsOccupancy').textContent = perfData.occupancy_rate ? perfData.occupancy_rate + '%' : '0%';
+        document.getElementById('statsProcessedApps').textContent = perfData.processed_applications || 0;
+        document.getElementById('statsAvgResponseTime').textContent = perfData.avg_response_hours ? perfData.avg_response_hours + ' ч' : '0 ч';
+        document.getElementById('statsConversionRate').textContent = perfData.conversion_rate ? perfData.conversion_rate + '%' : '0%';
+
+        // ===== СТОЛБЧАТАЯ ДИАГРАММА =====
+        const ctx1 = document.getElementById('dealsChart')?.getContext('2d');
+        if (ctx1) {
+            // Уничтожаем старую диаграмму если она существует
+            if (window.dealsChart && typeof window.dealsChart.destroy === 'function') {
+                window.dealsChart.destroy();
+            }
+
+            // Сортируем данные по месяцам (от ранних к поздним)
+            const sortedMonthlyData = [...monthlyData].sort((a, b) => {
+                if (a.month < b.month) return -1;
+                if (a.month > b.month) return 1;
+                return 0;
+            });
+
+            window.dealsChart = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: sortedMonthlyData.map(d => {
+                        // Преобразуем YYYY-MM в читаемый формат
+                        const [year, month] = d.month.split('-');
+                        const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
+                                          'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+                        return `${monthNames[parseInt(month)-1]} ${year}`;
+                    }),
+                    datasets: [
+                        {
+                            label: 'Прибыль (₽)',
+                            data: sortedMonthlyData.map(d => d.total_profit || 0),
+                            backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                            borderColor: '#28a745',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Сделки',
+                            data: sortedMonthlyData.map(d => d.deals_count || 0),
+                            backgroundColor: 'rgba(0, 123, 255, 0.7)',
+                            borderColor: '#007bff',
+                            borderWidth: 1,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Прибыль (₽)'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Количество сделок'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ===== КРУГОВАЯ ДИАГРАММА (только Одобрено и Отказано) =====
+        const ctx2 = document.getElementById('pieChart')?.getContext('2d');
+        if (ctx2) {
+            // Уничтожаем старую диаграмму если она существует
+            if (window.pieChart && typeof window.pieChart.destroy === 'function') {
+                window.pieChart.destroy();
+            }
+
+            // Фильтруем только нужные статусы
+            const filteredData = statusData.filter(item =>
+                item.status === 'approved' || item.status === 'rejected'
+            );
+
+            // Если нет данных, показываем сообщение
+            if (filteredData.length === 0) {
+                document.getElementById('pieChartContainer').innerHTML =
+                    '<p style="text-align: center; color: #6c757d; padding: 20px;">Нет данных для отображения</p>';
+                return;
+            }
+
+            const labels = [];
+            const data = [];
+            const colors = ['#28a745', '#dc3545']; // зелёный для одобрено, красный для отказано
+
+            filteredData.forEach((item, index) => {
+                const statusNames = {
+                    'approved': '✅ Одобрено',
+                    'rejected': '❌ Отказано'
+                };
+                labels.push(statusNames[item.status] || item.status);
+                data.push(item.count || 0);
+            });
+
+            // Вычисляем общее количество для процентов
+            const total = data.reduce((a, b) => a + b, 0);
+
+            window.pieChart = new Chart(ctx2, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors.slice(0, data.length),
+                        borderColor: 'white',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+    } catch (error) {
+        console.error('Ошибка загрузки статистики:', error);
+        showNotification('Ошибка загрузки статистики', 'error');
+    }
 }
 
 function showMyProperties() {
@@ -640,10 +1277,12 @@ function showProfileModal() {
 }
 
 // Заглушки для функций, которые могут быть вызваны, но ещё не реализованы
-function showIncomingApplications() {
-    console.log('showIncomingApplications');
-    openModal('incomingApplicationsModal');
-    // TODO: загрузить список входящих заявок
+function showIncomingContracts() {
+    console.log('showIncomingContracts вызван');
+    document.getElementById('userDropdown')?.classList.remove('show');
+    document.getElementById('dashboardDropdown')?.classList.remove('show');
+    loadContracts('incomingContractsList', false); // false - входящие (где я собственник)
+    openModal('incomingContractsModal');
 }
 
 // Обновлённая функция показа деталей заявки
@@ -708,6 +1347,119 @@ async function showApplicationDetail(applicationId) {
     }
 }
 
+// Функция для отправки формы с указанием статуса
+async function submitPropertyForm(status) {
+    const form = document.getElementById('propertyEditForm');
+    const isEditing = !!form.dataset.propertyId;
+    const currentStatus = document.getElementById('propCurrentStatus').value;
+
+    // Устанавливаем статус
+    document.getElementById('propStatus').value = status;
+
+    // Создаем FormData и заполняем его
+    const formData = new FormData();
+
+    // Добавляем статус
+    formData.append('status', status);
+
+    // Добавляем остальные поля
+    formData.append('title', document.getElementById('propTitle')?.value.trim() || '');
+    formData.append('description', document.getElementById('propDescription')?.value.trim() || '');
+    formData.append('address', document.getElementById('propAddress')?.value.trim() || '');
+    formData.append('city', document.getElementById('propCity')?.value.trim() || '');
+    formData.append('property_type', document.getElementById('propType')?.value || 'apartment');
+    formData.append('area', document.getElementById('propArea')?.value || '0');
+    formData.append('rooms', document.getElementById('propRooms')?.value || '0');
+    formData.append('price', document.getElementById('propPrice')?.value || '0');
+    formData.append('interval_pay', document.getElementById('propInterval')?.value || 'month');
+
+    // Проверка обязательных полей
+    const requiredFields = ['title', 'address', 'city', 'property_type', 'area', 'price', 'interval_pay'];
+    for (let field of requiredFields) {
+        if (!formData.get(field)) {
+            showNotification(`Заполните поле ${field}`, 'error');
+            return;
+        }
+    }
+
+    // Добавляем фотографии
+    if (window.uploadedFiles && window.uploadedFiles.length > 0) {
+        window.uploadedFiles.forEach(file => {
+            formData.append('photos', file);
+        });
+    }
+
+    const propertyId = form.dataset.propertyId;
+    const url = isEditing ? `/api/properties/${propertyId}` : '/api/properties';
+
+    console.log(`📤 ${isEditing ? 'Обновление' : 'Создание'} объекта со статусом: ${status}`);
+
+    // Блокируем кнопки на время отправки
+    const submitButtons = document.querySelectorAll('#propertyEditForm .btn-primary, #propertyEditForm .btn-warning');
+    submitButtons.forEach(btn => btn.disabled = true);
+
+    try {
+        const response = await fetch(url, {
+            method: isEditing ? 'PUT' : 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        });
+
+        const responseText = await response.text();
+        console.log('📥 Ответ сервера:', responseText);
+
+        if (!response.ok) {
+            let errorMsg = 'Ошибка сохранения';
+            try {
+                const err = JSON.parse(responseText);
+                errorMsg = err.detail || err.message || JSON.stringify(err);
+            } catch (e) {
+                errorMsg = responseText || errorMsg;
+            }
+            throw new Error(errorMsg);
+        }
+
+        const result = JSON.parse(responseText);
+
+        let successMessage = '';
+        if (!isEditing) {
+            successMessage = status === 'active' ? '✅ Объект успешно опубликован!' : '✅ Объект сохранён как черновик';
+        } else {
+            if (currentStatus === 'draft' && status === 'active') {
+                successMessage = '✅ Черновик успешно опубликован!';
+            } else if (currentStatus === 'active' && status === 'active') {
+                successMessage = '✅ Изменения сохранены';
+            } else if (currentStatus === 'active' && status === 'draft') {
+                successMessage = '✅ Объект снят с публикации и сохранён как черновик';
+            } else {
+                successMessage = '✅ Черновик обновлён';
+            }
+        }
+
+        showNotification(successMessage, 'success');
+
+        // Очищаем форму
+        form.reset();
+        delete form.dataset.propertyId;
+        window.uploadedFiles = [];
+        updatePhotoPreview();
+
+        closeModal('propertyEditModal');
+
+        // Обновляем список объектов, если он открыт
+        if (document.getElementById('myPropertiesModal').style.display === 'flex') {
+            loadMyProperties();
+        }
+
+    } catch (error) {
+        console.error('❌ Ошибка:', error);
+        showNotification(error.message, 'error');
+    } finally {
+        // Разблокируем кнопки
+        submitButtons.forEach(btn => btn.disabled = false);
+    }
+}
+
 // Функция для отмены заявки
 async function cancelApplication(applicationId) {
     if (!confirm('Вы уверены, что хотите отменить заявку?')) return;
@@ -739,7 +1491,9 @@ function cancelApplicationFromDetail() {
         closeModal('applicationDetailModal');
     }
 }
-
+function closeApplicationDetail() {
+    closeModal('applicationDetailModal');
+}
 // Функция для закрытия деталей и возврата к списку заявок
 function closeApplicationDetailAndShowMyApplications() {
     closeModal('applicationDetailModal');
@@ -758,6 +1512,160 @@ function rejectApplication() {
 function goToContract() {
     console.log('goToContract');
     showNotification('Переход к договору в разработке', 'info');
+}
+
+function goToContractFromApplication(contractId) {
+    if (contractId) {
+        showContractDetail(contractId, 'incoming-applications');
+    } else {
+        showNotification('Договор ещё не создан', 'info');
+    }
+}
+
+// Функция для открытия модального окна ответа на заявку
+async function showRespondModal(applicationId) {
+    try {
+        const response = await fetch(`/api/applications/${applicationId}`, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки данных заявки');
+
+        const app = await response.json();
+        console.log('Данные заявки для ответа:', app);
+
+        // Заполняем информацию о заявке
+        document.getElementById('respondApplicationId').value = app.application_id;
+        document.getElementById('respondPropertyTitle').textContent = app.property_title || 'Название объекта';
+        document.getElementById('respondPropertyAddress').textContent = app.property_address || 'Адрес не указан';
+
+        // Фото
+        if (app.property_photo) {
+            document.getElementById('respondPropertyImage').src = app.property_photo;
+        }
+
+        // Информация об арендаторе
+        document.getElementById('respondTenantName').textContent = app.tenant_name || 'Неизвестно';
+
+        // Даты
+        const desiredDate = app.desired_date ? new Date(app.desired_date).toLocaleDateString('ru-RU') : 'не указана';
+        document.getElementById('respondDesiredDate').textContent = desiredDate;
+        document.getElementById('respondDuration').textContent = app.duration_days || '?';
+        document.getElementById('respondMessage').textContent = app.message || '-';
+
+        // Устанавливаем минимальную дату для новой даты заселения - сегодня
+        const today = new Date().toISOString().split('T')[0];
+        const newDateInput = document.getElementById('respondNewDesiredDate');
+        if (newDateInput) {
+            newDateInput.min = today;
+            newDateInput.value = '';
+        }
+
+        // Очищаем поля
+        const durationInput = document.getElementById('respondDurationDays');
+        if (durationInput) durationInput.value = '';
+
+        const answerInput = document.getElementById('respondAnswer');
+        if (answerInput) answerInput.value = '';
+
+        // Устанавливаем радио-кнопку "Одобрить" по умолчанию
+        const approvedRadio = document.querySelector('input[name="status"][value="approved"]');
+        if (approvedRadio) approvedRadio.checked = true;
+
+        openModal('respondApplicationModal');
+
+    } catch (error) {
+        console.error('Ошибка загрузки заявки:', error);
+        showNotification('Ошибка загрузки данных заявки', 'error');
+    }
+}
+
+// Обработчик отправки формы ответа
+document.addEventListener('DOMContentLoaded', function() {
+    const respondForm = document.getElementById('respondApplicationForm');
+    if (respondForm) {
+        respondForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const applicationId = document.getElementById('respondApplicationId').value;
+            if (!applicationId) {
+                showNotification('Ошибка: не указана заявка', 'error');
+                return;
+            }
+
+            const status = document.querySelector('input[name="status"]:checked')?.value;
+            const answer = document.getElementById('respondAnswer').value;
+            const durationDays = document.getElementById('respondDurationDays').value;
+            const desiredDate = document.getElementById('respondNewDesiredDate').value;
+
+            if (!status) {
+                showNotification('Выберите решение', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('status', status);
+            if (answer) formData.append('answer', answer);
+            if (durationDays) formData.append('duration_days', parseInt(durationDays));
+            if (desiredDate) formData.append('desired_date', desiredDate);
+
+            try {
+                showNotification('Отправка ответа...', 'info');
+
+                const response = await fetch(`/api/applications/${applicationId}/respond`, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin'
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Ошибка отправки ответа');
+                }
+
+                showNotification('Ответ успешно отправлен!', 'success');
+                closeModal('respondApplicationModal');
+
+                // Обновляем список входящих заявок
+                if (document.getElementById('incomingApplicationsModal').style.display === 'flex') {
+                    loadIncomingApplications();
+                }
+
+            } catch (error) {
+                console.error('Ошибка:', error);
+                showNotification(error.message, 'error');
+            }
+        });
+    }
+});
+
+// Переопределяем функцию closeModal для сброса кнопок
+const originalCloseModal = closeModal;
+closeModal = function(modalId) {
+    if (modalId === 'propertyEditModal') {
+        // Сбрасываем кнопки к исходному состоянию
+        const cancelBtn = document.querySelector('#propertyEditForm .btn-secondary');
+        const draftBtn = document.querySelector('#propertyEditForm .btn-warning');
+        const publishBtn = document.querySelector('#propertyEditForm .btn-primary');
+
+        if (cancelBtn && draftBtn && publishBtn) {
+            draftBtn.style.display = 'block';
+            draftBtn.textContent = '💾 Сохранить как черновик';
+            draftBtn.onclick = () => submitPropertyForm('draft');
+
+            publishBtn.textContent = '📢 Опубликовать';
+            publishBtn.onclick = () => submitPropertyForm('active');
+
+            publishBtn.style.display = 'block';
+            cancelBtn.style.display = 'block';
+        }
+    }
+    originalCloseModal(modalId);
+};
+
+function showIncomingContracts() {
+    console.log('showIncomingContracts вызван');
+    document.getElementById('userDropdown')?.classList.remove('show');
+    document.getElementById('dashboardDropdown')?.classList.remove('show');
+    loadContracts('incomingContractsList', false); // false - входящие (где я собственник/агент)
+    openModal('incomingContractsModal');
 }
 
 // ==================== ЗАГРУЗКА ДАННЫХ ====================
@@ -801,20 +1709,26 @@ async function loadMyApplications() {
                 console.error('Ошибка загрузки фото:', e);
             }
 
-            // Определяем статус
+            // Определяем статус и его отображение
             const statusConfig = {
-                pending: { bg: '#fff3cd', color: '#856404', text: 'На рассмотрении' },
-                approved: { bg: '#d4edda', color: '#155724', text: 'Одобрена' },
-                rejected: { bg: '#f8d7da', color: '#721c24', text: 'Отклонена' }
+                pending: { bg: '#fff3cd', color: '#856404', text: '⏳ На рассмотрении', icon: '🕒' },
+                approved: { bg: '#d4edda', color: '#155724', text: '✅ Одобрена', icon: '✅' },
+                rejected: { bg: '#f8d7da', color: '#721c24', text: '❌ Отклонена', icon: '❌' },
+                cancelled: { bg: '#e9ecef', color: '#6c757d', text: '🚫 Отменена', icon: '🚫' },
+                completed: { bg: '#cce5ff', color: '#004085', text: '✓ Завершена', icon: '✓' }
             };
 
-            const status = statusConfig[app.status] || { bg: '#e9ecef', color: '#6c757d', text: app.status };
+            const status = statusConfig[app.status] || { bg: '#e9ecef', color: '#6c757d', text: app.status, icon: '❓' };
 
             // Форматируем дату
             const desiredDate = app.desired_date ? new Date(app.desired_date).toLocaleDateString('ru-RU') : 'не указана';
 
             // Формируем стоимость
             const priceDisplay = app.price ? `${Number(app.price).toLocaleString('ru-RU')} ₽/мес` : 'Цена не указана';
+
+            // Определяем, показывать ли кнопку отмены (ТОЛЬКО ДЛЯ pending И approved)
+            // Если нужно только для pending, замените на: app.status === 'pending'
+            const showCancelButton = app.status === 'pending' || app.status === 'approved';
 
             html += `
                 <div class="application-item" style="display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef; align-items: center;">
@@ -829,18 +1743,24 @@ async function loadMyApplications() {
                         <div style="color: #6c757d; font-size: 14px; margin-bottom: 5px;">Длительность: ${app.duration_days || '?'} дней</div>
                         <div style="color: #6c757d; font-size: 14px; margin-bottom: 5px;">Желаемая дата: ${desiredDate}</div>
                         <div style="margin-bottom: 5px;">
-                            <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${status.bg}; color: ${status.color};">${status.text}</span>
+                            <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${status.bg}; color: ${status.color};">
+                                ${status.icon} ${status.text}
+                            </span>
                         </div>
                         <div style="font-weight: 700; color: #28a745; font-size: 16px;">${priceDisplay}</div>
+                        ${app.answer ? `<div style="margin-top: 8px; font-size: 13px; color: #495057; background: #f8f9fa; padding: 8px; border-radius: 6px;"><strong>Ответ:</strong> ${app.answer}</div>` : ''}
                     </div>
 
                     <!-- Кнопки справа -->
                     <div style="display: flex; flex-direction: column; gap: 8px; min-width: 160px;">
-                        <button class="btn-info" onclick="showApplicationDetail(${app.application_id})" style="padding: 10px 12px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                        <button class="btn-info" onclick="showApplicationDetail(${app.application_id})"
+                                style="padding: 10px 12px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 5px;">
                             📋 Сведения о заявке
                         </button>
-                        ${app.status === 'pending' ?
-                            `<button class="btn-danger" onclick="cancelApplication(${app.application_id})" style="padding: 10px 12px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 5px;">
+
+                        ${showCancelButton ?
+                            `<button class="btn-danger" onclick="cancelApplication(${app.application_id})"
+                                    style="padding: 10px 12px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 5px;">
                                 🗑 Отменить заявку
                             </button>` :
                             ''
@@ -924,12 +1844,7 @@ async function loadMyProperties() {
     }
 }
 
-function loadAgentStats() {
-    fetch('/api/agent/stats', { credentials: 'same-origin' })
-        .then(response => response.json())
-        .then(data => console.log('Статистика:', data))
-        .catch(error => console.error('Ошибка загрузки статистики:', error));
-}
+
 
 // ==================== ВАЛИДАЦИЯ ====================
 
@@ -1220,20 +2135,36 @@ function formatFileSize(bytes) {
 
 function updatePhotoPreview() {
     const container = document.getElementById('photoPreviewContainer');
+    const existingContainer = document.getElementById('existingPhotosContainer');
     const counter = document.getElementById('photoCounter');
+
     if (!container) return;
-    if (counter) counter.textContent = `${window.uploadedFiles ? window.uploadedFiles.length : 0}/${MAX_PHOTOS}`;
+
+    if (counter) {
+        counter.textContent = `${window.uploadedFiles ? window.uploadedFiles.length : 0}/${MAX_PHOTOS}`;
+    }
+
+    // Очищаем контейнер существующих фото, если мы загружаем новые
+    if (existingContainer) {
+        existingContainer.innerHTML = '';
+    }
+
     if (!window.uploadedFiles || window.uploadedFiles.length === 0) {
-        container.innerHTML = '<div class="empty-preview">Фотографии не выбраны</div>';
+        // Не очищаем, если есть существующие фото - они должны отображаться отдельно
         return;
     }
+
     let html = '';
     window.uploadedFiles.forEach((file, index) => {
         const url = URL.createObjectURL(file);
         html += `
             <div class="photo-preview-block">
                 <div class="photo-preview-image">
-                    <img src="${url}" alt="Preview" onload="URL.revokeObjectURL('${url}')">
+                    <img src="${url}" alt="Preview" onload="(function(img){
+                        setTimeout(function(){
+                            URL.revokeObjectURL(img.src);
+                        }, 1000);
+                    })(this)">
                 </div>
                 <div class="photo-preview-info">
                     <div class="photo-preview-name">${file.name.length > 20 ? file.name.substring(0, 17) + '...' : file.name}</div>
@@ -1280,9 +2211,61 @@ function showAddPropertyModal() {
     if (form) {
         form.reset();
         delete form.dataset.propertyId;
+        document.getElementById('propCurrentStatus').value = '';
     }
     document.getElementById('propertyEditTitle').textContent = 'Добавление объекта';
+
+    // ОЧИЩАЕМ фотографии
+    window.uploadedFiles = [];
+    updatePhotoPreview(); // Очищаем предпросмотр
+
+    // Сбрасываем контейнер существующих фото
+    const existingContainer = document.getElementById('existingPhotosContainer');
+    if (existingContainer) {
+        existingContainer.innerHTML = '';
+    }
+
+    // В режиме создания показываем все кнопки
+    const cancelBtn = document.querySelector('#propertyEditForm .btn-secondary');
+    const draftBtn = document.querySelector('#propertyEditForm .btn-warning');
+    const publishBtn = document.querySelector('#propertyEditForm .btn-primary');
+
+    if (cancelBtn && draftBtn && publishBtn) {
+        draftBtn.style.display = 'block';
+        draftBtn.textContent = '💾 Сохранить как черновик';
+        draftBtn.onclick = () => submitPropertyForm('draft');
+
+        publishBtn.textContent = '📢 Опубликовать';
+        publishBtn.onclick = () => submitPropertyForm('active');
+
+        publishBtn.style.display = 'block';
+        cancelBtn.style.display = 'block';
+    }
+
     openModal('propertyEditModal');
+}
+
+// Функция для обновления кнопок в зависимости от статуса
+function updatePropertyEditButtonsForEditing(currentStatus) {
+    const cancelBtn = document.querySelector('#propertyEditForm .btn-secondary');
+    const draftBtn = document.querySelector('#propertyEditForm .btn-warning');
+    const publishBtn = document.querySelector('#propertyEditForm .btn-primary');
+
+    if (!cancelBtn || !draftBtn || !publishBtn) return;
+
+    if (currentStatus === 'active') {
+        draftBtn.style.display = 'none';
+        publishBtn.textContent = '💾 Сохранить изменения';
+        publishBtn.onclick = () => submitPropertyForm('active');
+        cancelBtn.style.display = 'block';
+    } else {
+        draftBtn.style.display = 'block';
+        draftBtn.textContent = '💾 Обновить черновик';
+        draftBtn.onclick = () => submitPropertyForm('draft');
+        publishBtn.textContent = '📢 Опубликовать';
+        publishBtn.onclick = () => submitPropertyForm('active');
+        cancelBtn.style.display = 'block';
+    }
 }
 
 async function editProperty(propertyId) {
@@ -1290,7 +2273,10 @@ async function editProperty(propertyId) {
     try {
         const response = await fetch(`/api/property/${propertyId}`, { credentials: 'same-origin' });
         if (!response.ok) throw new Error('Не удалось загрузить данные');
+
         const prop = await response.json();
+
+        // Заполняем форму
         document.getElementById('propTitle').value = prop.title || '';
         document.getElementById('propDescription').value = prop.description || '';
         document.getElementById('propAddress').value = prop.address || '';
@@ -1300,16 +2286,30 @@ async function editProperty(propertyId) {
         document.getElementById('propRooms').value = prop.rooms || '';
         document.getElementById('propPrice').value = prop.price || '';
         document.getElementById('propInterval').value = prop.interval_pay || 'month';
+        document.getElementById('propCurrentStatus').value = prop.status || 'draft';
+
+        // Очищаем новые фото перед загрузкой существующих
+        window.uploadedFiles = [];
+
+        // Отображаем существующие фото
         if (prop.photos && prop.photos.length > 0) {
-            console.log(`📸 Загружено ${prop.photos.length} существующих фотографий`);
             displayExistingPhotos(prop.photos);
         } else {
             document.getElementById('photoPreviewContainer').innerHTML = '<div class="empty-preview">Фотографии не загружены</div>';
+            const existingContainer = document.getElementById('existingPhotosContainer');
+            if (existingContainer) {
+                existingContainer.innerHTML = '';
+            }
         }
-        window.uploadedFiles = [];
+
         document.getElementById('propertyEditForm').dataset.propertyId = propertyId;
         document.getElementById('propertyEditTitle').textContent = 'Редактирование объекта';
+
+        // Настраиваем кнопки в зависимости от статуса
+        updatePropertyEditButtonsForEditing(prop.status);
+
         openModal('propertyEditModal');
+
     } catch (error) {
         console.error(error);
         showNotification(error.message, 'error');
@@ -1318,11 +2318,15 @@ async function editProperty(propertyId) {
 
 function displayExistingPhotos(photos) {
     const container = document.getElementById('photoPreviewContainer');
+    const existingContainer = document.getElementById('existingPhotosContainer');
     if (!container) return;
+
     if (!photos || photos.length === 0) {
         container.innerHTML = '<div class="empty-preview">Фотографии не загружены</div>';
+        if (existingContainer) existingContainer.innerHTML = '';
         return;
     }
+
     let html = '';
     photos.forEach((photo, index) => {
         html += `
@@ -1338,6 +2342,7 @@ function displayExistingPhotos(photos) {
         `;
     });
     container.innerHTML = html;
+    if (existingContainer) existingContainer.innerHTML = ''; // очищаем старые фото
 }
 
 async function deleteProperty(propertyId) {
@@ -1553,12 +2558,13 @@ async function openChat(userId) {
             }
         }
 
-        // Получаем актуальный статус через отдельный запрос
+        // ПОЛУЧАЕМ АКТУАЛЬНЫЙ СТАТУС
         try {
             const statusResponse = await fetch(`/api/user/${userId}/status`, { credentials: 'same-origin' });
             if (statusResponse.ok) {
                 const statusData = await statusResponse.json();
                 updateUserStatus(statusData.is_online);
+                console.log(`Статус пользователя ${userId} при открытии чата: ${statusData.is_online ? 'онлайн' : 'офлайн'}`);
             }
         } catch (e) {
             console.error('Ошибка получения статуса:', e);
@@ -1716,12 +2722,24 @@ function startMessagesRefresh(userId) {
     if (messagesRefreshInterval) {
         clearInterval(messagesRefreshInterval);
     }
-    // Обновляем каждые 2 секунды вместо 5
-    messagesRefreshInterval = setInterval(() => {
+
+    messagesRefreshInterval = setInterval(async () => {
         if (currentChatUserId === userId) {
-            loadMessages(userId);
+            // Обновляем сообщения
+            await loadMessages(userId);
+
+            // Обновляем статус
+            try {
+                const statusResponse = await fetch(`/api/user/${userId}/status`, { credentials: 'same-origin' });
+                if (statusResponse.ok) {
+                    const statusData = await statusResponse.json();
+                    updateUserStatus(statusData.is_online);
+                }
+            } catch (e) {
+                console.error('Ошибка обновления статуса:', e);
+            }
         }
-    }, 2000);
+    }, 10000); // Каждые 10 секунд
 }
 // Остановить обновление сообщений
 function stopMessagesRefresh() {
@@ -1811,77 +2829,147 @@ async function contactUser(userId, userName) {
 
 let socket = null;
 let currentUserId = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 // Получить ID текущего пользователя (нужно добавить в шаблон)
 function getCurrentUserId() {
-    // Можно получить из глобальной переменной или из data-атрибута
-    return window.currentUserId; // Нужно добавить в шаблон
+    console.log('🔍 Поиск ID пользователя...');
+
+    // Способ 1: из data-атрибута
+    const userData = document.getElementById('user-data');
+    if (userData && userData.dataset.userId && userData.dataset.userId !== '') {
+        const userId = parseInt(userData.dataset.userId);
+        if (!isNaN(userId) && userId > 0) {
+            console.log('✅ ID из data-атрибута:', userId);
+            return userId;
+        }
+    }
+
+    // Способ 2: из глобальной переменной
+    if (window.currentUser && window.currentUser.id) {
+        console.log('✅ ID из window.currentUser:', window.currentUser.id);
+        return window.currentUser.id;
+    }
+
+    // Способ 3: из cookie (пробуем декодировать JWT)
+    try {
+        const cookies = document.cookie.split(';');
+        const tokenCookie = cookies.find(c => c.trim().startsWith('access_token='));
+        if (tokenCookie) {
+            const token = tokenCookie.split('=')[1];
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const payload = JSON.parse(atob(base64));
+
+            if (payload.user_id) {
+                console.log('✅ ID из JWT токена:', payload.user_id);
+                return payload.user_id;
+            }
+        }
+    } catch (e) {
+        console.warn('⚠️ Не удалось декодировать JWT:', e);
+    }
+
+    console.log('❌ ID пользователя не найден');
+    return null;
 }
 
 // Инициализация WebSocket соединения
 function initWebSocket() {
     const userId = getCurrentUserId();
-    if (!userId) return;
+    console.log('initWebSocket: userId =', userId, 'попытка:', reconnectAttempts + 1);
 
-    currentUserId = userId;
+    if (!userId) {
+        console.warn('⚠️ Нет ID пользователя, WebSocket не инициализируется');
 
-    // Закрываем предыдущее соединение если есть
-    if (socket) {
-        socket.close();
+        // Пробуем переподключиться позже
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            setTimeout(initWebSocket, 2000 * reconnectAttempts);
+        }
+        return;
     }
 
-    // Создаём новое соединение
-    socket = new WebSocket(`ws://${window.location.host}/ws/${userId}`);
+    // Сброс счетчика при успешном получении ID
+    reconnectAttempts = 0;
 
-    socket.onopen = function(event) {
-        console.log('WebSocket соединение установлено');
-        // Отправляем ping каждые 30 секунд для поддержания соединения
-        setInterval(() => {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send('ping');
-            }
-        }, 30000);
-    };
-
-    socket.onmessage = function(event) {
-    console.log('WebSocket сообщение:', event.data);
-
-        // Проверяем, является ли сообщение JSON
-        if (event.data.startsWith('{')) {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'status_update') {
-                    updateUserOnlineStatus(data.user_id, data.is_online);
-                }
-            } catch (e) {
-                console.error('Ошибка парсинга JSON:', e);
-            }
-        } else {
-            console.log('Получено не-JSON сообщение:', event.data);
-            // Игнорируем pong и другие не-JSON сообщения
+    // Закрываем старый сокет
+    if (socket) {
+        try {
+            socket.close();
+        } catch (e) {
+            console.warn('Ошибка при закрытии сокета:', e);
         }
-    };
+    }
 
-    socket.onclose = function(event) {
-        console.log('WebSocket соединение закрыто');
-        // Пытаемся переподключиться через 5 секунд
-        setTimeout(() => {
-            if (document.visibilityState === 'visible') {
-                initWebSocket();
+    // Определяем протокол
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/${userId}`;
+
+    console.log('🔄 Подключение к WebSocket:', wsUrl);
+
+    try {
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = function(event) {
+            console.log('✅ WebSocket соединение установлено для пользователя', userId);
+            reconnectAttempts = 0;
+        };
+
+        socket.onmessage = function(event) {
+            console.log('📨 WebSocket сообщение:', event.data);
+
+            if (event.data.startsWith('{')) {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'status_update') {
+                        updateUserOnlineStatus(data.user_id, data.is_online);
+                    }
+                    else if (data.type === 'online_list') {
+                        console.log('📋 Онлайн пользователи:', data.online_users);
+                        data.online_users.forEach(onlineUserId => {
+                            if (onlineUserId != userId) {
+                                updateUserOnlineStatus(onlineUserId, true);
+                            }
+                        });
+                    }
+
+                } catch (e) {
+                    console.error('❌ Ошибка парсинга JSON:', e);
+                }
+            } else {
+                // Игнорируем pong и другие не-JSON сообщения
             }
-        }, 5000);
-    };
+        };
 
-    socket.onerror = function(error) {
-        console.error('WebSocket ошибка:', error);
-    };
+        socket.onclose = function(event) {
+            console.log('❌ WebSocket соединение закрыто', event.code, event.reason);
+
+            // Пытаемся переподключиться
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                reconnectAttempts++;
+                const delay = 2000 * reconnectAttempts;
+                console.log(`🔄 Переподключение через ${delay}ms...`);
+                setTimeout(initWebSocket, delay);
+            }
+        };
+
+        socket.onerror = function(error) {
+            console.error('❌ WebSocket ошибка:', error);
+        };
+
+    } catch (error) {
+        console.error('❌ Ошибка создания WebSocket:', error);
+    }
 }
 
 // Обновление статуса пользователя в интерфейсе
 function updateUserOnlineStatus(userId, isOnline) {
     console.log(`🟢 Обновление статуса пользователя ${userId}: ${isOnline ? 'онлайн' : 'офлайн'}`);
 
-    // 1. Обновляем статус в списке диалогов
+    // Обновляем статус в списке диалогов
     const dialogElement = document.querySelector(`.dialog-item[data-user-id="${userId}"]`);
     if (dialogElement) {
         const statusDot = dialogElement.querySelector('.online-dot');
@@ -1891,9 +2979,8 @@ function updateUserOnlineStatus(userId, isOnline) {
         }
     }
 
-    // 2. Обновляем статус в открытом чате
+    // Обновляем статус в открытом чате
     if (currentChatUserId === userId) {
-        console.log(`   💬 Обновление статуса в открытом чате для пользователя ${userId}`);
         updateUserStatus(isOnline);
     }
 }
@@ -1946,20 +3033,41 @@ function startMessagesRefresh(userId) {
 
 // Запуск при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
-    // Получаем ID пользователя из data-атрибута или глобальной переменной
-    const userElement = document.getElementById('user-data');
-    if (userElement) {
-        window.currentUserId = userElement.dataset.userId;
-        initWebSocket();
-    }
+    console.log('DOM загружен, инициализация...');
+
+    // Небольшая задержка для гарантии загрузки всех данных
+    setTimeout(() => {
+        const userId = getCurrentUserId();
+        console.log('Пользователь ID после задержки:', userId);
+
+        if (userId) {
+            initWebSocket();
+        } else {
+            console.warn('⚠️ Пользователь не авторизован, WebSocket не запущен');
+        }
+    }, 100);
 });
 
 // Переподключение при возвращении на страницу
 document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible' && !socket) {
+        console.log('🔄 Страница снова активна, переподключаем WebSocket');
         initWebSocket();
     }
 });
+
+window.debugAuth = function() {
+    console.log('=== ДИАГНОСТИКА АВТОРИЗАЦИИ ===');
+    console.log('Cookies:', document.cookie);
+    console.log('user-data:', document.getElementById('user-data')?.dataset);
+    console.log('window.currentUser:', window.currentUser);
+    console.log('socket state:', socket?.readyState);
+
+    fetch('/api/online-users', { credentials: 'same-origin' })
+        .then(res => res.json())
+        .then(data => console.log('Онлайн пользователи:', data))
+        .catch(err => console.error('Ошибка:', err));
+};
 
 // ==================== ОБРАБОТЧИКИ СОБЫТИЙ ====================
 
@@ -2070,49 +3178,54 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             window._submitting = true;
 
-            const dashboardBtn = document.querySelector('.dashboard-btn');
-            if (!dashboardBtn) {
-                showNotification('У вас нет прав для создания объектов', 'error');
-                window._submitting = false;
-                return;
-            }
-
-            const requiredFields = ['propTitle', 'propAddress', 'propCity', 'propType', 'propArea', 'propPrice', 'propInterval'];
-            const fieldValues = {};
-
-            for (let fieldId of requiredFields) {
-                const field = document.getElementById(fieldId);
-                if (!field || !field.value.trim()) {
-                    showNotification(`Заполните поле ${fieldId.replace('prop', '')}`, 'error');
+            try {
+                // Проверяем права
+                const dashboardBtn = document.querySelector('.dashboard-btn');
+                if (!dashboardBtn) {
+                    showNotification('У вас нет прав для создания объектов', 'error');
                     window._submitting = false;
                     return;
                 }
-                fieldValues[fieldId] = field.value.trim();
-            }
 
-            const filesToUpload = window.uploadedFiles ? [...window.uploadedFiles] : [];
+                // Собираем данные формы
+                const formData = new FormData();
 
-            const formData = new FormData();
-            formData.append('title', fieldValues.propTitle);
-            formData.append('description', document.getElementById('propDescription')?.value.trim() || '');
-            formData.append('address', fieldValues.propAddress);
-            formData.append('city', fieldValues.propCity);
-            formData.append('property_type', fieldValues.propType);
-            formData.append('area', fieldValues.propArea);
-            formData.append('rooms', document.getElementById('propRooms')?.value || 0);
-            formData.append('price', fieldValues.propPrice);
-            formData.append('interval_pay', fieldValues.propInterval);
+                // Основные поля
+                formData.append('title', document.getElementById('propTitle')?.value.trim() || '');
+                formData.append('description', document.getElementById('propDescription')?.value.trim() || '');
+                formData.append('address', document.getElementById('propAddress')?.value.trim() || '');
+                formData.append('city', document.getElementById('propCity')?.value.trim() || '');
+                formData.append('property_type', document.getElementById('propType')?.value || 'apartment');
+                formData.append('area', document.getElementById('propArea')?.value || '0');
+                formData.append('rooms', document.getElementById('propRooms')?.value || '0');
+                formData.append('price', document.getElementById('propPrice')?.value || '0');
+                formData.append('interval_pay', document.getElementById('propInterval')?.value || 'month');
 
-            const propertyId = propertyEditForm.dataset.propertyId;
-            const isEditing = !!propertyId;
-            const url = isEditing ? `/api/properties/${propertyId}` : '/api/properties';
-            const method = isEditing ? 'PUT' : 'POST';
+                // Проверка обязательных полей
+                const requiredFields = ['title', 'address', 'city', 'property_type', 'area', 'price', 'interval_pay'];
+                for (let field of requiredFields) {
+                    if (!formData.get(field)) {
+                        showNotification(`Заполните поле ${field}`, 'error');
+                        window._submitting = false;
+                        return;
+                    }
+                }
 
-            console.log(`📤 ${isEditing ? 'Обновление' : 'Создание'} объекта...`);
+                // Добавляем фотографии
+                if (window.uploadedFiles && window.uploadedFiles.length > 0) {
+                    window.uploadedFiles.forEach(file => {
+                        formData.append('photos', file);
+                    });
+                }
 
-            try {
+                const propertyId = propertyEditForm.dataset.propertyId;
+                const isEditing = !!propertyId;
+                const url = isEditing ? `/api/properties/${propertyId}` : '/api/properties';
+
+                console.log(`📤 ${isEditing ? 'Обновление' : 'Создание'} объекта...`);
+
                 const response = await fetch(url, {
-                    method: method,
+                    method: isEditing ? 'PUT' : 'POST',
                     body: formData,
                     credentials: 'same-origin'
                 });
@@ -2124,7 +3237,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     let errorMsg = 'Ошибка сохранения';
                     try {
                         const err = JSON.parse(responseText);
-                        errorMsg = err.detail || errorMsg;
+                        errorMsg = err.detail || err.message || JSON.stringify(err);
                     } catch (e) {
                         errorMsg = responseText || errorMsg;
                     }
@@ -2132,22 +3245,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 const result = JSON.parse(responseText);
-                const newPropertyId = result.property_id || propertyId;
 
                 showNotification(isEditing ? 'Объект обновлён' : 'Объект создан', 'success');
 
-                if (!isEditing && filesToUpload.length > 0) {
-                    console.log(`📸 Загружаем ${filesToUpload.length} фотографий для объекта ID=${newPropertyId}`);
-                    showNotification('Загрузка фотографий...', 'info');
-                    await uploadPropertyPhotos(newPropertyId, filesToUpload);
-                }
-
-                if (isEditing && filesToUpload.length > 0) {
-                    console.log(`📸 Добавляем ${filesToUpload.length} новых фотографий к объекту ID=${propertyId}`);
-                    showNotification('Загрузка новых фотографий...', 'info');
-                    await uploadPropertyPhotos(propertyId, filesToUpload);
-                }
-
+                // Очищаем форму
                 propertyEditForm.reset();
                 delete propertyEditForm.dataset.propertyId;
                 window.uploadedFiles = [];
@@ -2155,9 +3256,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 closeModal('propertyEditModal');
 
+                // Обновляем список объектов, если он открыт
                 if (document.getElementById('myPropertiesModal').style.display === 'flex') {
                     loadMyProperties();
                 }
+
             } catch (error) {
                 console.error('❌ Ошибка:', error);
                 showNotification(error.message, 'error');
@@ -2255,6 +3358,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const message = document.getElementById('messageInput').value;
             await sendMessage(currentChatUserId, message);
         });
+    }
+
+    if (window.currentUser?.id) {
+        // Первоначальная загрузка
+        fetch('/api/my/dialogs', { credentials: 'same-origin' })
+            .then(res => res.json())
+            .then(dialogs => updateBadges(dialogs))
+            .catch(err => console.error('Ошибка загрузки диалогов:', err));
+
+        startNotificationsRefresh();
     }
 }
 
@@ -2424,6 +3537,198 @@ function updateUserStatus(isOnline, lastSeen) {
     }
 }
 
+// ==================== УВЕДОМЛЕНИЯ И СООБЩЕНИЯ ====================
+
+let notificationsRefreshInterval = null;
+
+// Переключение дропдауна уведомлений
+function toggleNotifications() {
+    const dropdown = document.getElementById('notificationsDropdown');
+    const messagesDropdown = document.getElementById('messagesDropdown');
+
+    if (messagesDropdown) messagesDropdown.classList.remove('show');
+    dropdown.classList.toggle('show');
+
+    if (dropdown.classList.contains('show')) {
+        loadNotifications();
+    }
+}
+
+// Переключение дропдауна сообщений
+function toggleMessages() {
+    const dropdown = document.getElementById('messagesDropdown');
+    const notificationsDropdown = document.getElementById('notificationsDropdown');
+
+    if (notificationsDropdown) notificationsDropdown.classList.remove('show');
+    dropdown.classList.toggle('show');
+
+    if (dropdown.classList.contains('show')) {
+        loadRecentMessages();
+    }
+}
+
+// Загрузить уведомления (непрочитанные сообщения)
+async function loadNotifications() {
+    try {
+        // Получаем диалоги с непрочитанными
+        const response = await fetch('/api/my/dialogs', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки');
+
+        const dialogs = await response.json();
+        console.log('Диалоги для уведомлений:', dialogs);
+
+        const container = document.getElementById('notificationsList');
+        if (!container) return;
+
+        // Фильтруем только диалоги с непрочитанными
+        const unreadDialogs = dialogs.filter(d => d.unread > 0);
+
+        if (unreadDialogs.length === 0) {
+            container.innerHTML = '<div class="notification-item loading">Нет новых уведомлений</div>';
+            return;
+        }
+
+        let html = '';
+        unreadDialogs.forEach(dialog => {
+            const time = dialog.last_time ? new Date(dialog.last_time).toLocaleString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit',
+                day: '2-digit',
+                month: '2-digit'
+            }) : '';
+
+            html += `
+                <div class="notification-item" onclick="openChat(${dialog.user_id}); toggleNotifications()">
+                    <div class="notification-sender">${dialog.user_name}</div>
+                    <div class="notification-content">${dialog.last_message || '...'}</div>
+                    <div class="notification-time">${time}</div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+
+        // Обновляем счетчик
+        updateBadges(dialogs);
+
+    } catch (error) {
+        console.error('Ошибка загрузки уведомлений:', error);
+    }
+}
+
+// Загрузить последние сообщения для быстрого доступа
+async function loadRecentMessages() {
+    try {
+        const response = await fetch('/api/my/dialogs', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки');
+
+        const dialogs = await response.json();
+        console.log('Последние сообщения:', dialogs);
+
+        const container = document.getElementById('messagesDropdownList');
+        if (!container) return;
+
+        if (dialogs.length === 0) {
+            container.innerHTML = '<div class="message-item loading">Нет сообщений</div>';
+            return;
+        }
+
+        // Берем первые 5 диалогов
+        const recentDialogs = dialogs.slice(0, 5);
+
+        let html = '';
+        recentDialogs.forEach(dialog => {
+            const time = dialog.last_time ? new Date(dialog.last_time).toLocaleString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+            }) : '';
+
+            const unreadClass = dialog.unread > 0 ? 'unread' : '';
+
+            html += `
+                <div class="message-item ${unreadClass}" onclick="openChat(${dialog.user_id}); toggleMessages()">
+                    <div class="message-sender">${dialog.user_name}</div>
+                    <div class="message-preview">${dialog.last_message || '...'}</div>
+                    <div class="message-time">${time}</div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+
+        // Обновляем счетчики
+        updateBadges(dialogs);
+
+    } catch (error) {
+        console.error('Ошибка загрузки сообщений:', error);
+    }
+}
+
+// Обновить все счетчики
+function updateBadges(dialogs) {
+    // Счетчик для уведомлений (непрочитанные сообщения)
+    const notificationsBadge = document.getElementById('notificationsBadge');
+    const unreadCount = dialogs.reduce((sum, dialog) => sum + (dialog.unread || 0), 0);
+
+    if (unreadCount > 0) {
+        notificationsBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+        notificationsBadge.style.display = 'flex';
+    } else {
+        notificationsBadge.style.display = 'none';
+    }
+
+    // Счетчик для сообщений (общее количество диалогов с непрочитанными)
+    const messagesBadge = document.getElementById('messagesBadge');
+    const unreadDialogsCount = dialogs.filter(d => d.unread > 0).length;
+
+    if (unreadDialogsCount > 0) {
+        messagesBadge.textContent = unreadDialogsCount > 99 ? '99+' : unreadDialogsCount;
+        messagesBadge.style.display = 'flex';
+    } else {
+        messagesBadge.style.display = 'none';
+    }
+}
+
+// Отметить все уведомления как прочитанные
+async function markAllNotificationsRead() {
+    try {
+        // Получаем все диалоги
+        const response = await fetch('/api/my/dialogs', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки');
+
+        const dialogs = await response.json();
+
+        // Для каждого диалога с непрочитанными - открываем чат (они прочитаются автоматически)
+        for (const dialog of dialogs) {
+            if (dialog.unread > 0) {
+                await fetch(`/api/messages?chat_with=${dialog.user_id}`, { credentials: 'same-origin' });
+            }
+        }
+
+        // Обновляем список и счетчики
+        loadNotifications();
+        loadRecentMessages();
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+    }
+}
+
+// Запустить периодическое обновление
+function startNotificationsRefresh() {
+    if (notificationsRefreshInterval) {
+        clearInterval(notificationsRefreshInterval);
+    }
+
+    notificationsRefreshInterval = setInterval(() => {
+        if (window.currentUser?.id) {
+            fetch('/api/my/dialogs', { credentials: 'same-origin' })
+                .then(res => res.json())
+                .then(dialogs => updateBadges(dialogs))
+                .catch(err => console.error('Ошибка обновления счетчиков:', err));
+        }
+    }, 30000); // Каждые 30 секунд
+}
+
+
 // Закрытие по клику на фон
 window.addEventListener('click', function(event) {
     if (event.target.classList.contains('popup') || event.target.classList.contains('modal')) {
@@ -2443,6 +3748,19 @@ window.addEventListener('click', function(event) {
     if (dashboardDropdown && !dashboardDropdown.contains(event.target) &&
         dashboardBtn && !dashboardBtn.contains(event.target)) {
         dashboardDropdown.classList.remove('show');
+    }
+
+    const notificationsIcon = document.getElementById('notificationsIcon');
+    const messagesIcon = document.getElementById('messagesIcon');
+    const notificationsDropdown = document.getElementById('notificationsDropdown');
+    const messagesDropdown = document.getElementById('messagesDropdown');
+
+    if (notificationsIcon && !notificationsIcon.contains(event.target)) {
+        notificationsDropdown?.classList.remove('show');
+    }
+
+    if (messagesIcon && !messagesIcon.contains(event.target)) {
+        messagesDropdown?.classList.remove('show');
     }
 });
 
@@ -2501,7 +3819,12 @@ window.acceptApplication = acceptApplication;
 window.rejectApplication = rejectApplication;
 window.goToContract = goToContract;
 window.closeApplicationDetailAndShowMyApplications = closeApplicationDetailAndShowMyApplications;
-window.closeApplicationDetail = closeApplicationDetail;  // Теперь определена
+window.closeApplicationDetail = closeApplicationDetail;
+window.showRespondModal = showRespondModal;
+window.loadIncomingApplications = loadIncomingApplications;
+window.submitPropertyForm = submitPropertyForm;
+window.updatePropertyEditButtonsForEditing = updatePropertyEditButtonsForEditing;
+window.goToContractFromApplication = goToContractFromApplication;
 
 // Функции для чата
 window.showDialogsList = showDialogsList;
@@ -2509,9 +3832,28 @@ window.openChat = openChat;
 window.closeChat = closeChat;
 window.deleteDialog = deleteDialog;
 window.contactUser = contactUser;
+window.cancelContract = cancelContract;
 window.isUserLoggedIn = isUserLoggedIn;
-window.initWebSocket = initWebSocket;  // Добавляем для возможности перезапуска
+window.initWebSocket = initWebSocket;
 
-console.log('script.js полностью загружен, все функции экспортированы');
+// ✅ НОВЫЕ ФУНКЦИИ ДЛЯ УВЕДОМЛЕНИЙ И СООБЩЕНИЙ
+window.toggleNotifications = toggleNotifications;
+window.toggleMessages = toggleMessages;
+window.loadNotifications = loadNotifications;
+window.loadRecentMessages = loadRecentMessages;
+window.markAllNotificationsRead = markAllNotificationsRead;
+window.updateBadges = updateBadges;
+
+window.updateModalGallery = updateModalGallery;
+window.downloadContract = downloadContract;
+window.downloadAct = downloadAct;
+window.exportAgentStats = exportAgentStats;
+window.signContract = signContract;
+window.showContractDetail = showContractDetail;
+
+window.openFullscreenGallery = openFullscreenGallery;
+window.closeFullscreenGallery = closeFullscreenGallery;
+window.nextGalleryImage = nextGalleryImage;
+window.prevGalleryImage = prevGalleryImage;
 
 console.log('script.js полностью загружен, все функции экспортированы');

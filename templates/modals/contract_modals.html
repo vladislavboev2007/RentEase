@@ -1,4 +1,4 @@
-<!-- МОДАЛЬНОЕ ОКНО: МОИ ДОГОВОРЫ -->
+<!-- МОДАЛЬНОЕ ОКНО: МОИ ДОГОВОРЫ (ИСХОДЯЩИЕ - ДЛЯ АРЕНДАТОРА) -->
 <div id="myContractsModal" class="modal">
     <div class="modal-content" style="max-width: 800px;">
         <button class="close" onclick="closeModal('myContractsModal')">×</button>
@@ -74,36 +74,52 @@
             </div>
         </div>
 
-        <!-- Информация о сторонах -->
+        <!-- Информация о сторонах с подписями -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+            <!-- Арендатор -->
             <div style="border: 1px solid #e9ecef; padding: 15px; border-radius: 8px;">
                 <div style="font-weight: 600; margin-bottom: 10px; color: #007bff;">Арендатор</div>
                 <div id="contractDetailTenantName">Иванов Иван Иванович</div>
                 <div style="font-size: 13px; color: #6c757d;" id="contractDetailTenantEmail">tenant@mail.ru</div>
-                <div style="margin-top: 10px; font-size: 13px;" id="contractDetailTenantSign">
-                    <span style="color: #28a745;">✓ Подписано</span>
+                <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #dee2e6;" id="contractDetailTenantSign">
+                    <span style="color: #6c757d;">⏳ Ожидает подписания</span>
                 </div>
             </div>
+            <!-- Собственник -->
             <div style="border: 1px solid #e9ecef; padding: 15px; border-radius: 8px;">
                 <div style="font-weight: 600; margin-bottom: 10px; color: #28a745;">Собственник</div>
                 <div id="contractDetailOwnerName">Петров Петр Петрович</div>
                 <div style="font-size: 13px; color: #6c757d;" id="contractDetailOwnerEmail">owner@mail.ru</div>
-                <div style="margin-top: 10px; font-size: 13px;" id="contractDetailOwnerSign">
-                    <span style="color: #ffc107;">⏳ Ожидает</span>
+                <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #dee2e6;" id="contractDetailOwnerSign">
+                    <span style="color: #6c757d;">⏳ Ожидает подписания</span>
                 </div>
             </div>
         </div>
 
         <!-- Кнопки действий -->
         <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
-            <button class="btn-danger" onclick="cancelContract()" style="flex: 1; padding: 12px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer;">🗑 Отменить договор</button>
-            <button class="btn-secondary" onclick="downloadAct()" style="flex: 1; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer;">📄 Скачать акт</button>
-            <button class="btn-secondary" onclick="downloadContract()" style="flex: 1; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer;">📄 Скачать договор</button>
+            <button class="btn-danger" id="cancelContractBtn" onclick="cancelContract()" style="flex: 1; padding: 12px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; display: none;">🗑 Отменить договор</button>
+            <button class="btn-secondary" id="downloadContractBtn" onclick="downloadContract()" style="flex: 1; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; display: none;">📄 Скачать договор</button>
+            <button class="btn-secondary" id="downloadActBtn" onclick="downloadAct()" style="flex: 1; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; display: none;">📄 Скачать акт</button>
         </div>
 
-        <!-- Кнопка подписания (показывается если не подписано) -->
+        <!-- Кнопка подписания -->
         <button class="btn-primary" id="contractSignButton" onclick="signContract()" style="width: 100%; padding: 14px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; display: none;">
             ✍️ Поставить подпись
         </button>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: ВХОДЯЩИЕ ДОГОВОРЫ (ДЛЯ СОБСТВЕННИКА/АГЕНТА) -->
+<div id="incomingContractsModal" class="modal">
+    <div class="modal-content" style="max-width: 800px;">
+        <button class="close" onclick="closeModal('incomingContractsModal')">×</button>
+        <h2 style="margin-bottom: 25px;">Входящие договоры</h2>
+
+        <div class="contracts-list" id="incomingContractsList" style="max-height: 500px; overflow-y: auto;">
+            <!-- Элементы будут загружаться динамически -->
+        </div>
+
+        <button class="btn-secondary" onclick="closeModal('incomingContractsModal')" style="width: 100%; margin-top: 20px; padding: 12px;">Закрыть</button>
     </div>
 </div>

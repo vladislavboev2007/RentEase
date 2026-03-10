@@ -6,35 +6,111 @@
     <title>RentEase - Аренда недвижимости</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="data:,">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
     <script src="/static/script.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
-    <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
+
+<!-- Скрытые данные пользователя -->
+{% if current_user %}
+    <div id="user-data"
+         data-user-id="{{ current_user.user_id }}"
+         data-user-email="{{ current_user.email }}"
+         data-user-name="{{ current_user.full_name|default('') }}"
+         data-user-type="{{ current_user.user_type }}"
+         style="display: none;"></div>
+
+    <script>
+        window.currentUser = {
+            id: {{ current_user.user_id }},
+            email: "{{ current_user.email }}",
+            name: "{{ current_user.full_name|default('') }}",
+            type: "{{ current_user.user_type }}"
+        };
+        console.log('Current user initialized:', window.currentUser);
+    </script>
+{% else %}
+    <div id="user-data" style="display: none;"></div>
+    <script>
+        window.currentUser = null;
+    </script>
+{% endif %}
+
+<!-- ВЕРХНЯЯ ПАНЕЛЬ -->
 <div class="header">
     <div class="logo">RentEase</div>
     <div class="menu">
         <a href="/">Каталог объектов</a>
-        <a href="#" onclick="showGuidePopup()">Руководство</a>
-        <a href="#">Контакты</a>
+        <a href="#" onclick="showGuidePopup()">Руководство и поддержка</a>
+
+        <!-- ИКОНКИ: Уведомления и Сообщения -->
+        <div class="header-icons">
+            {% if current_user %}
+            <!-- Уведомления (непрочитанные сообщения) -->
+            <div class="icon-wrapper" id="notificationsIcon" onclick="toggleNotifications()">
+                <div class="icon-badge">
+                    <img src="/resources/notification.png" alt="Notifications" class="header-icon">
+                    <span class="badge" id="notificationsBadge" style="display: none;">0</span>
+                </div>
+                <div class="notifications-dropdown" id="notificationsDropdown">
+                    <div class="dropdown-header">
+                        <h3>Уведомления</h3>
+                        <button onclick="markAllNotificationsRead()" class="mark-read-btn">✓ Все прочитано</button>
+                    </div>
+                    <div class="notifications-list" id="notificationsList">
+                        <div class="notification-item loading">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Сообщения (быстрый доступ к чатам) -->
+            <div class="icon-wrapper" id="messagesIcon" onclick="toggleMessages()">
+                <div class="icon-badge">
+                    <img src="/resources/message-black.png" alt="Messages" class="header-icon">
+                    <span class="badge" id="messagesBadge" style="display: none;">0</span>
+                </div>
+                <div class="messages-dropdown" id="messagesDropdown">
+                    <div class="dropdown-header">
+                        <h3>Сообщения</h3>
+                        <a href="#" onclick="showDialogsList(); return false;">Все сообщения</a>
+                    </div>
+                    <div class="messages-list" id="messagesDropdownList">
+                        <div class="message-item loading">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
         <div class="location" onclick="showCityPopup()">
-            <span id="selectedCity">Москва</span>
+            <span id="selectedCity">{{ current_user.contact_info.city if current_user and current_user.contact_info and current_user.contact_info.city else 'Москва' }}</span>
             <img src="/resources/pin.png" alt="Location">
         </div>
 
         {% if current_user %}
-            <!-- Пользователь авторизован -->
+            {% if current_user.user_type == 'admin' %}
+            <div class="dashboard-menu">
+                <button class="dashboard-btn" onclick="toggleDashboardMenu(event)">
+                    Админ панель ▼
+                </button>
+                <div id="dashboardDropdown" class="dropdown-content">
+                    <a href="/admin/audit">📋 Аудит-лог</a>
+                    <a href="#" onclick="showAllUsers()">👥 Пользователи</a>
+                </div>
+            </div>
+            {% endif %}
+
             {% if current_user.user_type in ['owner', 'agent'] %}
-        <div id="user-data" data-user-id="{{ current_user.user_id }}" style="display: none;"></div>
             <div class="dashboard-menu">
                 <button class="dashboard-btn" onclick="toggleDashboardMenu(event)">
                     Панель управления ▼
                 </button>
                 <div id="dashboardDropdown" class="dropdown-content">
-                    <a href="#" onclick="showMyApplications(); return false;">📋 Заявки</a>
-                    <a href="#" onclick="showMyContracts(); return false;">📄 Договоры</a>
-                    <a href="#" onclick="showMyProperties(); return false;">🏠 Объекты</a>
+                    <a href="#" onclick="showIncomingApplications(); return false;">📋 Входящие заявки</a>
+                    <a href="#" onclick="showIncomingContracts(); return false;">📄 Входящие договоры</a>
+                    <a href="#" onclick="showMyProperties(); return false;">🏠 Мои объекты</a>
                     {% if current_user.user_type == 'agent' %}
                     <a href="#" onclick="showAgentStats(); return false;">📊 Статистика</a>
                     {% endif %}
@@ -84,327 +160,408 @@
     </div>
 </div>
 
-    <!-- ФИЛЬТР ПОИСКА -->
-    <div class="filter-section">
-        <div class="filter-container">
-            <form action="/search" method="post" class="filter-form" id="searchForm">
-                <div class="filter-row">
-                    <!-- ПОЛЕ ПОИСКА (ВОССТАНОВЛЕНО) -->
-                    <div class="filter-group search-field">
-                        <label for="search">Поиск</label>
-                        <input type="text"
-                               id="search"
-                               name="search"
-                               placeholder="Поиск по адресу или названию"
-                               value="{{ search_text or '' }}">
-                    </div>
+<!-- ФИЛЬТР ПОИСКА -->
+<div class="filter-section">
+    <div class="filter-container">
+        <form action="/search" method="get" class="filter-form" id="searchForm">
+            <div class="filter-row">
+                <input type="hidden" name="page" id="pageInput" value="{{ page|default(1) }}">
+                <!-- ПОЛЕ ПОИСКА -->
+                <div class="filter-group search-field">
+                    <label for="search">Поиск</label>
+                    <input type="text"
+                           id="search"
+                           name="search"
+                           placeholder="Поиск по адресу или названию"
+                           value="{{ search_text or '' }}">
+                </div>
 
-                    <div class="filter-group">
-                        <label for="city">Город</label>
-                        <input type="text"
-                               id="city"
-                               name="city"
-                               placeholder="Город или район"
-                               value="{{ search_city or '' }}"
-                               list="citySuggestions"
-                               hx-get="/api/cities/search"
-                               hx-trigger="keyup changed delay:300ms"
-                               hx-target="#citySuggestions">
-                        <datalist id="citySuggestions"></datalist>
-                    </div>
+                <div class="filter-group">
+                    <label for="city">Город</label>
+                    <input type="text"
+                           id="city"
+                           name="city"
+                           placeholder="Город или район"
+                           value="{{ search_city or '' }}"
+                           list="citySuggestions"
+                           hx-get="/api/cities/search"
+                           hx-trigger="keyup changed delay:300ms"
+                           hx-target="#citySuggestions">
+                    <datalist id="citySuggestions"></datalist>
+                </div>
 
-                    <div class="filter-group">
-                        <label for="property_type">Тип</label>
-                        <select name="property_type" id="property_type">
-                            <option value="all" {% if search_type == 'all' %}selected{% endif %}>Любой тип</option>
-                            <option value="apartment" {% if search_type == 'apartment' %}selected{% endif %}>Квартира</option>
-                            <option value="house" {% if search_type == 'house' %}selected{% endif %}>Дом</option>
-                            <option value="commercial" {% if search_type == 'commercial' %}selected{% endif %}>Коммерческая</option>
-                        </select>
-                    </div>
+                <div class="filter-group">
+                    <label for="property_type">Тип</label>
+                    <select name="property_type" id="property_type">
+                        <option value="all" {% if search_type == 'all' %}selected{% endif %}>Любой тип</option>
+                        <option value="apartment" {% if search_type == 'apartment' %}selected{% endif %}>Квартира</option>
+                        <option value="house" {% if search_type == 'house' %}selected{% endif %}>Дом</option>
+                        <option value="commercial" {% if search_type == 'commercial' %}selected{% endif %}>Коммерческая</option>
+                    </select>
+                </div>
 
-                    <div class="filter-group">
-                        <label for="rooms">Комнат</label>
-                        <select name="rooms" id="rooms">
-                            <option value="all">Любое</option>
-                            <option value="1">1 комната</option>
-                            <option value="2">2 комнаты</option>
-                            <option value="3">3 комнаты</option>
-                            <option value="4">4+ комнат</option>
-                        </select>
-                    </div>
+                <div class="filter-group">
+                    <label for="rooms">Комнат</label>
+                    <select name="rooms" id="rooms">
+                        <option value="all">Любое</option>
+                        <option value="1">1 комната</option>
+                        <option value="2">2 комнаты</option>
+                        <option value="3">3 комнаты</option>
+                        <option value="4">4+ комнат</option>
+                    </select>
+                </div>
 
-                    <div class="filter-group">
-                        <label for="min_price">Цена, ₽</label>
-                        <div class="price-range">
-                            <input type="number" name="min_price" placeholder="от" value="{{ search_min_price or '' }}">
-                            <span>—</span>
-                            <input type="number" name="max_price" placeholder="до" value="{{ search_max_price or '' }}">
-                        </div>
-                    </div>
-
-                    <!-- ПОЛЕ ПЛОЩАДИ (ДОБАВЛЕНО В ОСНОВНОЙ ФИЛЬТР) -->
-                    <div class="filter-group">
-                        <label for="min_area">Площадь, м²</label>
-                        <div class="price-range">
-                            <input type="number" name="min_area" placeholder="от" value="{{ search_min_area or '' }}">
-                            <span>—</span>
-                            <input type="number" name="max_area" placeholder="до" value="{{ search_max_area or '' }}">
-                        </div>
-                    </div>
-
-                    <div class="filter-group filter-actions">
-                        <button type="submit" class="filter-btn">
-                            <img src="/resources/search.png" alt="Search"> Найти
-                        </button>
-                        <button type="button" class="filter-reset" onclick="resetFilters()">Сбросить</button>
+                <div class="filter-group">
+                    <label for="min_price">Цена, ₽</label>
+                    <div class="price-range">
+                        <input type="number" name="min_price" placeholder="от" value="{{ search_min_price or '' }}">
+                        <span>—</span>
+                        <input type="number" name="max_price" placeholder="до" value="{{ search_max_price or '' }}">
                     </div>
                 </div>
-            </form>
+
+                <div class="filter-group">
+                    <label for="min_area">Площадь, м²</label>
+                    <div class="price-range">
+                        <input type="number" name="min_area" placeholder="от" value="{{ search_min_area or '' }}">
+                        <span>—</span>
+                        <input type="number" name="max_area" placeholder="до" value="{{ search_max_area or '' }}">
+                    </div>
+                </div>
+
+                <div class="filter-group filter-actions">
+                    <button type="submit" class="filter-btn">
+                        <img src="/resources/search.png" alt="Search"> Найти
+                    </button>
+                    <button type="button" class="filter-reset" onclick="resetFilters()">Сбросить</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ОСНОВНОЙ КОНТЕЙНЕР С ОБЪЕКТАМИ -->
+<div class="main-container">
+    <!-- Верхняя панель управления списком объектов -->
+    <div class="results-header">
+        <div class="results-count">
+            <h2>Всего найдено: <span id="totalCount">{{ total if total else properties|length }}</span> объектов</h2>
+        </div>
+        <div class="results-controls">
+            <div class="sorting">
+                <label for="sortBy">Сортировка:</label>
+                <select id="sortBy" onchange="changeSort(this.value)">
+                    <option value="price_asc">Сначала дешевле</option>
+                    <option value="price_desc">Сначала дороже</option>
+                    <option value="area_asc">По площади (возр.)</option>
+                    <option value="area_desc">По площади (убыв.)</option>
+                    <option value="newest">Сначала новые</option>
+                </select>
+            </div>
+            <div class="view-toggle">
+                <button class="view-btn active" onclick="setViewMode('grid')" title="Сетка" id="gridViewBtn">
+                    <img src="/resources/grid.png" alt="Grid">
+                </button>
+                <button class="view-btn" onclick="setViewMode('list')" title="Список" id="listViewBtn">
+                    <img src="/resources/line.png" alt="List">
+                </button>
+            </div>
         </div>
     </div>
 
-    <!-- ОСНОВНОЙ КОНТЕЙНЕР С ОБЪЕКТАМИ -->
-    <div class="main-container">
-        <!-- Верхняя панель управления списком объектов -->
-        <div class="results-header">
-            <div class="results-count">
-                <h2>Всего найдено: <span id="totalCount">{{ properties|length if properties else 0 }}</span> объектов</h2>
-            </div>
-            <div class="results-controls">
-                <div class="sorting">
-                    <label for="sortBy">Сортировка:</label>
-                    <select id="sortBy" onchange="changeSort(this.value)">
-                        <option value="price_asc">Сначала дешевле</option>
-                        <option value="price_desc">Сначала дороже</option>
-                        <option value="area_asc">По площади (возр.)</option>
-                        <option value="area_desc">По площади (убыв.)</option>
-                        <option value="newest">Сначала новые</option>
-                    </select>
+    <!-- КОНТЕЙНЕР ДЛЯ ОБЪЕКТОВ -->
+    <div class="results-grid" id="propertiesContainer">
+        {% if properties %}
+            {% for property in properties %}
+            <a href="javascript:void(0);" class="property-card"
+                   onclick="showPropertyDetails({{ property.property_id }})"
+                   data-price="{{ property.price }}"
+                   data-area="{{ property.area }}"
+                   data-created="{{ property.created_at }}">
+                <div class="property-image">
+                    <img src="{{ property.main_photo_url }}"
+                         alt="{{ property.title }}"
+                         onerror="this.src='/resources/placeholder-image.png'">
+                    <div class="property-status">{{ property.status }}</div>
                 </div>
-                <div class="view-toggle">
-                    <button class="view-btn active" onclick="setViewMode('grid')" title="Сетка" id="gridViewBtn">
-                        <img src="/resources/grid.png" alt="Grid">
-                    </button>
-                    <button class="view-btn" onclick="setViewMode('list')" title="Список" id="listViewBtn">
-                        <img src="/resources/line.png" alt="List">
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- КОНТЕЙНЕР ДЛЯ ОБЪЕКТОВ (grid/list) -->
-        <div class="results-grid" id="propertiesContainer">
-            {% if properties %}
-                {% for property in properties %}
-                <a href="javascript:void(0);" class="property-card"
-                       onclick="showPropertyDetails({{ property.property_id }})"
-                       data-price="{{ property.price }}"
-                       data-area="{{ property.area }}"
-                       data-created="{{ property.created_at }}">
-                    <div class="property-image">
-                        <img src="{{ property.main_photo_url }}"
-                             alt="{{ property.title }}"
-                             onerror="this.src='/resources/placeholder-image.png'">
-                        <div class="property-status">{{ property.status }}</div>
+                <div class="property-info">
+                    <h3>{{ property.title }}</h3>
+                    <p class="property-address">{{ property.address }}, {{ property.city }}</p>
+                    <div class="property-details">
+                        <span class="property-rooms">{{ property.rooms }} комн.</span>
+                        <span class="property-area">{{ property.area }} м²</span>
+                        <span class="property-type">
+                            {% if property.property_type == 'apartment' %}Квартира
+                            {% elif property.property_type == 'house' %}Дом
+                            {% else %}Коммерческая{% endif %}
+                        </span>
                     </div>
-                    <div class="property-info">
-                        <h3>{{ property.title }}</h3>
-                        <p class="property-address">{{ property.address }}, {{ property.city }}</p>
-                        <div class="property-details">
-                            <span class="property-rooms">{{ property.rooms }} комн.</span>
-                            <span class="property-area">{{ property.area }} м²</span>
-                            <span class="property-type">
-                                {% if property.property_type == 'apartment' %}Квартира
-                                {% elif property.property_type == 'house' %}Дом
-                                {% else %}Коммерческая{% endif %}
-                            </span>
-                        </div>
-                        <div class="property-price">
-                            <strong>
-                                {% if property.interval_pay == 'month' %}
-                                    {{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽/мес
-                                {% elif property.interval_pay == 'week' %}
-                                    {{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽/нед
-                                {% else %}
-                                    {{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽
-                                {% endif %}
-                            </strong>
-                        </div>
-                        <div class="property-meta">
-                            <span>Добавлено: {{ property.created_at.strftime('%d.%m.%Y') if property.created_at else 'сегодня' }}</span>
-                        </div>
+                    <div class="property-price">
+                        <strong>
+                            {% if property.interval_pay == 'month' %}
+                                {{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽/мес
+                            {% elif property.interval_pay == 'week' %}
+                                {{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽/нед
+                            {% else %}
+                                {{ "{:,.0f}".format(property.price|float).replace(",", " ") }} ₽
+                            {% endif %}
+                        </strong>
                     </div>
-                </a>
-                {% endfor %}
-            {% else %}
-                <div class="no-results">
-                    <h2>Объекты не найдены</h2>
-                    <p>Попробуйте изменить параметры поиска</p>
-                    <a href="/" class="btn">Сбросить фильтры</a>
+                    <div class="property-meta">
+                        <span>Добавлено: {{ property.created_at.strftime('%d.%m.%Y') if property.created_at else 'сегодня' }}</span>
+                    </div>
                 </div>
-            {% endif %}
-        </div>
-
-        <!-- Пагинация (если будет много объектов) -->
-        {% if properties and properties|length > 20 %}
-        <div class="pagination">
-            <button class="page-btn active">1</button>
-            <button class="page-btn">2</button>
-            <button class="page-btn">3</button>
-            <button class="page-btn">4</button>
-            <button class="page-btn">5</button>
-            <span>...</span>
-            <button class="page-btn">10</button>
-        </div>
+            </a>
+            {% endfor %}
+        {% else %}
+            <div class="no-results">
+                <h2>Объекты не найдены</h2>
+                <p>Попробуйте изменить параметры поиска</p>
+                <a href="/" class="btn">Сбросить фильтры</a>
+            </div>
         {% endif %}
     </div>
 
-    <!-- ПОПАП ВЫБОРА ГОРОДА -->
-    <div id="cityPopup" class="popup">
-        <div class="popup-content">
-            <span class="close-popup" onclick="hideCityPopup()">×</span>
-            <h2>Выберите город</h2>
-            <div class="popular-cities">
-                <button class="city-btn">Москва</button>
-                <button class="city-btn">Санкт-Петербург</button>
-                <button class="city-btn">Новосибирск</button>
-                <button class="city-btn">Екатеринбург</button>
-                <button class="city-btn">Казань</button>
+    <!-- ПАГИНАЦИЯ -->
+    {% if total_pages and total_pages > 1 %}
+    <div class="pagination">
+        <button class="page-btn" onclick="changePage({{ page - 1 }})" {% if page <= 1 %}disabled{% endif %}>←</button>
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+                <button class="page-btn active">{{ p }}</button>
+            {% elif p >= page - 2 and p <= page + 2 %}
+                <button class="page-btn" onclick="changePage({{ p }})">{{ p }}</button>
+            {% elif p == 1 or p == total_pages %}
+                <button class="page-btn" onclick="changePage({{ p }})">{{ p }}</button>
+            {% elif p == page - 3 or p == page + 3 %}
+                <span class="page-dots">...</span>
+            {% endif %}
+        {% endfor %}
+
+        <button class="page-btn" onclick="changePage({{ page + 1 }})" {% if page >= total_pages %}disabled{% endif %}>→</button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ПОПАП ВЫБОРА ГОРОДА -->
+<div id="cityPopup" class="popup">
+    <div class="popup-content">
+        <span class="close-popup" onclick="hideCityPopup()">×</span>
+        <h2>Выберите город</h2>
+        <div class="popular-cities">
+            <button class="city-btn">Москва</button>
+            <button class="city-btn">Санкт-Петербург</button>
+            <button class="city-btn">Новосибирск</button>
+            <button class="city-btn">Екатеринбург</button>
+            <button class="city-btn">Казань</button>
+            <button class="city-btn">Нижний Новгород</button>
+            <button class="city-btn">Челябинск</button>
+            <button class="city-btn">Самара</button>
+            <button class="city-btn">Омск</button>
+            <button class="city-btn">Ростов-на-Дону</button>
+        </div>
+        <div class="city-search">
+            <input type="text" id="citySearch" placeholder="Поиск города...">
+            <button type="button" onclick="searchCity()">Найти</button>
+        </div>
+    </div>
+</div>
+
+<!-- ПОПАП РУКОВОДСТВА (обновленный с вкладками) -->
+<div id="guidePopup" class="popup">
+    <div class="popup-content" style="max-width: 600px;">
+        <span class="close-popup" onclick="hideGuidePopup()">×</span>
+        <h2>Руководство и поддержка</h2>
+
+        <!-- Вкладки -->
+        <div class="guide-tabs" style="display: flex; border-bottom: 2px solid #e9ecef; margin-bottom: 20px;">
+            <button class="tab-btn active" data-tab="tenant" onclick="switchGuideTab('tenant')" style="flex:1; padding: 10px; background: none; border: none; border-bottom: 3px solid #007bff; font-weight: 600; color: #007bff; cursor: pointer;">Арендатор</button>
+            <button class="tab-btn" data-tab="owner" onclick="switchGuideTab('owner')" style="flex:1; padding: 10px; background: none; border: none; font-weight: 500; color: #6c757d; cursor: pointer;">Собственник</button>
+            <button class="tab-btn" data-tab="agent" onclick="switchGuideTab('agent')" style="flex:1; padding: 10px; background: none; border: none; font-weight: 500; color: #6c757d; cursor: pointer;">Агент</button>
+        </div>
+
+        <!-- Контент для Арендатора -->
+        <div id="guideTab-tenant" class="guide-tab-content" style="display: block;">
+            <h3 class="tenant-title">Для арендатора</h3>
+            <div class="guide-section">
+                <h4>Как найти жилье</h4>
+                <p>Используйте фильтры поиска по цене, району, количеству комнат. Сохраняйте понравившиеся объекты.</p>
             </div>
-            <div class="city-search">
-                <input type="text" id="citySearch" placeholder="Поиск города...">
-                <button type="button" onclick="searchCity()">Найти</button>
+            <div class="guide-section">
+                <h4>Подача заявки</h4>
+                <p>Нажмите "Подать заявку" на карточке объекта, заполните желаемую дату заселения и отправьте сообщение собственнику.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Оформление договора</h4>
+                <p>После одобрения заявки договор создается автоматически. Вы можете подписать его электронной подписью.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Оплата</h4>
+                <p>Оплачивайте аренду согласно условиям договора. История платежей доступна в личном кабинете.</p>
+            </div>
+        </div>
+
+        <!-- Контент для Собственника -->
+        <div id="guideTab-owner" class="guide-tab-content" style="display: none;">
+            <h3 class="owner-title">Для собственника</h3>
+            <div class="guide-section">
+                <h4>Размещение объекта</h4>
+                <p>Добавьте объект через панель управления, загрузите фотографии, укажите характеристики и цену.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Управление заявками</h4>
+                <p>Отслеживайте входящие заявки, общайтесь с потенциальными арендаторами через встроенный чат.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Заключение договоров</h4>
+                <p>При одобрении заявки договор создается автоматически. Вы получите уведомление о необходимости подписания.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Получение платежей</h4>
+                <p>Контролируйте поступление арендной платы в разделе "Договоры".</p>
+            </div>
+        </div>
+
+        <!-- Контент для Агента -->
+        <div id="guideTab-agent" class="guide-tab-content" style="display: none;">
+            <h3 class="agent-title">Для агента</h3>
+            <div class="guide-section">
+                <h4>Работа с клиентами</h4>
+                <p>Помогайте собственникам размещать объекты, а арендаторам – находить подходящие варианты.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Управление заявками</h4>
+                <p>Просматривайте все заявки по закрепленным объектам, отвечайте от имени собственника.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Аналитика</h4>
+                <p>Отслеживайте статистику своей работы: количество сделок, доход, конверсию.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Поддержка</h4>
+                <p>При возникновении вопросов обращайтесь в техподдержку через раздел "Сообщения".</p>
+            </div>
+        </div>
+
+        <!-- Контакты поддержки -->
+        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; text-align: center;">
+            <h4 style="margin-bottom: 10px; color: #007bff;">Служба поддержки</h4>
+            <p>📧 support@rentease.ru</p>
+            <p>📞 +7 (999) 123-45-67</p>
+            <p>🕒 Круглосуточно</p>
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЬНОГО ПРОСМОТРА ОБЪЕКТА -->
+<div id="propertyModal" class="modal property-modal">
+    <div class="modal-content property-modal-content">
+        <button class="close" onclick="hidePropertyModal()">×</button>
+
+        <!-- Индикатор загрузки -->
+        <div id="propertyModalLoader" class="modal-loader" style="display: none;">
+            <div class="loader"></div>
+            <p>Загрузка данных...</p>
+        </div>
+
+        <!-- Контент объекта (заполняется динамически) -->
+        <div id="propertyModalContent" style="display: none;">
+            <!-- Заголовок и статус -->
+            <div class="property-modal-header">
+                <h2 id="modalPropertyTitle">Название объекта</h2>
+                <span id="modalPropertyStatus" class="property-status-badge">Активно</span>
+            </div>
+
+            <!-- Галерея изображений -->
+            <div class="property-modal-gallery">
+                <div class="modal-main-image" id="modalMainImage">
+                    <img src="/resources/placeholder-image.png" alt="Main image" id="modalMainImageImg" style="cursor: pointer;" onclick="openFullscreenGallery()">
+                </div>
+                <div class="modal-thumbnail-container" id="modalThumbnailContainer">
+                    <!-- Миниатюры будут добавляться динамически -->
+                </div>
+            </div>
+
+            <!-- Детальная информация -->
+            <div class="property-modal-info">
+                <div class="modal-info-grid">
+                    <div class="modal-info-item">
+                        <div class="modal-info-label">Город</div>
+                        <div class="modal-info-value" id="modalPropertyCity">-</div>
+                    </div>
+                    <div class="modal-info-item">
+                        <div class="modal-info-label">Адрес</div>
+                        <div class="modal-info-value" id="modalPropertyAddress">-</div>
+                    </div>
+                    <div class="modal-info-item">
+                        <div class="modal-info-label">Площадь</div>
+                        <div class="modal-info-value" id="modalPropertyArea">-</div>
+                    </div>
+                    <div class="modal-info-item">
+                        <div class="modal-info-label">Тип</div>
+                        <div class="modal-info-value" id="modalPropertyType">-</div>
+                    </div>
+                    <div class="modal-info-item">
+                        <div class="modal-info-label">Комнат</div>
+                        <div class="modal-info-value" id="modalPropertyRooms">-</div>
+                    </div>
+                    <div class="modal-info-item full-width">
+                        <div class="modal-info-label">Стоимость</div>
+                        <div class="modal-info-value price" id="modalPropertyPrice">-</div>
+                    </div>
+                </div>
+
+                <!-- Описание -->
+                <div class="modal-description">
+                    <h3>Описание</h3>
+                    <p id="modalPropertyDescription">-</p>
+                </div>
+
+                <!-- Контакты -->
+                <div class="modal-contacts">
+                    <h3>Контакты</h3>
+                    <div class="modal-contact-person" id="modalResponsibleParty">
+                        <div class="contact-person-name" id="modalResponsibleName">Загрузка...</div>
+                        <div class="contact-person-details">
+                            <span id="modalResponsibleEmail" class="contact-email">-</span>
+                            <span id="modalResponsiblePhone" class="contact-phone">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Кнопки действий -->
+                <div class="modal-actions">
+                    <button class="btn-primary" onclick="showContactForm()">Связаться</button>
+                    <button class="btn-secondary" onclick="showApplicationForm()">Подать заявку</button>
+                </div>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- ПОПАП РУКОВОДСТВА -->
-    <div id="guidePopup" class="popup">
-        <div class="popup-content">
-            <span class="close-popup" onclick="hideGuidePopup()">×</span>
-            <h2>Руководство по использованию</h2>
-            <div class="guide-section">
-                <h3>Для арендаторов</h3>
-                <p>Как найти и снять жилье</p>
-            </div>
-            <div class="guide-section">
-                <h3>Для собственников</h3>
-                <p>Как сдать жилье быстро и выгодно</p>
-            </div>
-            <div class="guide-section">
-                <h3>Для агентов</h3>
-                <p>Профессиональные инструменты</p>
-            </div>
-        </div>
+<!-- Полноэкранная галерея -->
+<div id="fullscreenGalleryModal" class="modal" style="background: rgba(0,0,0,0.9);">
+    <div class="fullscreen-gallery-content" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+        <button class="close" onclick="closeFullscreenGallery()" style="position: absolute; top: 20px; right: 30px; color: white; font-size: 40px; z-index: 1001;">×</button>
+
+        <button class="gallery-nav prev" onclick="prevGalleryImage()" style="position: absolute; left: 30px; background: rgba(255,255,255,0.2); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; font-size: 24px; cursor: pointer;">←</button>
+
+        <img id="fullscreenImage" src="" style="max-width: 90vw; max-height: 90vh; object-fit: contain;">
+
+        <button class="gallery-nav next" onclick="nextGalleryImage()" style="position: absolute; right: 30px; background: rgba(255,255,255,0.2); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; font-size: 24px; cursor: pointer;">→</button>
+
+        <div class="gallery-counter" style="position: absolute; bottom: 30px; color: white; font-size: 16px;" id="galleryCounter"></div>
     </div>
+</div>
+
+<!-- Подключение всех модальных окон -->
+{% include "modals/user_modals.html" %}
+{% include "modals/property_modals.html" %}
+{% include "modals/application_modals.html" %}
+{% include "modals/contract_modals.html" %}
+{% include "modals/chat_modals.html" %}
 
 
-    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЬНОГО ПРОСМОТРА ОБЪЕКТА -->
-    <div id="propertyModal" class="modal property-modal">
-        <div class="modal-content property-modal-content">
-            <button class="close" onclick="hidePropertyModal()">×</button>
-
-            <!-- Индикатор загрузки -->
-            <div id="propertyModalLoader" class="modal-loader" style="display: none;">
-                <div class="loader"></div>
-                <p>Загрузка данных...</p>
-            </div>
-
-            <!-- Контент объекта (заполняется динамически) -->
-            <div id="propertyModalContent" style="display: none;">
-                <!-- Заголовок и статус -->
-                <div class="property-modal-header">
-                    <h2 id="modalPropertyTitle">Название объекта</h2>
-                    <span id="modalPropertyStatus" class="property-status-badge">Активно</span>
-                </div>
-
-                <!-- Галерея изображений -->
-                <div class="property-modal-gallery">
-                    <div class="modal-main-image" id="modalMainImage">
-                        <img src="/resources/placeholder-image.png" alt="Main image" id="modalMainImageImg">
-                    </div>
-                    <div class="modal-thumbnail-container" id="modalThumbnailContainer">
-                        <!-- Миниатюры будут добавляться динамически -->
-                    </div>
-                </div>
-
-                <!-- Детальная информация -->
-                <div class="property-modal-info">
-                    <div class="modal-info-grid">
-                        <div class="modal-info-item">
-                            <div class="modal-info-label">Город</div>
-                            <div class="modal-info-value" id="modalPropertyCity">-</div>
-                        </div>
-                        <!--<div class="modal-info-item">
-                            <div class="modal-info-label">Район</div>
-                            <div class="modal-info-value" id="modalPropertyDistrict">-</div>
-                        </div>-->
-                        <div class="modal-info-item">
-                            <div class="modal-info-label">Адрес</div>
-                            <div class="modal-info-value" id="modalPropertyAddress">-</div>
-                        </div>
-                        <div class="modal-info-item">
-                            <div class="modal-info-label">Площадь</div>
-                            <div class="modal-info-value" id="modalPropertyArea">-</div>
-                        </div>
-                        <div class="modal-info-item">
-                            <div class="modal-info-label">Тип</div>
-                            <div class="modal-info-value" id="modalPropertyType">-</div>
-                        </div>
-                        <div class="modal-info-item">
-                            <div class="modal-info-label">Комнат</div>
-                            <div class="modal-info-value" id="modalPropertyRooms">-</div>
-                        </div>
-                        <div class="modal-info-item full-width">
-                            <div class="modal-info-label">Стоимость</div>
-                            <div class="modal-info-value price" id="modalPropertyPrice">-</div>
-                        </div>
-                    </div>
-
-                    <!-- Описание -->
-                    <div class="modal-description">
-                        <h3>Описание</h3>
-                        <p id="modalPropertyDescription">-</p>
-                    </div>
-
-                    <!-- Контакты -->
-                    <div class="modal-contacts">
-                        <h3>Контакты</h3>
-
-                        <div class="modal-contact-person" id="modalOwnerInfo">
-                            <div class="contact-person-name">Собственник</div>
-                            <div class="contact-person-details">
-                                <span id="modalOwnerName">-</span>
-                                <span id="modalOwnerEmail" class="contact-email">-</span>
-                                <span id="modalOwnerPhone" class="contact-phone">-</span>
-                            </div>
-                        </div>
-
-                        <div class="modal-contact-person" id="modalAgentInfo" style="display: none;">
-                            <div class="contact-person-name">Агент</div>
-                            <div class="contact-person-details">
-                                <span id="modalAgentName">-</span>
-                                <span id="modalAgentEmail" class="contact-email">-</span>
-                                <span id="modalAgentPhone" class="contact-phone">-</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Кнопки действий -->
-                    <div class="modal-actions">
-                        <button class="btn-primary" onclick="showContactForm()">Связаться</button>
-                        <button class="btn-secondary" onclick="showApplicationForm()">Подать заявку</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Подключение всех модальных окон -->
-    {% include "modals/user_modals.html" %}
-    {% include "modals/property_modals.html" %}
-    {% include "modals/application_modals.html" %}
-    {% include "modals/contract_modals.html" %}
-    {% include "modals/chat_modals.html" %}
 </body>
 </html>

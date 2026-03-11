@@ -261,6 +261,11 @@ def generate_contract_docx(contract_data: dict, property_data: dict, tenant_data
 
     doc.add_paragraph()
 
+<<<<<<< Updated upstream
+=======
+    # ... остальные разделы (права и обязанности, ответственность, заключительные положения) можно добавить аналогично
+
+>>>>>>> Stashed changes
     # Подписи сторон
     doc.add_heading('ПОДПИСИ СТОРОН', level=2).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
@@ -394,6 +399,10 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
     c.setFont(regular_font, 12)
 
     # Подписи с картинкой или прочерками
+<<<<<<< Updated upstream
+=======
+    # Вместо прямого использования c.drawImage, обработаем изображение через PIL
+>>>>>>> Stashed changes
     signature_path = BASE_DIR / "resources" / "signature.png"
 
     if contract_data.get("owner_signed") and signature_path.exists():

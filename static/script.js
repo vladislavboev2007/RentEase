@@ -2438,7 +2438,7 @@ async function loadDialogsList() {
         if (!response.ok) throw new Error('Ошибка загрузки');
 
         const dialogs = await response.json();
-        console.log('Диалоги:', dialogs);
+        console.log('Диалоги (только личные):', dialogs);
 
         const container = document.getElementById('dialogsList');
         if (!container) return;
@@ -2467,7 +2467,7 @@ async function loadDialogsList() {
                 }
             }
 
-            // СОЗДАЁМ avatarHtml ЗДЕСЬ
+            // Аватар
             let avatarHtml = '';
             if (dialog.avatar_url) {
                 avatarHtml = `<img src="${dialog.avatar_url}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentNode.innerHTML='<span style=\'color: white; font-weight: 600; font-size: 18px;\'>${dialog.user_initials || '?'}</span>';">`;
@@ -2517,7 +2517,6 @@ async function loadDialogsList() {
                 const statusResponse = await fetch(`/api/user/${dialog.user_id}/status`, { credentials: 'same-origin' });
                 if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
-                    // Важно: обновляем статус сразу после загрузки
                     updateUserOnlineStatus(dialog.user_id, statusData.is_online);
                 }
             } catch (e) {
@@ -2571,17 +2570,22 @@ async function openChat(userId) {
             updateUserStatus(false);
         }
 
+        // Загружаем сообщения
+        await loadMessages(userId);
+
+        // Помечаем сообщения как прочитанные (уже делается в loadMessages через API)
+
     } catch (error) {
         console.error('Ошибка загрузки данных пользователя:', error);
         document.getElementById('chatUserName').textContent = 'Пользователь';
         updateUserStatus(false);
     }
 
-    // Загружаем сообщения
-    await loadMessages(userId);
-
     closeModal('dialogsListModal');
     openModal('chatModal');
+
+    // Запускаем периодическое обновление
+    startMessagesRefresh(userId);
 }
 
 // Проверка статуса через REST API (запасной вариант)
@@ -2598,6 +2602,7 @@ async function checkUserStatus(userId) {
     return false;
 }
 
+// Загрузить сообщения
 // Загрузить сообщения
 async function loadMessages(userId) {
     try {
@@ -2632,9 +2637,12 @@ async function loadMessages(userId) {
                 // Моё сообщение (справа)
                 html += `
                     <div style="display: flex; justify-content: flex-end; margin-bottom: 5px;">
-                        <div style="background: #007bff; color: white; padding: 10px 15px; border-radius: 18px 18px 4px 18px; max-width: 70%; word-wrap: break-word;">
+                        <div style="background: #007bff; color: white; padding: 10px 15px; border-radius: 18px 18px 4px 18px; max-width: 70%; word-wrap: break-word; position: relative;">
                             ${msg.content}
-                            <div style="font-size: 11px; opacity: 0.7; text-align: right; margin-top: 4px;">${formatMessageTime(msg.created_at)}</div>
+                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 11px; opacity: 0.7; margin-top: 4px;">
+                                <span>${formatMessageTime(msg.created_at)}</span>
+                                ${getMessageStatusIcon(msg.is_read)}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -2642,7 +2650,7 @@ async function loadMessages(userId) {
                 // Сообщение собеседника (слева)
                 html += `
                     <div style="display: flex; justify-content: flex-start; margin-bottom: 5px;">
-                        <div style="background: white; padding: 10px 15px; border-radius: 18px 18px 18px 4px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-wrap: break-word;">
+                        <div style="background: white; padding: 10px 15px; border-radius: 18px 18px 18px 4px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-wrap: break-word; position: relative;">
                             ${msg.content}
                             <div style="font-size: 11px; color: #6c757d; margin-top: 4px;">${formatMessageTime(msg.created_at)}</div>
                         </div>
@@ -2662,6 +2670,17 @@ async function loadMessages(userId) {
     } catch (error) {
         console.error('Ошибка загрузки сообщений:', error);
         showNotification('Ошибка загрузки сообщений', 'error');
+    }
+}
+
+// Функция для получения иконки статуса сообщения
+function getMessageStatusIcon(isRead) {
+    if (isRead) {
+        // Двойная галочка - прочитано
+        return '<span style="display: inline-flex; align-items: center; margin-left: 4px; color: #fff;">✓✓</span>';
+    } else {
+        // Одинарная галочка - отправлено, но не прочитано
+        return '<span style="display: inline-flex; align-items: center; margin-left: 4px; color: rgba(255,255,255,0.7);">✓</span>';
     }
 }
 
@@ -3661,7 +3680,50 @@ async function loadRecentMessages() {
         console.error('Ошибка загрузки сообщений:', error);
     }
 }
+// ==================== ФУНКЦИИ ДЛЯ РУКОВОДСТВА ====================
 
+function switchGuideTab(tabName) {
+    console.log('Переключение вкладки руководства на:', tabName);
+
+    // Скрыть все вкладки
+    document.querySelectorAll('.guide-tab-content').forEach(tab => {
+        tab.style.display = 'none';
+    });
+
+    // Показать выбранную вкладку
+    const selectedTab = document.getElementById('guideTab-' + tabName);
+    if (selectedTab) {
+        selectedTab.style.display = 'block';
+    }
+
+    // Обновить стили кнопок
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.borderBottom = 'none';
+        btn.style.color = '#6c757d';
+        btn.style.fontWeight = '500';
+    });
+
+    // Активировать текущую кнопку
+    const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+        activeBtn.style.borderBottom = '3px solid #007bff';
+        activeBtn.style.color = '#007bff';
+        activeBtn.style.fontWeight = '600';
+    }
+}
+
+// Инициализация вкладок при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    // Активировать вкладку "Арендатор" по умолчанию
+    const tenantTab = document.querySelector('.tab-btn[data-tab="tenant"]');
+    if (tenantTab) {
+        setTimeout(() => {
+            switchGuideTab('tenant');
+        }, 100);
+    }
+});
 // Обновить все счетчики
 function updateBadges(dialogs) {
     // Счетчик для уведомлений (непрочитанные сообщения)
@@ -3843,6 +3905,8 @@ window.loadNotifications = loadNotifications;
 window.loadRecentMessages = loadRecentMessages;
 window.markAllNotificationsRead = markAllNotificationsRead;
 window.updateBadges = updateBadges;
+
+window.switchGuideTab = switchGuideTab;
 
 window.updateModalGallery = updateModalGallery;
 window.downloadContract = downloadContract;

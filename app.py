@@ -2,7 +2,7 @@ from fastapi import (FastAPI, Request, Form,
                      Depends, HTTPException, status,
                      Cookie, Response, UploadFile,
                      File, WebSocket, WebSocketDisconnect, Header, Query)
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer
@@ -1891,31 +1891,60 @@ async def cancel_contract(
 async def get_dialogs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
-    sent = db.query(Message.to_user_id).filter(Message.from_user_id == current_user.user_id).distinct().all()
-    received = db.query(Message.from_user_id).filter(Message.to_user_id == current_user.user_id).distinct().all()
-    user_ids = set([r[0] for r in sent] + [r[0] for r in received])
+
+    # Получаем всех пользователей, с которыми был диалог (только личные сообщения)
+    sent = db.query(Message.to_user_id).filter(
+        Message.from_user_id == current_user.user_id,
+        Message.from_user_id.isnot(None)  # Только личные сообщения
+    ).distinct().all()
+
+    received = db.query(Message.from_user_id).filter(
+        Message.to_user_id == current_user.user_id,
+        Message.from_user_id.isnot(None)  # Только личные сообщения
+    ).distinct().all()
+
+    # Объединяем ID собеседников
+    user_ids = set()
+    for r in sent:
+        if r[0] is not None:
+            user_ids.add(r[0])
+    for r in received:
+        if r[0] is not None:
+            user_ids.add(r[0])
+
     dialogs = []
     for uid in user_ids:
+        # Получаем последнее сообщение в диалоге (только личные)
         last_msg = db.query(Message).filter(
             ((Message.from_user_id == current_user.user_id) & (Message.to_user_id == uid)) |
-            ((Message.from_user_id == uid) & (Message.to_user_id == current_user.user_id))
+            ((Message.from_user_id == uid) & (Message.to_user_id == current_user.user_id)),
+            Message.from_user_id.isnot(None)  # Только личные сообщения
         ).order_by(Message.created_at.desc()).first()
+
         if last_msg:
             other_user = db.query(User).filter(User.user_id == uid).first()
-            unread_count = db.query(Message).filter(
-                Message.from_user_id == uid,
-                Message.to_user_id == current_user.user_id,
-                Message.is_read == False
-            ).count()
-            dialogs.append({
-                "user_id": uid,
-                "user_name": other_user.full_name if other_user else "Пользователь",
-                "user_initials": get_user_initials(other_user) if other_user else "??",
-                "avatar_url": other_user.avatar_url if other_user else None,  # <-- добавить
-                "last_message": last_msg.content[:50] + "..." if len(last_msg.content) > 50 else last_msg.content,
-                "last_time": last_msg.created_at.isoformat() if last_msg.created_at else None,
-                "unread": unread_count
-            })
+            if other_user:
+                # Считаем непрочитанные сообщения (только личные)
+                unread_count = db.query(Message).filter(
+                    Message.from_user_id == uid,
+                    Message.to_user_id == current_user.user_id,
+                    Message.is_read == False,
+                    Message.from_user_id.isnot(None)  # Только личные сообщения
+                ).count()
+
+                dialogs.append({
+                    "user_id": uid,
+                    "user_name": other_user.full_name if other_user else "Пользователь",
+                    "user_initials": get_user_initials(other_user) if other_user else "??",
+                    "avatar_url": other_user.avatar_url if other_user else None,
+                    "last_message": last_msg.content[:50] + "..." if len(last_msg.content) > 50 else last_msg.content,
+                    "last_time": last_msg.created_at.isoformat() if last_msg.created_at else None,
+                    "unread": unread_count
+                })
+
+    # Сортируем по времени последнего сообщения (сначала новые)
+    dialogs.sort(key=lambda x: x.get("last_time") or "", reverse=True)
+
     return dialogs
 
 
@@ -1988,19 +2017,27 @@ async def get_user_info(user_id: int, current_user: User = Depends(get_current_u
         "last_seen": None
     }
 
+
 @app.get("/api/messages")
 async def get_messages(chat_with: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
+
+    # Получаем только личные сообщения (from_user_id IS NOT NULL)
     messages = db.query(Message).filter(
         ((Message.from_user_id == current_user.user_id) & (Message.to_user_id == chat_with)) |
-        ((Message.from_user_id == chat_with) & (Message.to_user_id == current_user.user_id))
+        ((Message.from_user_id == chat_with) & (Message.to_user_id == current_user.user_id)),
+        Message.from_user_id.isnot(None)  # Только личные сообщения
     ).order_by(Message.created_at).all()
+
+    # Помечаем сообщения как прочитанные
     for msg in messages:
         if msg.to_user_id == current_user.user_id and not msg.is_read:
             msg.is_read = True
     db.commit()
+
     other_user = db.query(User).filter(User.user_id == chat_with).first()
+
     return {
         "messages": [
             {
@@ -2039,18 +2076,18 @@ async def send_message(msg: MessageCreate, current_user: User = Depends(get_curr
 
 @app.delete("/api/dialogs/{user_id}")
 async def delete_dialog(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Удалить диалог с пользователем"""
+    """Удалить диалог с пользователем (только личные сообщения)"""
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
-    # Проверяем, есть ли сообщения с этим пользователем
+    # Проверяем, есть ли сообщения с этим пользователем (только личные)
     messages = db.query(Message).filter(
         ((Message.from_user_id == current_user.user_id) & (Message.to_user_id == user_id)) |
-        ((Message.from_user_id == user_id) & (Message.to_user_id == current_user.user_id))
+        ((Message.from_user_id == user_id) & (Message.to_user_id == current_user.user_id)),
+        Message.from_user_id.isnot(None)  # Только личные сообщения
     ).all()
 
     if not messages:
-        # Если сообщений нет, возвращаем успех (ничего удалять)
         return {"success": True, "message": "Диалог пуст"}
 
     # Удаляем все сообщения между пользователями

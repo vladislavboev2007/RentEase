@@ -97,7 +97,8 @@
                 </button>
                 <div id="dashboardDropdown" class="dropdown-content">
                     <a href="/admin/audit">📋 Аудит-лог</a>
-                    <a href="#" onclick="showAllUsers()">👥 Пользователи</a>
+                    <a href="#" onclick="showAdminUsers(); return false;">👥 Пользователи</a>
+                    <a href="#" onclick="showAdminProperties(); return false;">🏠 Объекты</a>
                 </div>
             </div>
             {% endif %}
@@ -296,6 +297,10 @@
                             {% else %}Коммерческая{% endif %}
                         </span>
                     </div>
+                    <!-- Описание только для режима списка (скрыто в grid) -->
+                    <p class="property-description" style="display: none;">
+                        {{ property.description|truncate(100) if property.description else 'Нет описания' }}
+                    </p>
                     <div class="property-price">
                         <strong>
                             {% if property.interval_pay == 'month' %}
@@ -530,10 +535,23 @@
                     </div>
                 </div>
 
-                <!-- Кнопки действий -->
-                <div class="modal-actions">
+                <!-- Кнопки действий для обычных пользователей -->
+                <div class="modal-actions" id="regularUserActions">
                     <button class="btn-primary" onclick="showContactForm()">Связаться</button>
                     <button class="btn-secondary" onclick="showApplicationForm()">Подать заявку</button>
+                </div>
+
+                <!-- Кнопки действий для администратора (скрыты по умолчанию) -->
+                <div class="modal-actions" id="adminActions" style="display: none; margin-top: 15px; border-top: 2px solid #ffc107; padding-top: 15px;">
+                    <h3 style="margin-bottom: 10px; color: #dc3545;">Управление объектом (админ)</h3>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-warning" onclick="editProperty(currentPropertyId)" style="flex: 1; padding: 12px; background: #ffc107; color: #212529; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                            ✎ Изменить объект
+                        </button>
+                        <button class="btn-danger" onclick="adminDeleteProperty(currentPropertyId)" style="flex: 1; padding: 12px; background: #dc3545; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                            🗑 Удалить объект
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -561,7 +579,7 @@
 {% include "modals/application_modals.html" %}
 {% include "modals/contract_modals.html" %}
 {% include "modals/chat_modals.html" %}
-
+{% include "modals/admin_modals.html" %}
 
 </body>
 </html>

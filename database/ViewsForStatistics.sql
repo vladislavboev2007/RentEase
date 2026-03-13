@@ -1,4 +1,4 @@
--- Функция 1: Ежемесячная статистика
+-- Функция 1: Ежемесячная статистика (исправленная)
 CREATE OR REPLACE FUNCTION get_agent_monthly_stats(
     p_agent_id INTEGER,
     p_months INTEGER DEFAULT 6
@@ -24,7 +24,7 @@ BEGIN
         FROM properties p
         LEFT JOIN applications a ON p.property_id = a.property_id
         LEFT JOIN contracts c ON a.application_id = c.application_id
-        WHERE p.agent_id = p_agent_id
+        WHERE p.owner_id = p_agent_id  -- ← заменили agent_id на owner_id
           AND COALESCE(c.created_at, a.created_at, NOW()) >= CURRENT_DATE - (p_months || ' months')::INTERVAL
         GROUP BY DATE_TRUNC('month', COALESCE(c.created_at, a.created_at, NOW()))
         ORDER BY month DESC
@@ -33,7 +33,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
--- Функция 2: Статистика производительности
+-- Функция 2: Статистика производительности (исправленная)
 CREATE OR REPLACE FUNCTION get_agent_performance_stats(
     p_agent_id INTEGER,
     p_months INTEGER DEFAULT 6
@@ -57,6 +57,7 @@ DECLARE
     v_avg_response NUMERIC;
     v_conversion NUMERIC;
 BEGIN
+    -- Сделки и прибыль
     SELECT 
         COALESCE(SUM(c.total_amount), 0),
         COUNT(DISTINCT c.contract_id)
@@ -64,40 +65,46 @@ BEGIN
     FROM properties p
     LEFT JOIN applications a ON p.property_id = a.property_id
     LEFT JOIN contracts c ON a.application_id = c.application_id
-    WHERE p.agent_id = p_agent_id
+    WHERE p.owner_id = p_agent_id  -- ← заменили agent_id
       AND c.signing_status = 'signed'
       AND c.created_at >= CURRENT_DATE - (p_months || ' months')::INTERVAL;
 
+    -- Количество объектов
     SELECT COUNT(*) INTO v_properties_count
     FROM properties
-    WHERE agent_id = p_agent_id;
+    WHERE owner_id = p_agent_id;  -- ← заменили
 
+    -- Активные объекты
     SELECT COUNT(*) INTO v_active_properties
     FROM properties
-    WHERE agent_id = p_agent_id AND status = 'active';
+    WHERE owner_id = p_agent_id AND status = 'active';  -- ← заменили
 
+    -- Обработанные заявки
     SELECT COUNT(*) INTO v_processed_apps
     FROM applications a
     JOIN properties p ON a.property_id = p.property_id
-    WHERE p.agent_id = p_agent_id
+    WHERE p.owner_id = p_agent_id  -- ← заменили
       AND a.status IN ('approved', 'rejected')
       AND a.responded_at IS NOT NULL
       AND a.created_at >= CURRENT_DATE - (p_months || ' months')::INTERVAL;
 
+    -- Все заявки
     SELECT COUNT(*) INTO v_total_applications
     FROM applications a
     JOIN properties p ON a.property_id = p.property_id
-    WHERE p.agent_id = p_agent_id
+    WHERE p.owner_id = p_agent_id  -- ← заменили
       AND a.created_at >= CURRENT_DATE - (p_months || ' months')::INTERVAL;
 
+    -- Среднее время ответа
     SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (a.responded_at - a.created_at)) / 3600), 0)
     INTO v_avg_response
     FROM applications a
     JOIN properties p ON a.property_id = p.property_id
-    WHERE p.agent_id = p_agent_id
+    WHERE p.owner_id = p_agent_id  -- ← заменили
       AND a.responded_at IS NOT NULL
       AND a.created_at >= CURRENT_DATE - (p_months || ' months')::INTERVAL;
 
+    -- Конверсия
     IF v_total_applications > 0 THEN
         v_conversion := (v_total_deals::NUMERIC / v_total_applications * 100);
     ELSE
@@ -123,7 +130,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
--- Функция 3: Статистика по статусам заявок
+-- Функция 3: Статистика по статусам заявок (исправленная)
 CREATE OR REPLACE FUNCTION get_agent_application_status_stats(
     p_agent_id INTEGER,
     p_days INTEGER DEFAULT 90
@@ -139,7 +146,7 @@ BEGIN
     SELECT COUNT(*) INTO v_total
     FROM applications a
     JOIN properties p ON a.property_id = p.property_id
-    WHERE p.agent_id = p_agent_id
+    WHERE p.owner_id = p_agent_id  -- ← заменили
       AND a.created_at >= CURRENT_DATE - (p_days || ' days')::INTERVAL;
 
     RETURN QUERY
@@ -152,7 +159,7 @@ BEGIN
         END as percentage
     FROM applications a
     JOIN properties p ON a.property_id = p.property_id
-    WHERE p.agent_id = p_agent_id
+    WHERE p.owner_id = p_agent_id  -- ← заменили
       AND a.created_at >= CURRENT_DATE - (p_days || ' days')::INTERVAL
     GROUP BY a.status
     ORDER BY a.status;

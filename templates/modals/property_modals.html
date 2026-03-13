@@ -112,13 +112,14 @@
 
 <!-- МОДАЛЬНОЕ ОКНО: ДОБАВЛЕНИЕ/РЕДАКТИРОВАНИЕ ОБЪЕКТА -->
 <div id="propertyEditModal" class="modal">
-    <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-content" style="max-width: 700px;">
         <button class="close" onclick="closeModal('propertyEditModal')">×</button>
         <h2 id="propertyEditTitle">Добавление объекта</h2>
 
         <form id="propertyEditForm">
             <input type="hidden" id="propStatus" name="status" value="draft">
             <input type="hidden" id="propCurrentStatus" name="current_status" value="">
+            <input type="hidden" id="deletedPhotos" name="deleted_photos" value="">
 
             <div class="form-group" style="margin-bottom: 15px;">
                 <label for="propTitle">Название *</label>
@@ -183,34 +184,45 @@
                 </div>
             </div>
 
+            <!-- СЕКЦИЯ УПРАВЛЕНИЯ ФОТОГРАФИЯМИ -->
             <div class="form-group" style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 500;">
-                    Фотографии <span id="photoCounter">0/10</span>
+                <label style="display: block; margin-bottom: 10px; font-weight: 600; font-size: 16px;">
+                    📸 Фотографии <span id="photoCounter">0/10</span>
                 </label>
 
                 <!-- Кнопка загрузки -->
-                <div style="margin-bottom: 15px;">
-                    <button type="button" class="btn-secondary" onclick="document.getElementById('propPhotos').click()">
+                <div style="margin-bottom: 20px;">
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('propPhotos').click()"
+                            style="padding: 10px 20px; background: #f8f9fa; border: 2px dashed #007bff; color: #007bff; font-weight: 600;">
                         📷 Выбрать фотографии
                     </button>
                     <input type="file" id="propPhotos" multiple accept="image/*"
                            style="display: none;" onchange="handlePhotoSelect(event)">
-                    <small style="color: #6c757d; margin-left: 10px;">Можно выбрать до 10 файлов</small>
+                    <small style="color: #6c757d; margin-left: 10px;">Можно выбрать до 10 файлов (JPG, PNG, GIF до 5 МБ)</small>
                 </div>
 
-                <!-- Контейнер для предпросмотра -->
-                <div id="photoPreviewContainer" class="photo-preview-container">
-                    <div class="empty-preview">Фотографии не выбраны</div>
+                <!-- Контейнер для существующих фотографий -->
+                <div id="existingPhotosContainer" class="photo-grid" style="margin-bottom: 20px;">
+                    <!-- Существующие фото загружаются сюда -->
                 </div>
 
-                <!-- Подсказка по форматам -->
-                <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
-                    Поддерживаются JPG, PNG, GIF. Максимальный размер файла: 5 МБ
+                <!-- Контейнер для новых фотографий -->
+                <div id="newPhotosContainer" class="photo-grid" style="margin-bottom: 20px;">
+                    <!-- Новые фото загружаются сюда -->
+                </div>
+
+                <!-- Подсказка по управлению -->
+                <div style="background: #e7f1ff; padding: 10px; border-radius: 6px; font-size: 13px; color: #0056b3;">
+                    <strong>💡 Управление фотографиями:</strong><br>
+                    • Перетаскивайте фото мышкой, чтобы изменить порядок<br>
+                    • Звёздочка ⭐ показывает главное фото<br>
+                    • Нажмите на звёздочку, чтобы сделать фото главным<br>
+                    • Нажмите на корзину 🗑️, чтобы удалить фото
                 </div>
             </div>
 
             <!-- Кнопки действий -->
-            <div class="modal-actions" style="display: flex; gap: 10px; margin-top: 20px;">
+            <div class="modal-actions" style="display: flex; gap: 10px; margin-top: 25px;">
                 <button type="button" class="btn-secondary" onclick="closeModal('propertyEditModal')"
                         style="flex: 1; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; font-weight: 600; cursor: pointer;">
                     Отмена

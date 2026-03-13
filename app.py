@@ -1,7 +1,7 @@
 from fastapi import (FastAPI, Request, Form,
                      Depends, HTTPException, status,
                      Cookie, Response, UploadFile,
-                     File, WebSocket, WebSocketDisconnect, Header, Query)
+                     File, WebSocket, WebSocketDisconnect, Header, Query, Body)
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -122,6 +122,7 @@ def get_db():
         db.close()
 
 
+
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -183,6 +184,19 @@ async def get_current_user(
         print(f"❌ Ошибка валидации токена: {e}")
         return None
 
+# Добавьте эту функцию после get_db()
+def get_db_with_audit(current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        if current_user:
+            # Устанавливаем ID пользователя для триггеров аудита
+            db.execute(text(f"SELECT set_current_user_id({current_user.user_id})"))
+        else:
+            # Если пользователь не авторизован, устанавливаем NULL
+            db.execute(text("SELECT set_current_user_id(NULL)"))
+        yield db
+    finally:
+        db.close()
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -373,6 +387,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
+class DBSessionMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        return response
 
 # Подключаем middleware
 app.add_middleware(AuthMiddleware)
@@ -830,14 +848,17 @@ async def logout(response: Response):
     response.delete_cookie("access_token")
     return {"success": True, "message": "Выход выполнен успешно"}
 
+
+# ==================== АДМИН-ПАНЕЛЬ ====================
+
 @app.get("/api/admin/users")
 async def get_users(
-    page: int = 1,
-    per_page: int = 20,
-    search: Optional[str] = None,
-    user_type: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+        page: int = 1,
+        per_page: int = 20,
+        search: Optional[str] = None,
+        user_type: Optional[str] = None,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
 ):
     """Список пользователей для администратора"""
     if not current_user or current_user.user_type != 'admin':
@@ -856,7 +877,7 @@ async def get_users(
         query = query.filter(User.user_type == user_type)
 
     total = query.count()
-    users = query.order_by(User.user_id).offset((page-1)*per_page).limit(per_page).all()
+    users = query.order_by(User.user_id).offset((page - 1) * per_page).limit(per_page).all()
 
     return {
         "users": [{
@@ -874,11 +895,37 @@ async def get_users(
         "total_pages": (total + per_page - 1) // per_page
     }
 
+
+@app.get("/api/admin/users/{user_id}")
+async def get_user_by_id(
+        user_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Получить данные пользователя по ID (для админа)"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+
+    return {
+        "id": user.user_id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "user_type": user.user_type,
+        "is_active": user.is_active,
+        "avatar_url": user.avatar_url,
+        "contact_info": user.contact_info,
+        "created_at": user.created_at.isoformat() if user.created_at else None
+    }
+
 @app.patch("/api/admin/users/{user_id}/toggle-block")
 async def toggle_user_block(
-    user_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+        user_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
 ):
     """Блокировка/разблокировка пользователя"""
     if not current_user or current_user.user_type != 'admin':
@@ -891,7 +938,168 @@ async def toggle_user_block(
     user.is_active = not user.is_active
     db.commit()
 
+    # Логируем действие
+    log_action(db, current_user.user_id, 'TOGGLE_BLOCK', 'user', user_id,
+               {'is_active': user.is_active}, request=None)
+
     return {"success": True, "is_active": user.is_active}
+
+
+@app.get("/api/admin/properties")
+async def get_all_properties(
+        page: int = 1,
+        per_page: int = 20,
+        search: Optional[str] = None,
+        city: Optional[str] = None,
+        status: Optional[str] = None,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Список всех объектов для администратора"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    query = db.query(Property).join(User, Property.owner_id == User.user_id)
+
+    if search:
+        query = query.filter(
+            or_(
+                Property.title.ilike(f"%{search}%"),
+                Property.address.ilike(f"%{search}%"),
+                User.email.ilike(f"%{search}%"),
+                User.full_name.ilike(f"%{search}%")
+            )
+        )
+    if city:
+        query = query.filter(Property.city.ilike(f"%{city}%"))
+    if status:
+        query = query.filter(Property.status == status)
+
+    total = query.count()
+    properties = query.order_by(Property.property_id.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+    result = []
+    for prop in properties:
+        owner = db.query(User).filter(User.user_id == prop.owner_id).first()
+        main_photo = db.query(PropertyPhoto).filter(
+            PropertyPhoto.property_id == prop.property_id,
+            PropertyPhoto.is_main == True
+        ).first()
+
+        result.append({
+            "property_id": prop.property_id,
+            "title": prop.title,
+            "address": prop.address,
+            "city": prop.city,
+            "property_type": prop.property_type,
+            "area": float(prop.area) if prop.area else None,
+            "rooms": prop.rooms,
+            "price": float(prop.price) if prop.price else None,
+            "interval_pay": prop.interval_pay,
+            "status": prop.status,
+            "created_at": prop.created_at.isoformat() if prop.created_at else None,
+            "owner": {
+                "id": owner.user_id if owner else None,
+                "name": owner.full_name if owner else None,
+                "email": owner.email if owner else None
+            },
+            "main_photo": main_photo.url if main_photo else "/resources/placeholder-image.png"
+        })
+
+    return {
+        "properties": result,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page
+    }
+
+
+@app.delete("/api/admin/properties/{property_id}")
+async def admin_delete_property(
+        property_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Удаление объекта администратором"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    prop = db.query(Property).filter(Property.property_id == property_id).first()
+    if not prop:
+        raise HTTPException(404, "Объект не найден")
+
+    # Логируем действие перед удалением
+    log_action(db, current_user.user_id, 'ADMIN_DELETE', 'property', property_id,
+               {'title': prop.title, 'owner_id': prop.owner_id}, request=None)
+
+    db.delete(prop)
+    db.commit()
+
+    return {"success": True, "message": "Объект удалён"}
+
+
+@app.patch("/api/admin/properties/{property_id}/status")
+async def admin_update_property_status(
+        property_id: int,
+        status: str = Body(..., embed=True),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Изменение статуса объекта администратором"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    if status not in ['draft', 'active', 'rented', 'archived']:
+        raise HTTPException(400, "Недопустимый статус")
+
+    prop = db.query(Property).filter(Property.property_id == property_id).first()
+    if not prop:
+        raise HTTPException(404, "Объект не найден")
+
+    old_status = prop.status
+    prop.status = status
+    db.commit()
+
+    log_action(db, current_user.user_id, 'ADMIN_UPDATE_STATUS', 'property', property_id,
+               {'old_status': old_status, 'new_status': status}, request=None)
+
+    return {"success": True, "status": status}
+
+
+@app.get("/api/admin/stats")
+async def get_admin_stats(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Общая статистика для админ-панели"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    total_users = db.query(User).count()
+    total_properties = db.query(Property).count()
+    total_applications = db.query(Application).count()
+    total_contracts = db.query(Contract).count()
+
+    active_properties = db.query(Property).filter(Property.status == 'active').count()
+    pending_applications = db.query(Application).filter(Application.status == 'pending').count()
+
+    users_by_type = db.query(
+        User.user_type,
+        func.count(User.user_id).label('count')
+    ).group_by(User.user_type).all()
+
+    return {
+        "total_users": total_users,
+        "total_properties": total_properties,
+        "total_applications": total_applications,
+        "total_contracts": total_contracts,
+        "active_properties": active_properties,
+        "pending_applications": pending_applications,
+        "users_by_type": [{"type": ut[0], "count": ut[1]} for ut in users_by_type]
+    }
+
+
 
 # ==================== ПОИСК И ФИЛЬТРАЦИЯ ====================
 
@@ -1042,32 +1250,58 @@ async def search_cities_api(query: str = ""):
 # ==================== ДЕТАЛЬНАЯ ИНФОРМАЦИЯ ОБ ОБЪЕКТЕ ====================
 
 @app.get("/api/property/{property_id}")
-async def get_property_api(property_id: int, db: Session = Depends(get_db)):
-    property = db.query(Property).filter(Property.property_id == property_id).first()
-    if not property:
+async def get_property_api(property_id: int, db: Session = Depends(get_db_with_audit)):
+
+    property_obj = (
+        db.query(Property)
+        .filter(Property.property_id == property_id)
+        .first()
+    )
+
+    if not property_obj:
         raise HTTPException(status_code=404, detail="Объект не найден")
 
-    photos = db.query(PropertyPhoto).filter(PropertyPhoto.property_id == property_id).order_by(
-        PropertyPhoto.sequence_number).all()
-    owner = db.query(User).filter(User.user_id == property.owner_id).first()
+    photos = (
+        db.query(PropertyPhoto)
+        .filter(PropertyPhoto.property_id == property_id)
+        .order_by(PropertyPhoto.sequence_number)
+        .all()
+    )
+
+    owner = (
+        db.query(User)
+        .filter(User.user_id == property_obj.owner_id)
+        .first()
+    )
 
     return {
-        "property_id": property.property_id,
-        "title": property.title,
-        "description": property.description,
-        "address": property.address,
-        "city": property.city,
-        "property_type": property.property_type,
-        "area": float(property.area) if property.area else None,
-        "rooms": property.rooms,
-        "price": float(property.price) if property.price else None,
-        "interval_pay": property.interval_pay,
-        "status": property.status,
-        "photos": [{"url": photo.url, "is_main": photo.is_main} for photo in photos],
+        "property_id": property_obj.property_id,
+        "title": property_obj.title,
+        "description": property_obj.description,
+        "address": property_obj.address,
+        "city": property_obj.city,
+        "property_type": property_obj.property_type,
+        "area": float(property_obj.area) if property_obj.area else None,
+        "rooms": property_obj.rooms,
+        "price": float(property_obj.price) if property_obj.price else None,
+        "interval_pay": property_obj.interval_pay,
+        "status": property_obj.status,
+
+        "photos": [
+            {
+                "photo_id": photo.photo_id,
+                "url": photo.url,
+                "is_main": photo.is_main,
+                "sequence_number": photo.sequence_number
+            }
+            for photo in photos
+        ],
+
         "owner": {
-            "full_name": owner.full_name if owner else None,
-            "email": owner.email if owner else None,
-            "contact_info": owner.contact_info if owner else {}
+            "user_id": owner.user_id,
+            "full_name": owner.full_name,
+            "email": owner.email,
+            "contact_info": owner.contact_info if owner.contact_info else {}
         } if owner else None
     }
 
@@ -1101,93 +1335,90 @@ async def create_property(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """Создание нового объекта недвижимости"""
-    print(f"\n🔵 СОЗДАНИЕ ОБЪЕКТА")
-    print(f"👤 Пользователь: {current_user.email if current_user else 'None'}")
 
     if not current_user:
-        raise HTTPException(status_code=401, detail="Не авторизован")
+        raise HTTPException(401, "Не авторизован")
 
-    if current_user.user_type not in ['owner', 'agent']:
-        raise HTTPException(403, "Недостаточно прав")
+    form = await request.form()
 
-    try:
-        # Получаем данные из FormData
-        form = await request.form()
+    import json
 
-        # Извлекаем поля
-        title = form.get('title')
-        description = form.get('description')
-        address = form.get('address')
-        city = form.get('city')
-        property_type = form.get('property_type')
-        area = form.get('area')
-        rooms = form.get('rooms')
-        price = form.get('price')
-        interval_pay = form.get('interval_pay')
-        status = form.get('status', 'draft')  # Получаем статус, по умолчанию 'draft'
+    photo_order = json.loads(form.get("photo_order", "[]"))
+    new_photo_tmp_ids = json.loads(form.get("new_photo_tmp_ids", "[]"))
 
-        # Валидация
-        if not all([title, address, city, property_type, area, price, interval_pay]):
-            raise HTTPException(400, "Заполните все обязательные поля")
+    files = form.getlist("photos")   # ← ВАЖНО
 
-        # Преобразование типов
-        try:
-            area = float(area)
-            price = float(price)
-            rooms = int(rooms) if rooms else 0
-        except ValueError:
-            raise HTTPException(400, "Неверный формат числовых полей")
+    # ===== создаём объект =====
 
-        # Создаём объект
-        new_prop = Property(
-            owner_id=current_user.user_id,
-            title=title,
-            description=description,
-            address=address,
-            city=city,
-            property_type=property_type,
-            area=area,
-            rooms=rooms,
-            price=price,
-            interval_pay=interval_pay,
-            status=status  # Устанавливаем полученный статус
+    prop = Property(
+        owner_id=current_user.user_id,
+        title=form.get("title"),
+        description=form.get("description"),
+        address=form.get("address"),
+        city=form.get("city"),
+        property_type=form.get("property_type"),
+        area=float(form.get("area")),
+        rooms=int(form.get("rooms") or 0),
+        price=float(form.get("price")),
+        interval_pay=form.get("interval_pay"),
+        status=form.get("status", "draft")
+    )
+
+    db.add(prop)
+    db.flush()
+
+    property_id = prop.property_id
+
+    # ===== сохраняем все фото =====
+
+    tmp_to_photo_id = {}
+
+    for tmp_id, file in zip(new_photo_tmp_ids, files):
+
+        url = await save_upload_file(
+            file,
+            subdir=f"properties/{property_id}"
         )
 
-        db.add(new_prop)
-        db.commit()
-        db.refresh(new_prop)
+        photo = PropertyPhoto(
+            property_id=property_id,
+            url=url,
+            sequence_number=0,
+            is_main=False
+        )
 
-        print(f"✅ Объект создан с ID: {new_prop.property_id}, статус: {status}")
+        db.add(photo)
+        db.flush()
 
-        # Обработка фотографий
-        photos = []
-        for key, value in form.items():
-            if key == 'photos' and hasattr(value, 'filename') and value.filename:
-                photos.append(value)
+        tmp_to_photo_id[tmp_id] = photo.photo_id
 
-        if photos:
-            for idx, photo in enumerate(photos):
-                try:
-                    file_url = await save_upload_file(photo, subdir=f"properties/{new_prop.property_id}")
-                    db.add(PropertyPhoto(
-                        property_id=new_prop.property_id,
-                        url=file_url,
-                        is_main=(idx == 0),
-                        sequence_number=idx + 1
-                    ))
-                    print(f"  ✅ Фото {idx + 1} сохранено")
-                except Exception as e:
-                    print(f"  ❌ Ошибка сохранения фото: {e}")
-            db.commit()
-            print(f"✅ Сохранено {len(photos)} фотографий")
+    # ===== reorder =====
 
-        return {"success": True, "property_id": new_prop.property_id, "status": status}
+    for idx, item in enumerate(photo_order):
 
-    except Exception as e:
-        print(f"❌ Ошибка при создании объекта: {e}")
-        db.rollback()
-        raise HTTPException(500, f"Ошибка сервера: {str(e)}")
+        if item["type"] == "new":
+
+            photo_id = tmp_to_photo_id.get(item["id"])
+
+            if not photo_id:
+                continue
+
+            photo = db.query(PropertyPhoto).filter(
+                PropertyPhoto.photo_id == photo_id
+            ).first()
+
+            if photo:
+
+                photo.sequence_number = idx + 1
+                photo.is_main = idx == 0
+
+    db.commit()
+
+    return {
+        "success": True,
+        "property_id": property_id,
+        "photo_count": len(files)
+    }
 
 
 @app.put("/api/properties/{property_id}")
@@ -1197,6 +1428,7 @@ async def update_property(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
+
     if not current_user:
         raise HTTPException(401, "Не авторизован")
 
@@ -1204,85 +1436,143 @@ async def update_property(
     if not prop:
         raise HTTPException(404, "Объект не найден")
 
-    # Проверка прав - только владелец может редактировать
-    if prop.owner_id != current_user.user_id:
-        raise HTTPException(403, "Нет прав на редактирование")
+    if prop.owner_id != current_user.user_id and current_user.user_type != "admin":
+        raise HTTPException(403, "Нет прав")
 
     try:
-        # Получаем данные из FormData
+
         form = await request.form()
 
-        # Извлекаем поля
-        title = form.get('title')
-        description = form.get('description')
-        address = form.get('address')
-        city = form.get('city')
-        property_type = form.get('property_type')
-        area = form.get('area')
-        rooms = form.get('rooms')
-        price = form.get('price')
-        interval_pay = form.get('interval_pay')
-        status = form.get('status', prop.status)  # Получаем статус или оставляем текущий
+        import json
 
-        # Валидация
-        if not all([title, address, city, property_type, area, price, interval_pay]):
-            raise HTTPException(400, "Заполните все обязательные поля")
+        # =========================
+        # ПОЛЯ ОБЪЕКТА
+        # =========================
 
-        # Преобразование типов
-        try:
-            area = float(area)
-            price = float(price)
-            rooms = int(rooms) if rooms else 0
-        except ValueError:
-            raise HTTPException(400, "Неверный формат числовых полей")
+        prop.title = form.get("title")
+        prop.description = form.get("description")
+        prop.address = form.get("address")
+        prop.city = form.get("city")
+        prop.property_type = form.get("property_type")
 
-        # Обновляем объект
-        prop.title = title
-        prop.description = description
-        prop.address = address
-        prop.city = city
-        prop.property_type = property_type
-        prop.area = area
-        prop.rooms = rooms
-        prop.price = price
-        prop.interval_pay = interval_pay
-        prop.status = status
+        prop.area = float(form.get("area"))
+        prop.rooms = int(form.get("rooms") or 0)
+        prop.price = float(form.get("price"))
+        prop.interval_pay = form.get("interval_pay")
+
+        prop.status = form.get("status", prop.status)
+
+        # =========================
+        # ПАРСИНГ ДАННЫХ ФОТО
+        # =========================
+
+        photo_order = json.loads(form.get("photo_order", "[]"))
+        deleted_ids = json.loads(form.get("deleted_photos", "[]"))
+        new_photo_tmp_ids = json.loads(form.get("new_photo_tmp_ids", "[]"))
+
+        # =========================
+        # УДАЛЕНИЕ ФОТО
+        # =========================
+
+        for pid in deleted_ids:
+
+            photo = db.query(PropertyPhoto).filter(
+                PropertyPhoto.photo_id == pid,
+                PropertyPhoto.property_id == property_id
+            ).first()
+
+            if photo:
+
+                file_path = BASE_DIR / photo.url.lstrip("/")
+
+                if file_path.exists():
+                    file_path.unlink()
+
+                db.delete(photo)
+
+        # =========================
+        # СБОР НОВЫХ ФАЙЛОВ
+        # =========================
+
+        new_files = form.getlist("photos")
+
+        tmp_id_to_photo_id = {}
+
+        # =========================
+        # СОХРАНЕНИЕ НОВЫХ ФОТО
+        # =========================
+
+        for tmp_id, file in zip(new_photo_tmp_ids, new_files):
+
+            url = await save_upload_file(
+                file,
+                subdir=f"properties/{property_id}"
+            )
+
+            photo = PropertyPhoto(
+                property_id=property_id,
+                url=url,
+                is_main=False,
+                sequence_number=0
+            )
+
+            db.add(photo)
+            db.flush()
+
+            tmp_id_to_photo_id[tmp_id] = photo.photo_id
+
+        # =========================
+        # СБРОС MAIN PHOTO
+        # =========================
+
+        db.query(PropertyPhoto).filter(
+            PropertyPhoto.property_id == property_id
+        ).update({"is_main": False})
+
+        # =========================
+        # REORDER ФОТО
+        # =========================
+
+        for idx, item in enumerate(photo_order):
+
+            if item["type"] == "existing":
+                photo_id = item["id"]
+
+            else:
+                photo_id = tmp_id_to_photo_id.get(item["id"])
+
+            if not photo_id:
+                continue
+
+            photo = db.query(PropertyPhoto).filter(
+                PropertyPhoto.photo_id == photo_id
+            ).first()
+
+            if photo:
+
+                photo.sequence_number = idx + 1
+                photo.is_main = idx == 0
 
         db.commit()
 
-        print(f"✅ Объект {property_id} обновлён, новый статус: {status}")
+        photo_count = db.query(PropertyPhoto).filter(
+            PropertyPhoto.property_id == property_id
+        ).count()
 
-        # Обработка новых фотографий
-        photos = []
-        for key, value in form.items():
-            if key == 'photos' and hasattr(value, 'filename') and value.filename:
-                photos.append(value)
-
-        if photos:
-            # Получаем текущее максимальное значение sequence_number
-            max_seq = db.query(func.max(PropertyPhoto.sequence_number)).filter(
-                PropertyPhoto.property_id == property_id
-            ).scalar() or 0
-
-            for idx, photo in enumerate(photos):
-                try:
-                    file_url = await save_upload_file(photo, subdir=f"properties/{property_id}")
-                    db.add(PropertyPhoto(
-                        property_id=property_id,
-                        url=file_url,
-                        is_main=(max_seq + idx == 0 and max_seq == 0),
-                        sequence_number=max_seq + idx + 1
-                    ))
-                except Exception as e:
-                    print(f"❌ Ошибка сохранения фото: {e}")
-            db.commit()
-
-        return {"success": True, "property_id": property_id, "status": status}
+        return {
+            "success": True,
+            "photo_count": photo_count
+        }
 
     except Exception as e:
-        print(f"❌ Ошибка при обновлении объекта: {e}")
+
         db.rollback()
-        raise HTTPException(500, f"Ошибка сервера: {str(e)}")
+        print("❌ Ошибка update_property:", e)
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка сервера: {str(e)}"
+        )
 
 @app.delete("/api/properties/{property_id}")
 async def delete_property(
@@ -1366,6 +1656,50 @@ async def upload_property_photos(
         "uploaded": saved_count,
         "urls": uploaded_urls
     }
+
+
+@app.delete("/api/properties/{property_id}/photos/{photo_id}")
+async def delete_property_photo(
+        property_id: int,
+        photo_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Удаление фотографии объекта"""
+    if not current_user:
+        raise HTTPException(401, "Не авторизован")
+
+    # Проверяем существование объекта
+    property = db.query(Property).filter(Property.property_id == property_id).first()
+    if not property:
+        raise HTTPException(404, "Объект не найден")
+
+    # Проверка прав
+    if property.owner_id != current_user.user_id and current_user.user_type != 'admin':
+        raise HTTPException(403, "Нет прав на редактирование этого объекта")
+
+    # Находим фото
+    photo = db.query(PropertyPhoto).filter(
+        PropertyPhoto.photo_id == photo_id,
+        PropertyPhoto.property_id == property_id
+    ).first()
+
+    if not photo:
+        raise HTTPException(404, "Фотография не найдена")
+
+    # Удаляем файл
+    try:
+        file_path = BASE_DIR / photo.url.lstrip('/')
+        if file_path.exists():
+            file_path.unlink()
+    except Exception as e:
+        print(f"Ошибка удаления файла: {e}")
+
+    # Удаляем запись из БД
+    db.delete(photo)
+    db.commit()
+
+    return {"success": True}
 
 @app.get("/api/property/{property_id}/responsible")
 async def get_property_responsible(property_id: int, db: Session = Depends(get_db)):
@@ -2176,15 +2510,16 @@ async def update_user_profile(
 
 @app.get("/api/agent/stats")
 async def agent_stats(
-    months: int = 6,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+        months: int = 6,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
 ):
     """Ежемесячная статистика агента"""
     if not current_user or current_user.user_type != 'agent':
         raise HTTPException(status_code=403, detail="Только для агентов")
 
     try:
+        print(f"Запрос статистики для агента {current_user.user_id} за {months} месяцев")
         result = db.execute(
             text("SELECT * FROM get_agent_monthly_stats(:aid, :months)"),
             {"aid": current_user.user_id, "months": months}
@@ -2193,53 +2528,54 @@ async def agent_stats(
         return [dict(r._mapping) for r in result]
     except Exception as e:
         print(f"Ошибка статистики: {e}")
-        # Возвращаем пустой массив, чтобы фронтенд не падал
         return []
+
 
 @app.get("/api/agent/performance")
 async def agent_performance(
-    months: int = 6,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+        months: int = 6,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
 ):
     """KPI агента"""
     if not current_user or current_user.user_type != 'agent':
         raise HTTPException(status_code=403, detail="Только для агентов")
 
-    result = db.execute(
-        text("SELECT * FROM get_agent_performance_stats(:aid, :months)"),
-        {"aid": current_user.user_id, "months": months}
-    ).first()
+    try:
+        print(f"Запрос KPI для агента {current_user.user_id} за {months} месяцев")
+        result = db.execute(
+            text("SELECT * FROM get_agent_performance_stats(:aid, :months)"),
+            {"aid": current_user.user_id, "months": months}
+        ).first()
 
-    if not result:
+        if not result:
+            return {}
+        return dict(result._mapping)
+    except Exception as e:
+        print(f"Ошибка KPI: {e}")
         return {}
-    return dict(result._mapping)
-
 
 @app.get("/api/agent/rejection-reasons")
 async def agent_rejection_stats(
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+    days: int = Query(90, description="Количество дней для анализа"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Статистика по статусам заявок для круговой диаграммы"""
     if not current_user or current_user.user_type != 'agent':
         raise HTTPException(status_code=403, detail="Только для агентов")
 
-    ninety_days_ago = datetime.now() - timedelta(days=90)
+    try:
+        print(f"Запрос статусов за {days} дней для агента {current_user.user_id}")
+        result = db.execute(
+            text("SELECT * FROM get_agent_application_status_stats(:aid, :days)"),
+            {"aid": current_user.user_id, "days": days}
+        ).fetchall()
 
-    # Получаем статистику по всем статусам
-    status_counts = db.query(
-        Application.status,
-        func.count(Application.application_id).label('count')
-    ).join(Property, Application.property_id == Property.property_id).filter(
-        Property.owner_id == current_user.user_id,
-        Application.created_at >= ninety_days_ago
-    ).group_by(Application.status).all()
-
-    # Преобразуем в список словарей
-    result = [{"status": r.status, "count": r.count} for r in status_counts]
-
-    return result
+        return [dict(r._mapping) for r in result]
+    except Exception as e:
+        print(f"Ошибка загрузки статусов: {e}")
+        return []
 
 @app.get("/api/agent/rejection-reasons")
 async def rejection_reasons(
@@ -2266,17 +2602,17 @@ async def rejection_reasons(
 
 @app.get("/api/admin/audit-logs")
 async def get_audit_logs(
-    request: Request,
-    page: int = 1,
-    per_page: int = 50,
-    user_id: Optional[int] = None,
-    action: Optional[str] = None,
-    entity_type: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    search: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+        request: Request,
+        page: int = 1,
+        per_page: int = 50,
+        user_id: Optional[int] = None,
+        action: Optional[str] = None,
+        entity_type: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        search: Optional[str] = None,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db_with_audit)
 ):
     """Получить аудит логи с фильтрацией (только для admin)"""
     if not current_user or current_user.user_type != 'admin':
@@ -2326,18 +2662,20 @@ async def get_audit_logs(
     # Формируем результат
     result = []
     for log in logs:
-        # Получаем IP из details если есть
-        ip_address = log.details.get('ip_address') if log.details else None
+        # Получаем название объекта для entity_id
+        entity_name = get_entity_name(db, log.entity_type, log.entity_id)
+
+        # Форматируем действие
+        action_display = get_action_display(log.action)
+
+        # Форматируем тип объекта
+        entity_type_display = get_entity_type_display(log.entity_type)
 
         # Форматируем изменения для отображения
-        changes = ""
-        if log.details and 'changes' in log.details:
-            changes_dict = log.details['changes']
-            changes_list = []
-            for field, values in changes_dict.items():
-                if isinstance(values, dict) and 'old' in values and 'new' in values:
-                    changes_list.append(f"{field}: {values['old']} → {values['new']}")
-            changes = ", ".join(changes_list)
+        changes = format_changes_for_display(log.details)
+
+        # Получаем IP из details если есть
+        ip_address = log.details.get('ip_address') if log.details else None
 
         result.append({
             "log_id": log.log_id,
@@ -2345,8 +2683,11 @@ async def get_audit_logs(
             "user_email": log.user.email if log.user else "Система",
             "user_name": log.user.full_name if log.user else "Система",
             "action": log.action,
+            "action_display": action_display,
             "entity_type": log.entity_type,
+            "entity_type_display": entity_type_display,
             "entity_id": log.entity_id,
+            "entity_name": entity_name,
             "changes": changes,
             "ip_address": ip_address or "Неизвестно",
             "created_at": log.created_at.isoformat() if log.created_at else None,
@@ -2360,6 +2701,137 @@ async def get_audit_logs(
         "per_page": per_page,
         "total_pages": (total + per_page - 1) // per_page
     }
+
+
+# Вспомогательные функции для форматирования
+
+def get_action_display(action: str) -> str:
+    """Возвращает человеко-читаемое название действия"""
+    actions_map = {
+        'INSERT': '➕ Добавление',
+        'UPDATE': '✏️ Изменение',
+        'DELETE': '🗑️ Удаление',
+        'TOGGLE_BLOCK': '🔒 Блокировка/Разблокировка',
+        'ADMIN_DELETE': '🗑️ Удаление (админ)',
+        'ADMIN_UPDATE_STATUS': '🔄 Изменение статуса',
+        'SIGN': '✍️ Подписание',
+        'LOGIN': '🔑 Вход',
+        'LOGOUT': '🚪 Выход',
+        'REGISTER': '📝 Регистрация'
+    }
+    return actions_map.get(action, action)
+
+
+def get_entity_type_display(entity_type: str) -> str:
+    """Возвращает человеко-читаемое название типа объекта"""
+    types_map = {
+        'applications': '📋 Заявка',
+        'properties': '🏠 Объект',
+        'contracts': '📄 Договор',
+        'users': '👤 Пользователь',
+        'messages': '💬 Сообщение',
+        'audit_logs': '📊 Аудит-лог'
+    }
+    return types_map.get(entity_type, entity_type)
+
+
+def get_entity_name(db: Session, entity_type: str, entity_id: Optional[int]) -> str:
+    """Получает название/заголовок объекта по его ID"""
+    if not entity_id:
+        return ""
+
+    try:
+        if entity_type == 'applications':
+            app = db.query(Application).filter(Application.application_id == entity_id).first()
+            if app:
+                property = db.query(Property).filter(Property.property_id == app.property_id).first()
+                return f"Заявка #{entity_id} на '{property.title if property else 'объект'}'"
+
+        elif entity_type == 'properties':
+            prop = db.query(Property).filter(Property.property_id == entity_id).first()
+            return prop.title if prop else f"Объект #{entity_id}"
+
+        elif entity_type == 'contracts':
+            contract = db.query(Contract).filter(Contract.contract_id == entity_id).first()
+            if contract:
+                return f"Договор #{contract.contract_id}"
+            return f"Договор #{entity_id}"
+
+        elif entity_type == 'users':
+            user = db.query(User).filter(User.user_id == entity_id).first()
+            return user.full_name if user else f"Пользователь #{entity_id}"
+
+        elif entity_type == 'messages':
+            return f"Сообщение #{entity_id}"
+
+    except Exception as e:
+        print(f"Ошибка получения имени объекта: {e}")
+
+    return ""
+
+
+def format_changes_for_display(details: Optional[dict]) -> str:
+    """Форматирует изменения для отображения"""
+    if not details:
+        return "—"
+
+    changes = details.get('changes')
+    if not changes:
+        return "—"
+
+    changes_list = []
+    for field, values in changes.items():
+        if isinstance(values, dict):
+            old_val = values.get('old', '')
+            new_val = values.get('new', '')
+
+            # Форматируем названия полей
+            field_display = get_field_display(field)
+
+            # Сокращаем длинные значения
+            old_str = str(old_val)[:50] + "..." if len(str(old_val)) > 50 else str(old_val)
+            new_str = str(new_val)[:50] + "..." if len(str(new_val)) > 50 else str(new_val)
+
+            if old_str and new_str:
+                changes_list.append(f"{field_display}: {old_str} → {new_str}")
+            elif new_str:
+                changes_list.append(f"{field_display}: {new_str}")
+
+    return ", ".join(changes_list) if changes_list else "—"
+
+
+def get_field_display(field: str) -> str:
+    """Возвращает человеко-читаемое название поля"""
+    fields_map = {
+        'title': 'Название',
+        'description': 'Описание',
+        'address': 'Адрес',
+        'city': 'Город',
+        'price': 'Цена',
+        'area': 'Площадь',
+        'rooms': 'Комнаты',
+        'status': 'Статус',
+        'user_type': 'Тип пользователя',
+        'full_name': 'Имя',
+        'email': 'Email',
+        'phone': 'Телефон',
+        'is_active': 'Активность',
+        'interval_pay': 'Интервал оплаты',
+        'property_type': 'Тип недвижимости',
+        'desired_date': 'Желаемая дата',
+        'duration_days': 'Длительность',
+        'answer': 'Ответ',
+        'responded_at': 'Дата ответа',
+        'signing_status': 'Статус подписания',
+        'total_amount': 'Сумма',
+        'start_date': 'Дата начала',
+        'end_date': 'Дата окончания',
+        'tenant_signed': 'Подпись арендатора',
+        'owner_signed': 'Подпись собственника',
+        'content': 'Содержание',
+        'is_read': 'Прочитано'
+    }
+    return fields_map.get(field, field)
 
 @app.get("/api/admin/audit-logs/filters")
 async def get_audit_filters(
@@ -2433,6 +2905,8 @@ async def admin_audit_page(
         "current_user": current_user,
         "user_initials": get_user_initials(current_user)
     })
+
+
 
 # ==================== ГЕНЕРАЦИЯ ДОКУМЕНТОВ ====================
 

@@ -1,8 +1,19 @@
 // static/script.js
 
-// Текущий режим отображения
+// Глобальная инициализация
+window.hasValidationErrors = false;
+window.uploadedFiles = [];
+
+// Убедитесь, что эти переменные объявлены ТОЛЬКО ОДИН РАЗ
 let currentViewMode = 'grid';
 let currentPropertyId = null;
+let existingPhotos = [];
+let newPhotos = [];
+let deletedPhotoIds = [];
+const MAX_PHOTOS = 10;  // <-- ДОЛЖНО БЫТЬ ТОЛЬКО ЗДЕСЬ
+let allPhotos = [];      // если используете новый подход
+
+let draggedItem = null;  // для drag & drop
 
 // Глобальная инициализация
 window.hasValidationErrors = false;
@@ -97,15 +108,28 @@ function setViewMode(mode) {
     const container = document.getElementById('propertiesContainer');
     const gridBtn = document.getElementById('gridViewBtn');
     const listBtn = document.getElementById('listViewBtn');
+    const cards = document.querySelectorAll('.property-card');
 
     if (mode === 'grid') {
         container.className = 'results-grid';
         gridBtn.classList.add('active');
         listBtn.classList.remove('active');
+
+        // Скрываем описание в режиме сетки
+        cards.forEach(card => {
+            const desc = card.querySelector('.property-description');
+            if (desc) desc.style.display = 'none';
+        });
     } else {
         container.className = 'results-list';
         gridBtn.classList.remove('active');
         listBtn.classList.add('active');
+
+        // Показываем описание в режиме списка
+        cards.forEach(card => {
+            const desc = card.querySelector('.property-description');
+            if (desc) desc.style.display = 'block';
+        });
     }
 
     currentViewMode = mode;
@@ -236,8 +260,6 @@ function hidePropertyModal() {
     document.getElementById('propertyModal').style.display = 'none';
 }
 
-
-
 function fillPropertyModal(data) {
     document.getElementById('modalPropertyTitle').textContent = data.title || 'Без названия';
 
@@ -276,9 +298,20 @@ function fillPropertyModal(data) {
             document.getElementById('modalResponsiblePhone').textContent = responsible.phone || '-';
         })
         .catch(err => console.error('Ошибка загрузки ответственной стороны:', err));
+
+    // Проверяем, является ли текущий пользователь администратором
+    if (window.currentUser && window.currentUser.type === 'admin') {
+        // Показываем кнопки администратора
+        document.getElementById('adminActions').style.display = 'block';
+        // Скрываем обычные кнопки (опционально)
+        // document.getElementById('regularUserActions').style.display = 'none';
+    } else {
+        // Скрываем кнопки администратора
+        document.getElementById('adminActions').style.display = 'none';
+        // Показываем обычные кнопки
+        document.getElementById('regularUserActions').style.display = 'flex';
+    }
 }
-
-
 
 function showContactForm() {
     if (!isUserLoggedIn()) {
@@ -1072,121 +1105,147 @@ async function cancelContract() {
 async function loadAgentStats() {
     const period = document.getElementById('statsPeriod').value;
 
+    // Преобразуем месяцы в дни (приблизительно)
+    let days = 90; // по умолчанию 3 месяца
+    if (period === '6') days = 180;
+    if (period === '12') days = 365;
+
     try {
         // Загружаем месячные данные
         const monthlyRes = await fetch(`/api/agent/stats?months=${period}`, { credentials: 'same-origin' });
         if (!monthlyRes.ok) throw new Error('Ошибка загрузки месячной статистики');
         const monthlyData = await monthlyRes.json();
+        console.log('Monthly data:', monthlyData);
 
         // Загружаем KPI
         const perfRes = await fetch(`/api/agent/performance?months=${period}`, { credentials: 'same-origin' });
         if (!perfRes.ok) throw new Error('Ошибка загрузки KPI');
         const perfData = await perfRes.json();
+        console.log('Performance data:', perfData);
 
-        // Загружаем статусы
-        const statusRes = await fetch(`/api/agent/rejection-reasons`, { credentials: 'same-origin' });
+        // Загружаем статусы с параметром days
+        const statusRes = await fetch(`/api/agent/rejection-reasons?days=${days}`, { credentials: 'same-origin' });
         if (!statusRes.ok) throw new Error('Ошибка загрузки статусов');
         const statusData = await statusRes.json();
+        console.log('Status data for', days, 'days:', statusData);
 
-        // Обновляем KPI
-        document.getElementById('statsTotalProfit').textContent = perfData.total_profit ? Number(perfData.total_profit).toLocaleString() + ' ₽' : '0 ₽';
-        document.getElementById('statsAvgProfit').textContent = perfData.avg_profit_per_property ? Number(perfData.avg_profit_per_property).toLocaleString() + ' ₽' : '0 ₽';
+        // Обновляем KPI с округлением до 2 знаков
+        document.getElementById('statsTotalProfit').textContent = perfData.total_profit
+            ? Number(perfData.total_profit).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽'
+            : '0 ₽';
+
+        document.getElementById('statsAvgProfit').textContent = perfData.avg_profit_per_property
+            ? Number(perfData.avg_profit_per_property).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽'
+            : '0 ₽';
+
         document.getElementById('statsTotalDeals').textContent = perfData.total_deals || 0;
-        document.getElementById('statsOccupancy').textContent = perfData.occupancy_rate ? perfData.occupancy_rate + '%' : '0%';
+
+        document.getElementById('statsOccupancy').textContent = perfData.occupancy_rate
+            ? Number(perfData.occupancy_rate).toFixed(1) + '%'
+            : '0%';
+
         document.getElementById('statsProcessedApps').textContent = perfData.processed_applications || 0;
-        document.getElementById('statsAvgResponseTime').textContent = perfData.avg_response_hours ? perfData.avg_response_hours + ' ч' : '0 ч';
-        document.getElementById('statsConversionRate').textContent = perfData.conversion_rate ? perfData.conversion_rate + '%' : '0%';
+
+        const avgHours = perfData.avg_response_hours || 0;
+        document.getElementById('statsAvgResponseTime').textContent = avgHours.toFixed(2) + ' ч';
+
+        const conversion = perfData.conversion_rate || 0;
+        document.getElementById('statsConversionRate').textContent = conversion.toFixed(2) + '%';
 
         // ===== СТОЛБЧАТАЯ ДИАГРАММА =====
         const ctx1 = document.getElementById('dealsChart')?.getContext('2d');
         if (ctx1) {
-            // Уничтожаем старую диаграмму если она существует
             if (window.dealsChart && typeof window.dealsChart.destroy === 'function') {
                 window.dealsChart.destroy();
             }
 
-            // Сортируем данные по месяцам (от ранних к поздним)
-            const sortedMonthlyData = [...monthlyData].sort((a, b) => {
-                if (a.month < b.month) return -1;
-                if (a.month > b.month) return 1;
-                return 0;
-            });
+            // Проверяем наличие данных
+            if (!monthlyData || monthlyData.length === 0) {
+                document.getElementById('dealsChartContainer').innerHTML =
+                    '<p style="text-align: center; color: #6c757d; padding: 20px;">Нет данных за выбранный период</p>';
+            } else {
+                // Сортируем данные по месяцам
+                const sortedMonthlyData = [...monthlyData].sort((a, b) => {
+                    if (a.month < b.month) return -1;
+                    if (a.month > b.month) return 1;
+                    return 0;
+                });
 
-            window.dealsChart = new Chart(ctx1, {
-                type: 'bar',
-                data: {
-                    labels: sortedMonthlyData.map(d => {
-                        // Преобразуем YYYY-MM в читаемый формат
-                        const [year, month] = d.month.split('-');
-                        const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
-                                          'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-                        return `${monthNames[parseInt(month)-1]} ${year}`;
-                    }),
-                    datasets: [
-                        {
-                            label: 'Прибыль (₽)',
-                            data: sortedMonthlyData.map(d => d.total_profit || 0),
-                            backgroundColor: 'rgba(40, 167, 69, 0.7)',
-                            borderColor: '#28a745',
-                            borderWidth: 1,
-                            yAxisID: 'y'
-                        },
-                        {
-                            label: 'Сделки',
-                            data: sortedMonthlyData.map(d => d.deals_count || 0),
-                            backgroundColor: 'rgba(0, 123, 255, 0.7)',
-                            borderColor: '#007bff',
-                            borderWidth: 1,
-                            yAxisID: 'y1'
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            type: 'linear',
-                            display: true,
-                            position: 'left',
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Прибыль (₽)'
-                            }
-                        },
-                        y1: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Количество сделок'
+                const labels = sortedMonthlyData.map(d => {
+                    const [year, month] = d.month.split('-');
+                    const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
+                                      'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+                    return `${monthNames[parseInt(month)-1]} ${year}`;
+                });
+
+                window.dealsChart = new Chart(ctx1, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Прибыль (₽)',
+                                data: sortedMonthlyData.map(d => d.total_profit || 0),
+                                backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                                borderColor: '#28a745',
+                                borderWidth: 1,
+                                yAxisID: 'y'
                             },
-                            grid: {
-                                drawOnChartArea: false
+                            {
+                                label: 'Сделки',
+                                data: sortedMonthlyData.map(d => d.deals_count || 0),
+                                backgroundColor: 'rgba(0, 123, 255, 0.7)',
+                                borderColor: '#007bff',
+                                borderWidth: 1,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                beginAtZero: true,
+                                title: { display: true, text: 'Прибыль (₽)' }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                beginAtZero: true,
+                                title: { display: true, text: 'Количество сделок' },
+                                grid: { drawOnChartArea: false },
+                                ticks: { stepSize: 1, precision: 0 }
                             }
                         }
                     }
-                }
-            });
+                });
+            }
         }
 
-        // ===== КРУГОВАЯ ДИАГРАММА (только Одобрено и Отказано) =====
+        // ===== КРУГОВАЯ ДИАГРАММА =====
         const ctx2 = document.getElementById('pieChart')?.getContext('2d');
         if (ctx2) {
-            // Уничтожаем старую диаграмму если она существует
             if (window.pieChart && typeof window.pieChart.destroy === 'function') {
                 window.pieChart.destroy();
             }
 
-            // Фильтруем только нужные статусы
+            // Проверяем наличие данных
+            if (!statusData || statusData.length === 0) {
+                document.getElementById('pieChartContainer').innerHTML =
+                    '<p style="text-align: center; color: #6c757d; padding: 20px;">Нет данных за выбранный период</p>';
+                return;
+            }
+
+            // Фильтруем только нужные статусы для круговой диаграммы
             const filteredData = statusData.filter(item =>
                 item.status === 'approved' || item.status === 'rejected'
             );
 
-            // Если нет данных, показываем сообщение
             if (filteredData.length === 0) {
                 document.getElementById('pieChartContainer').innerHTML =
                     '<p style="text-align: center; color: #6c757d; padding: 20px;">Нет данных для отображения</p>';
@@ -1195,7 +1254,7 @@ async function loadAgentStats() {
 
             const labels = [];
             const data = [];
-            const colors = ['#28a745', '#dc3545']; // зелёный для одобрено, красный для отказано
+            const colors = ['#28a745', '#dc3545'];
 
             filteredData.forEach((item, index) => {
                 const statusNames = {
@@ -1206,7 +1265,6 @@ async function loadAgentStats() {
                 data.push(item.count || 0);
             });
 
-            // Вычисляем общее количество для процентов
             const total = data.reduce((a, b) => a + b, 0);
 
             window.pieChart = new Chart(ctx2, {
@@ -1224,14 +1282,7 @@ async function loadAgentStats() {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                font: {
-                                    size: 12
-                                }
-                            }
-                        },
+                        legend: { position: 'bottom' },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
@@ -1349,20 +1400,20 @@ async function showApplicationDetail(applicationId) {
 
 // Функция для отправки формы с указанием статуса
 async function submitPropertyForm(status) {
+
     const form = document.getElementById('propertyEditForm');
     const isEditing = !!form.dataset.propertyId;
-    const currentStatus = document.getElementById('propCurrentStatus').value;
 
-    // Устанавливаем статус
+    const propertyId = form.dataset.propertyId;
+    const url = isEditing ? `/api/properties/${propertyId}` : `/api/properties`;
+
     document.getElementById('propStatus').value = status;
 
-    // Создаем FormData и заполняем его
     const formData = new FormData();
 
-    // Добавляем статус
-    formData.append('status', status);
+    // ===== ПОЛЯ ФОРМЫ =====
 
-    // Добавляем остальные поля
+    formData.append('status', status);
     formData.append('title', document.getElementById('propTitle')?.value.trim() || '');
     formData.append('description', document.getElementById('propDescription')?.value.trim() || '');
     formData.append('address', document.getElementById('propAddress')?.value.trim() || '');
@@ -1373,91 +1424,167 @@ async function submitPropertyForm(status) {
     formData.append('price', document.getElementById('propPrice')?.value || '0');
     formData.append('interval_pay', document.getElementById('propInterval')?.value || 'month');
 
-    // Проверка обязательных полей
+    // ===== ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ =====
+
     const requiredFields = ['title', 'address', 'city', 'property_type', 'area', 'price', 'interval_pay'];
+
     for (let field of requiredFields) {
+
         if (!formData.get(field)) {
+
             showNotification(`Заполните поле ${field}`, 'error');
             return;
+
         }
+
     }
 
-    // Добавляем фотографии
-    if (window.uploadedFiles && window.uploadedFiles.length > 0) {
-        window.uploadedFiles.forEach(file => {
-            formData.append('photos', file);
-        });
-    }
+    // ===== ОБРАБОТКА ФОТО =====
 
-    const propertyId = form.dataset.propertyId;
-    const url = isEditing ? `/api/properties/${propertyId}` : '/api/properties';
+    const photoOrder = [];
+    const newPhotoTmpIds = [];
+    const numericDeletedIds = [];
 
-    console.log(`📤 ${isEditing ? 'Обновление' : 'Создание'} объекта со статусом: ${status}`);
+    const newPhotoFiles = [];
 
-    // Блокируем кнопки на время отправки
-    const submitButtons = document.querySelectorAll('#propertyEditForm .btn-primary, #propertyEditForm .btn-warning');
+    allPhotos.forEach(photo => {
+
+        if (!photo.isNew) {
+
+            photoOrder.push({
+                id: Number(photo.id),
+                type: "existing"
+            });
+
+        } else {
+
+            photoOrder.push({
+                id: photo.id,
+                type: "new"
+            });
+
+            newPhotoTmpIds.push(photo.id);
+
+            if (photo.file) {
+                newPhotoFiles.push(photo.file);
+            }
+
+        }
+
+    });
+
+    deletedPhotoIds.forEach(id => {
+        numericDeletedIds.push(Number(id));
+    });
+
+    // добавляем файлы ПОСЛЕ формирования массива
+    newPhotoFiles.forEach(file => {
+        formData.append("photos", file);
+    });
+
+    formData.append("photo_order", JSON.stringify(photoOrder));
+    formData.append("new_photo_tmp_ids", JSON.stringify(newPhotoTmpIds));
+    formData.append("deleted_photos", JSON.stringify(numericDeletedIds));
+
+    console.log('📤 Отправляемые данные:');
+    console.log('photo_order:', photoOrder);
+    console.log('new_photo_tmp_ids:', newPhotoTmpIds);
+    console.log('deleted_photos:', numericDeletedIds);
+    console.log('Всего фото:', allPhotos.length);
+
+    // ===== БЛОКИРУЕМ КНОПКИ =====
+
+    const submitButtons = document.querySelectorAll(
+        '#propertyEditForm .btn-primary, #propertyEditForm .btn-warning'
+    );
+
     submitButtons.forEach(btn => btn.disabled = true);
 
     try {
+
         const response = await fetch(url, {
             method: isEditing ? 'PUT' : 'POST',
             body: formData,
             credentials: 'same-origin'
         });
 
-        const responseText = await response.text();
-        console.log('📥 Ответ сервера:', responseText);
+        const text = await response.text();
+
+        console.log('📥 Ответ сервера:', text);
 
         if (!response.ok) {
+
             let errorMsg = 'Ошибка сохранения';
+
             try {
-                const err = JSON.parse(responseText);
+
+                const err = JSON.parse(text);
                 errorMsg = err.detail || err.message || JSON.stringify(err);
-            } catch (e) {
-                errorMsg = responseText || errorMsg;
+
+            } catch {
+
+                errorMsg = text || errorMsg;
+
             }
+
             throw new Error(errorMsg);
+
         }
 
-        const result = JSON.parse(responseText);
+        const result = JSON.parse(text);
 
-        let successMessage = '';
-        if (!isEditing) {
-            successMessage = status === 'active' ? '✅ Объект успешно опубликован!' : '✅ Объект сохранён как черновик';
-        } else {
-            if (currentStatus === 'draft' && status === 'active') {
-                successMessage = '✅ Черновик успешно опубликован!';
-            } else if (currentStatus === 'active' && status === 'active') {
-                successMessage = '✅ Изменения сохранены';
-            } else if (currentStatus === 'active' && status === 'draft') {
-                successMessage = '✅ Объект снят с публикации и сохранён как черновик';
-            } else {
-                successMessage = '✅ Черновик обновлён';
-            }
-        }
+        showNotification(
+            isEditing ? '✅ Объект обновлён' : '✅ Объект создан',
+            'success'
+        );
 
-        showNotification(successMessage, 'success');
+        // ===== ОЧИСТКА ФОРМЫ =====
 
-        // Очищаем форму
         form.reset();
         delete form.dataset.propertyId;
-        window.uploadedFiles = [];
-        updatePhotoPreview();
+
+        // освобождаем blob URL
+
+        allPhotos.forEach(photo => {
+
+            if (photo.isNew && photo.url && photo.url.startsWith('blob:')) {
+
+                URL.revokeObjectURL(photo.url);
+
+            }
+
+        });
+
+        // сбрасываем переменные
+
+        allPhotos = [];
+        deletedPhotoIds = [];
+
+        if (typeof renderPhotos === 'function') {
+            renderPhotos();
+        }
 
         closeModal('propertyEditModal');
 
-        // Обновляем список объектов, если он открыт
-        if (document.getElementById('myPropertiesModal').style.display === 'flex') {
+        if (document.getElementById('myPropertiesModal')?.style.display === 'flex') {
             loadMyProperties();
         }
 
-    } catch (error) {
+    }
+
+    catch (error) {
+
         console.error('❌ Ошибка:', error);
         showNotification(error.message, 'error');
-    } finally {
-        // Разблокируем кнопки
-        submitButtons.forEach(btn => btn.disabled = false);
+
     }
+
+    finally {
+
+        submitButtons.forEach(btn => btn.disabled = false);
+
+    }
+
 }
 
 // Функция для отмены заявки
@@ -1640,22 +1767,15 @@ document.addEventListener('DOMContentLoaded', function() {
 const originalCloseModal = closeModal;
 closeModal = function(modalId) {
     if (modalId === 'propertyEditModal') {
-        // Сбрасываем кнопки к исходному состоянию
-        const cancelBtn = document.querySelector('#propertyEditForm .btn-secondary');
-        const draftBtn = document.querySelector('#propertyEditForm .btn-warning');
-        const publishBtn = document.querySelector('#propertyEditForm .btn-primary');
-
-        if (cancelBtn && draftBtn && publishBtn) {
-            draftBtn.style.display = 'block';
-            draftBtn.textContent = '💾 Сохранить как черновик';
-            draftBtn.onclick = () => submitPropertyForm('draft');
-
-            publishBtn.textContent = '📢 Опубликовать';
-            publishBtn.onclick = () => submitPropertyForm('active');
-
-            publishBtn.style.display = 'block';
-            cancelBtn.style.display = 'block';
-        }
+        // Освобождаем blob URL
+        allPhotos.forEach(p => {
+            if (p.isNew && p.url && p.url.startsWith('blob:')) {
+                URL.revokeObjectURL(p.url);
+            }
+        });
+        allPhotos = [];
+        deletedPhotoIds = [];
+        updatePhotoCounter(); // Сброс счетчика
     }
     originalCloseModal(modalId);
 };
@@ -1779,7 +1899,11 @@ async function loadMyApplications() {
 
 // ==================== ФОРМАТИРОВАНИЕ ЦЕНЫ ====================
 function formatPrice(price, intervalPay) {
-    const formattedPrice = Number(price).toLocaleString('ru-RU');
+    const formattedPrice = Number(price).toLocaleString('ru-RU', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+
     switch(intervalPay) {
         case 'month':
             return `${formattedPrice} ₽/мес`;
@@ -2102,21 +2226,81 @@ function isUserLoggedIn() {
 
 // ==================== УПРАВЛЕНИЕ ЗАГРУЗКОЙ ФОТОГРАФИЙ ====================
 
-const MAX_PHOTOS = 10;
 
+
+// Обновление сетки фотографий
+function updatePhotoGrid() {
+    updatePhotoCounter();
+
+    const existingContainer = document.getElementById('existingPhotosContainer');
+    const newContainer = document.getElementById('newPhotosContainer');
+
+    if (!existingContainer || !newContainer) return;
+
+    // Отображаем существующие фото
+    if (existingPhotos.length > 0) {
+        existingContainer.innerHTML = renderPhotoItems(existingPhotos, 'existing');
+    } else {
+        existingContainer.innerHTML = '<div class="empty-photo-message">Нет сохранённых фотографий</div>';
+    }
+
+    // Отображаем новые фото
+    if (newPhotos.length > 0) {
+        newContainer.innerHTML = renderPhotoItems(newPhotos, 'new');
+    } else {
+        newContainer.innerHTML = ''; // можно оставить пустым или показать сообщение
+    }
+
+    // Добавляем обработчики drag & drop
+    setupDragAndDrop();
+}
+
+function renderPhotos() {
+    const existingContainer = document.getElementById('existingPhotosContainer');
+    const newContainer = document.getElementById('newPhotosContainer');
+
+    if (!existingContainer || !newContainer) return;
+
+    // Существующие фото (isNew = false)
+    const existing = allPhotos.filter(p => !p.isNew);
+    // Новые фото (isNew = true)
+    const news = allPhotos.filter(p => p.isNew);
+
+    existingContainer.innerHTML = renderPhotoItems(existing, 'existing');
+    newContainer.innerHTML = renderPhotoItems(news, 'new');
+
+    // Обновляем счетчик при каждом рендере
+    updatePhotoCounter();
+}
+
+// Обработка выбора новых фотографий
 function handlePhotoSelect(event) {
     const files = Array.from(event.target.files);
-    if (!window.uploadedFiles) window.uploadedFiles = [];
-    if (window.uploadedFiles.length + files.length > MAX_PHOTOS) {
+
+    // Проверка лимита
+    if (allPhotos.length + files.length > MAX_PHOTOS) {
         showNotification(`Можно загрузить не более ${MAX_PHOTOS} фотографий`, 'warning');
         return;
     }
+
     const validFiles = files.filter(file => file.type.startsWith('image/'));
-    if (validFiles.length !== files.length) {
-        showNotification('Некоторые файлы не являются изображениями и были пропущены', 'warning');
-    }
-    window.uploadedFiles.push(...validFiles);
-    updatePhotoPreview();
+
+    validFiles.forEach(file => {
+        const id = 'new_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        allPhotos.push({
+            id: id,
+            url: URL.createObjectURL(file),
+            is_main: allPhotos.length === 0, // Первое фото сразу главное
+            isNew: true,
+            file: file
+        });
+    });
+
+    // Обновляем счетчик и отображение
+    updatePhotoCounter();
+    renderPhotos();
+
+    // Очищаем input для возможности повторного выбора тех же файлов
     event.target.value = '';
 }
 
@@ -2124,6 +2308,343 @@ function removePhoto(index) {
     if (window.uploadedFiles) {
         window.uploadedFiles.splice(index, 1);
         updatePhotoPreview();
+    }
+}
+
+// Рендер элементов фотографий
+function renderPhotoItems(photos, type) {
+    if (photos.length === 0) return type === 'existing' ? '<div class="empty-photo-message">Нет сохранённых фотографий</div>' : '';
+
+    return photos.map((photo, index) => {
+        const isMain = photo.is_main;
+
+        // Правильное отображение звездочки
+        const starIcon = isMain ? '⭐' : '☆';
+        const starClass = isMain ? 'active' : '';
+
+        return `
+            <div class="photo-item ${type}-photo ${isMain ? 'main-photo' : ''}"
+                 data-id="${photo.id}"
+                 data-type="${type}"
+                 data-index="${index}"
+                 draggable="true"
+                 ondragstart="handleDragStart(event)"
+                 ondragend="handleDragEnd(event)"
+                 ondragover="handleDragOver(event)"
+                 ondragleave="handleDragLeave(event)"
+                 ondrop="handleDrop(event)">
+                <img src="${photo.url}" class="photo-image" alt="photo" onerror="this.src='/resources/placeholder-image.png'">
+                <div class="photo-actions">
+                    <button class="photo-btn photo-btn-star ${starClass}"
+                            onclick="setMainPhoto('${photo.id}')"
+                            title="Главное фото">${starIcon}</button>
+                    <button class="photo-btn photo-btn-delete" onclick="deletePhoto('${photo.id}')" title="Удалить">🗑️</button>
+                </div>
+                <div class="photo-info">
+                    <span class="photo-index">#${index + 1}</span>
+                    <span class="photo-badge ${type === 'existing' ? 'badge-existing' : 'badge-new'}">
+                        ${type === 'existing' ? 'Сохранено' : 'Новое'}
+                    </span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Обновление счётчика фотографий
+function updatePhotoCounter() {
+    const counter = document.getElementById('photoCounter');
+    if (counter) {
+        counter.textContent = `${allPhotos.length}/${MAX_PHOTOS}`;
+        console.log('Счетчик обновлен:', allPhotos.length, '/', MAX_PHOTOS);
+    }
+}
+
+// Удаление фотографии
+function deletePhoto(photoId) {
+    if (!confirm('Удалить это фото?')) return;
+
+    const index = allPhotos.findIndex(p => String(p.id) === String(photoId));
+    if (index === -1) return;
+
+    const photo = allPhotos[index];
+
+    // Освобождаем blob URL для новых фото
+    if (photo.isNew && photo.url && photo.url.startsWith('blob:')) {
+        URL.revokeObjectURL(photo.url);
+    } else if (!photo.isNew) {
+        // Существующее фото – добавляем ID в список на удаление
+        deletedPhotoIds.push(Number(photo.id));
+    }
+
+    // Удаляем фото из массива
+    allPhotos.splice(index, 1);
+
+    // Если удалили главное, назначаем новое первое
+    if (!allPhotos.some(p => p.is_main) && allPhotos.length > 0) {
+        allPhotos[0].is_main = true;
+    }
+
+    // Обновляем счетчик и отображение
+    updatePhotoCounter();
+    renderPhotos();
+}
+
+// Установка главного фото
+function setMainPhoto(photoId) {
+    allPhotos.forEach(p => p.is_main = false);
+
+    const photo = allPhotos.find(p => String(p.id) === String(photoId));
+    if (photo) {
+        photo.is_main = true;
+    }
+
+    renderPhotos();
+}
+
+
+// Эту функцию можно удалить или оставить пустой
+function setupDragAndDrop() {
+    // Обработчики уже привязаны через HTML-атрибуты
+    console.log('Drag & drop инициализирован через HTML');
+}
+
+function handleDragStart(event) {
+    const el = event.currentTarget;
+    if (!el.dataset.id) {
+        console.error('Нет data-id у элемента');
+        return;
+    }
+    el.classList.add('dragging');
+    draggedItem = el;
+    event.dataTransfer.setData('text/plain', el.dataset.id);
+    event.dataTransfer.effectAllowed = 'move';
+}
+
+function handleDragEnd(event) {
+    const el = event.currentTarget;
+    el.classList.remove('dragging');
+    document.querySelectorAll('.photo-item').forEach(item => {
+        item.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
+    });
+    draggedItem = null;
+}
+
+function handleDragOver(event) {
+    event.preventDefault();
+    const target = event.currentTarget;
+    if (!target || target === draggedItem) return;
+    event.dataTransfer.dropEffect = 'move';
+
+    const rect = target.getBoundingClientRect();
+    const mouseY = event.clientY;
+    const middle = rect.top + rect.height / 2;
+
+    target.classList.remove('drag-over-top', 'drag-over-bottom');
+    if (mouseY < middle) {
+        target.classList.add('drag-over-top');
+    } else {
+        target.classList.add('drag-over-bottom');
+    }
+}
+
+function handleDragLeave(event) {
+    event.currentTarget.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
+}
+
+function handleDrop(event) {
+    event.preventDefault();
+    const target = event.currentTarget;
+    target.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
+
+    if (!draggedItem || target === draggedItem) return;
+
+    const draggedId = event.dataTransfer.getData('text/plain');
+    const targetId = target.dataset.id;
+    if (!draggedId || !targetId) return;
+
+    const draggedIndex = allPhotos.findIndex(p => String(p.id) === String(draggedId));
+    const targetIndex = allPhotos.findIndex(p => String(p.id) === String(targetId));
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    // Перемещаем элемент
+    const [draggedPhoto] = allPhotos.splice(draggedIndex, 1);
+    const newIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    allPhotos.splice(newIndex, 0, draggedPhoto);
+
+    // Первое фото становится главным
+    allPhotos.forEach((photo, index) => {
+        photo.is_main = (index === 0);
+    });
+
+    // Обновляем счетчик и отображение
+    updatePhotoCounter();
+    renderPhotos();
+}
+
+// Перемещение фото между массивами (existing <-> new)
+function movePhotoBetweenArrays(draggedId, draggedType, targetType, targetId) {
+    console.log(`Перемещение между массивами: ${draggedId} (${draggedType}) -> ${targetType}`);
+
+    if (draggedType === 'existing' && targetType === 'new') {
+        // Перемещаем из existing в new
+        const sourceIndex = existingPhotos.findIndex(p => p.photo_id == draggedId);
+        if (sourceIndex !== -1) {
+            const movedPhoto = { ...existingPhotos[sourceIndex] };
+
+            // Удаляем из existing
+            existingPhotos.splice(sourceIndex, 1);
+
+            // Создаём временный ID для нового блока
+            const newId = 'new_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+            // Добавляем в new
+            newPhotos.push({
+                id: newId,
+                url: movedPhoto.url,
+                is_main: movedPhoto.is_main,
+                file: null, // Файла нет
+                from_existing: true,
+                original_id: movedPhoto.photo_id
+            });
+
+            // Помечаем оригинал для удаления
+            if (!deletedPhotoIds.includes(movedPhoto.photo_id)) {
+                deletedPhotoIds.push(movedPhoto.photo_id);
+            }
+
+            showNotification('Фото перемещено в новые', 'info');
+        }
+    } else if (draggedType === 'new' && targetType === 'existing') {
+        // Перемещаем из new в existing
+        const sourceIndex = newPhotos.findIndex(p => p.id === draggedId);
+        if (sourceIndex !== -1) {
+            const movedPhoto = newPhotos[sourceIndex];
+
+            // Если это фото было перемещено из existing обратно
+            if (movedPhoto.from_existing && movedPhoto.original_id) {
+                // Удаляем из deletedPhotoIds
+                const delIndex = deletedPhotoIds.indexOf(movedPhoto.original_id);
+                if (delIndex !== -1) deletedPhotoIds.splice(delIndex, 1);
+
+                // Возвращаем в existing с оригинальным ID
+                existingPhotos.push({
+                    photo_id: movedPhoto.original_id,
+                    url: movedPhoto.url,
+                    is_main: movedPhoto.is_main
+                });
+            } else {
+                // Это новое загруженное фото - создаём запись для existing (но без файла)
+                // Такое фото должно быть загружено на сервер при сохранении
+                existingPhotos.push({
+                    photo_id: 'temp_' + Date.now(),
+                    url: movedPhoto.url,
+                    is_main: movedPhoto.is_main,
+                    is_new: true,
+                    file: movedPhoto.file
+                });
+            }
+
+            // Удаляем из new и освобождаем URL
+            if (movedPhoto.url && movedPhoto.url.startsWith('blob:')) {
+                URL.revokeObjectURL(movedPhoto.url);
+            }
+            newPhotos.splice(sourceIndex, 1);
+
+            showNotification('Фото возвращено в существующие', 'info');
+        }
+    }
+}
+
+// Перемещение фото внутри одного массива
+// Перемещение фото внутри одного массива
+function movePhotoWithinArray(draggedId, targetId, type) {
+    const array = type === 'existing' ? existingPhotos : newPhotos;
+    const idField = type === 'existing' ? 'photo_id' : 'id';
+
+    // Находим индексы
+    const draggedIndex = array.findIndex(p => String(p[idField]) === String(draggedId));
+    const targetIndex = array.findIndex(p => String(p[idField]) === String(targetId));
+
+    if (draggedIndex !== -1 && targetIndex !== -1 && draggedIndex !== targetIndex) {
+        // Удаляем перетаскиваемый элемент
+        const [draggedItem] = array.splice(draggedIndex, 1);
+
+        // Вставляем на новое место
+        const newIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+        array.splice(newIndex, 0, draggedItem);
+
+        // ВАЖНО: После перетаскивания ПЕРВОЕ ФОТО становится главным
+        array.forEach((photo, index) => {
+            photo.is_main = (index === 0);
+        });
+
+        console.log(`✅ Элемент перемещён с позиции ${draggedIndex} на ${newIndex}`);
+        renderPhotos(); // Обновляем отображение
+    }
+}
+
+// Отображение существующих фотографий при редактировании
+function displayExistingPhotos(photos) {
+    existingPhotos = photos.map(photo => ({
+        ...photo,
+        is_main: photo.is_main || false
+    }));
+    newPhotos = [];
+    deletedPhotoIds = [];
+    updatePhotoGrid();
+}
+
+// Сбор данных для отправки на сервер
+async function uploadPropertyPhotos(propertyId) {
+    if (newPhotos.length === 0) return [];
+
+    const formData = new FormData();
+    newPhotos.forEach(photo => {
+        if (photo.file) {
+            formData.append('photos', photo.file);
+        }
+    });
+
+    try {
+        const response = await fetch(`/api/properties/${propertyId}/photos`, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка загрузки фото');
+        }
+
+        const result = await response.json();
+        showNotification(`Загружено ${result.uploaded} фотографий`, 'success');
+        return result;
+
+    } catch (error) {
+        console.error('❌ Ошибка загрузки фото:', error);
+        showNotification('Ошибка при загрузке фотографий', 'error');
+        throw error;
+    }
+}
+
+// Удаление фотографий на сервере
+async function deletePropertyPhotos(propertyId, photoIds) {
+    if (photoIds.length === 0) return;
+
+    // Для каждого ID отправляем запрос на удаление
+    // (нужен соответствующий эндпоинт на сервере)
+    for (const photoId of photoIds) {
+        try {
+            await fetch(`/api/properties/${propertyId}/photos/${photoId}`, {
+                method: 'DELETE',
+                credentials: 'same-origin'
+            });
+        } catch (error) {
+            console.error(`Ошибка удаления фото ${photoId}:`, error);
+        }
     }
 }
 
@@ -2215,15 +2736,13 @@ function showAddPropertyModal() {
     }
     document.getElementById('propertyEditTitle').textContent = 'Добавление объекта';
 
-    // ОЧИЩАЕМ фотографии
-    window.uploadedFiles = [];
-    updatePhotoPreview(); // Очищаем предпросмотр
+    // Очищаем фотографии
+    allPhotos = [];
+    deletedPhotoIds = [];
 
-    // Сбрасываем контейнер существующих фото
-    const existingContainer = document.getElementById('existingPhotosContainer');
-    if (existingContainer) {
-        existingContainer.innerHTML = '';
-    }
+    // Обновляем счетчик и отображение
+    updatePhotoCounter();
+    renderPhotos();
 
     // В режиме создания показываем все кнопки
     const cancelBtn = document.querySelector('#propertyEditForm .btn-secondary');
@@ -2275,6 +2794,7 @@ async function editProperty(propertyId) {
         if (!response.ok) throw new Error('Не удалось загрузить данные');
 
         const prop = await response.json();
+        console.log('Загруженные данные объекта:', prop);
 
         // Заполняем форму
         document.getElementById('propTitle').value = prop.title || '';
@@ -2288,30 +2808,31 @@ async function editProperty(propertyId) {
         document.getElementById('propInterval').value = prop.interval_pay || 'month';
         document.getElementById('propCurrentStatus').value = prop.status || 'draft';
 
-        // Очищаем новые фото перед загрузкой существующих
-        window.uploadedFiles = [];
-
-        // Отображаем существующие фото
+        // Загружаем существующие фото
+        allPhotos = [];
         if (prop.photos && prop.photos.length > 0) {
-            displayExistingPhotos(prop.photos);
-        } else {
-            document.getElementById('photoPreviewContainer').innerHTML = '<div class="empty-preview">Фотографии не загружены</div>';
-            const existingContainer = document.getElementById('existingPhotosContainer');
-            if (existingContainer) {
-                existingContainer.innerHTML = '';
-            }
+            allPhotos = prop.photos.map((photo, index) => ({
+                id: photo.photo_id || photo.id,
+                url: photo.url,
+                is_main: index === 0, // Первое фото главное
+                isNew: false,
+                file: null
+            }));
         }
+
+        deletedPhotoIds = [];
+
+        // Обновляем счетчик и отображение
+        updatePhotoCounter();
+        renderPhotos();
 
         document.getElementById('propertyEditForm').dataset.propertyId = propertyId;
         document.getElementById('propertyEditTitle').textContent = 'Редактирование объекта';
-
-        // Настраиваем кнопки в зависимости от статуса
         updatePropertyEditButtonsForEditing(prop.status);
-
         openModal('propertyEditModal');
 
     } catch (error) {
-        console.error(error);
+        console.error('Ошибка в editProperty:', error);
         showNotification(error.message, 'error');
     }
 }
@@ -3724,6 +4245,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 100);
     }
 });
+
+// Добавьте в DOMContentLoaded или в существующий код
+document.addEventListener('DOMContentLoaded', function() {
+    const periodSelect = document.getElementById('statsPeriod');
+    if (periodSelect) {
+        periodSelect.addEventListener('change', function() {
+            loadAgentStats();
+        });
+    }
+});
 // Обновить все счетчики
 function updateBadges(dialogs) {
     // Счетчик для уведомлений (непрочитанные сообщения)
@@ -3790,6 +4321,518 @@ function startNotificationsRefresh() {
     }, 30000); // Каждые 30 секунд
 }
 
+// ==================== АДМИН-ФУНКЦИИ ====================
+
+// Переменные для пагинации
+let adminUsersCurrentPage = 1;
+let adminUsersTotalPages = 1;
+
+// Показать модалку со списком пользователей
+function showAdminUsers() {
+    console.log('showAdminUsers вызван');
+    document.getElementById('userDropdown')?.classList.remove('show');
+    document.getElementById('dashboardDropdown')?.classList.remove('show');
+
+    // Сбрасываем фильтры
+    document.getElementById('adminUserSearch').value = '';
+    document.getElementById('adminUserType').value = '';
+
+    // Загружаем пользователей
+    loadAdminUsers(1);
+
+    // Открываем модалку
+    openModal('adminUsersModal');
+}
+
+// Загрузить список пользователей
+async function loadAdminUsers(page = 1) {
+    adminUsersCurrentPage = page;
+
+    const search = document.getElementById('adminUserSearch').value;
+    const userType = document.getElementById('adminUserType').value;
+
+    let url = `/api/admin/users?page=${page}&per_page=10`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (userType) url += `&user_type=${encodeURIComponent(userType)}`;
+
+    try {
+        const response = await fetch(url, { credentials: 'same-origin' });
+        if (!response.ok) {
+            if (response.status === 403) {
+                showNotification('У вас нет прав для просмотра этой страницы', 'error');
+                closeModal('adminUsersModal');
+                return;
+            }
+            throw new Error('Ошибка загрузки');
+        }
+
+        const data = await response.json();
+        adminUsersTotalPages = data.total_pages;
+
+        const tbody = document.getElementById('adminUsersTableBody');
+
+        if (data.users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #6c757d;">Пользователи не найдены</td></tr>';
+        } else {
+            let html = '';
+            data.users.forEach(user => {
+                const statusClass = user.is_active ? 'status-active' : 'status-inactive';
+                const statusText = user.is_active ? 'Активен' : 'Заблокирован';
+                const statusBg = user.is_active ? '#d4edda' : '#f8d7da';
+                const statusColor = user.is_active ? '#155724' : '#721c24';
+
+                // Аватар
+                let avatarHtml = '';
+                if (user.avatar_url) {
+                    avatarHtml = `<img src="${user.avatar_url}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">`;
+                } else {
+                    const initials = user.full_name ?
+                        user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) :
+                        user.email[0].toUpperCase();
+                    avatarHtml = `<div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #007bff, #0056b3); color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 16px;">${initials}</div>`;
+                }
+
+                html += `
+                    <tr style="border-bottom: 1px solid #e9ecef;">
+                        <td style="padding: 12px;">${user.id}</td>
+                        <td style="padding: 12px;">${avatarHtml}</td>
+                        <td style="padding: 12px; font-weight: 500;">${user.full_name || '—'}</td>
+                        <td style="padding: 12px;">${user.email}</td>
+                        <td style="padding: 12px;">${getUserTypeName(user.user_type)}</td>
+                        <td style="padding: 12px;">
+                            <span style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; background: ${statusBg}; color: ${statusColor};">
+                                ${statusText}
+                            </span>
+                        </td>
+                        <td style="padding: 12px;">${formatDate(user.created_at)}</td>
+                        <td style="padding: 12px;">
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn-info" onclick="showAdminUserDetail(${user.id})" style="padding: 5px 10px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                    👁️ Детали
+                                </button>
+                                <button class="${user.is_active ? 'btn-warning' : 'btn-success'}"
+                                        onclick="toggleUserBlock(${user.id}, ${user.is_active})"
+                                        style="padding: 5px 10px; background: ${user.is_active ? '#ffc107' : '#28a745'}; color: ${user.is_active ? '#212529' : 'white'}; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                    ${user.is_active ? '🔒 Блокировать' : '🔓 Разблокировать'}
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        renderAdminUsersPagination();
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        document.getElementById('adminUsersTableBody').innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #6c757d;">Ошибка загрузки</td></tr>';
+    }
+}
+
+// Функция для получения названия типа пользователя
+function getUserTypeName(type) {
+    const types = {
+        'tenant': '👤 Арендатор',
+        'owner': '🏠 Собственник',
+        'agent': '📋 Агент',
+        'admin': '⚙️ Админ'
+    };
+    return types[type] || type;
+}
+
+// Форматирование даты
+function formatDate(dateStr) {
+    if (!dateStr) return '—';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+// Рендер пагинации
+function renderAdminUsersPagination() {
+    const pagination = document.getElementById('adminUsersPagination');
+    if (!pagination) return;
+
+    if (adminUsersTotalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+
+    // Кнопка "Предыдущая"
+    html += `<button class="page-btn" ${adminUsersCurrentPage === 1 ? 'disabled' : ''} onclick="loadAdminUsers(${adminUsersCurrentPage - 1})">←</button>`;
+
+    // Номера страниц
+    for (let i = 1; i <= adminUsersTotalPages; i++) {
+        if (i === 1 || i === adminUsersTotalPages || (i >= adminUsersCurrentPage - 2 && i <= adminUsersCurrentPage + 2)) {
+            html += `<button class="page-btn ${i === adminUsersCurrentPage ? 'active' : ''}" onclick="loadAdminUsers(${i})">${i}</button>`;
+        } else if (i === adminUsersCurrentPage - 3 || i === adminUsersCurrentPage + 3) {
+            html += `<span class="page-dots">...</span>`;
+        }
+    }
+
+    // Кнопка "Следующая"
+    html += `<button class="page-btn" ${adminUsersCurrentPage === adminUsersTotalPages ? 'disabled' : ''} onclick="loadAdminUsers(${adminUsersCurrentPage + 1})">→</button>`;
+
+    pagination.innerHTML = html;
+}
+
+// Сброс фильтров
+function resetAdminUserFilters() {
+    document.getElementById('adminUserSearch').value = '';
+    document.getElementById('adminUserType').value = '';
+    loadAdminUsers(1);
+}
+
+// Показать детали пользователя
+async function showAdminUserDetail(userId) {
+    try {
+        // Загружаем данные пользователя
+        const response = await fetch(`/api/user/${userId}`, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки');
+
+        const user = await response.json();
+
+        // Загружаем профиль этого же пользователя для получения contact_info
+        // Используем админский эндпоинт для получения полных данных
+        let contactInfo = {};
+        let isActive = true;
+
+        try {
+            // Пытаемся получить данные через админский эндпоинт
+            const adminResponse = await fetch(`/api/admin/users/${userId}`, { credentials: 'same-origin' });
+            if (adminResponse.ok) {
+                const adminData = await adminResponse.json();
+                contactInfo = adminData.contact_info || {};
+                isActive = adminData.is_active;
+            } else {
+                // Если нет админского эндпоинта, используем данные из user
+                contactInfo = user.contact_info || {};
+                // Пытаемся получить статус активности из user
+                const statusResponse = await fetch(`/api/user/${userId}/status`, { credentials: 'same-origin' });
+                if (statusResponse.ok) {
+                    const statusData = await statusResponse.json();
+                    // В статусе нет is_active, только is_online
+                }
+                // По умолчанию считаем активным
+                isActive = true;
+            }
+        } catch (e) {
+            console.warn('Не удалось получить дополнительные данные', e);
+            contactInfo = user.contact_info || {};
+            isActive = true;
+        }
+
+        const statusClass = user.is_online ? 'status-active' : 'status-inactive';
+        const statusText = user.is_online ? 'Онлайн' : 'Не в сети';
+        const statusBg = user.is_online ? '#d4edda' : '#f8d7da';
+        const statusColor = user.is_online ? '#155724' : '#721c24';
+
+        const content = document.getElementById('adminUserDetailContent');
+        content.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e9ecef;">
+                <div style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #007bff, #0056b3); flex-shrink: 0;">
+                    ${user.avatar_url ?
+                        `<img src="${user.avatar_url}" style="width: 100%; height: 100%; object-fit: cover;">` :
+                        `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; font-weight: 600;">${user.full_name ? user.full_name[0].toUpperCase() : user.email[0].toUpperCase()}</div>`
+                    }
+                </div>
+                <div style="flex: 1;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 20px;">${user.full_name || 'Без имени'}</h3>
+                    <p style="margin: 0; color: #6c757d; font-size: 14px;">${user.email}</p>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">ID пользователя</div>
+                    <div style="font-weight: 600; font-size: 16px;">${user.user_id}</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Тип</div>
+                    <div style="font-weight: 600; font-size: 16px;">${getUserTypeName(user.user_type)}</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Статус</div>
+                    <div><span style="display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${statusBg}; color: ${statusColor};">${statusText}</span></div>
+                </div>
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Телефон</div>
+                    <div style="font-weight: 500;">${contactInfo.phone || '—'}</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Город</div>
+                    <div style="font-weight: 500;">${contactInfo.city || '—'}</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                    <div style="font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Дата рождения</div>
+                    <div style="font-weight: 500;">${contactInfo.birth_date ? new Date(contactInfo.birth_date).toLocaleDateString('ru-RU') : '—'}</div>
+                </div>
+            </div>
+
+            ${(contactInfo.passport || contactInfo.inn) ? `
+            <div style="margin-top: 15px; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #495057;">Документы</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    ${contactInfo.passport ? `<div><div style="font-size: 11px; color: #6c757d;">Паспорт</div><div style="font-weight: 500;">${contactInfo.passport}</div></div>` : ''}
+                    ${contactInfo.inn ? `<div><div style="font-size: 11px; color: #6c757d;">ИНН</div><div style="font-weight: 500;">${contactInfo.inn}</div></div>` : ''}
+                </div>
+            </div>
+            ` : ''}
+        `;
+
+        // Обновляем кнопку блокировки
+        const blockBtn = document.getElementById('adminUserDetailBlockBtn');
+        if (isActive) {
+            blockBtn.textContent = '🔒 Заблокировать';
+            blockBtn.className = 'btn-warning';
+            blockBtn.style.background = '#ffc107';
+            blockBtn.style.color = '#212529';
+        } else {
+            blockBtn.textContent = '🔓 Разблокировать';
+            blockBtn.className = 'btn-success';
+            blockBtn.style.background = '#28a745';
+            blockBtn.style.color = 'white';
+        }
+
+        // Сохраняем ID и статус в атрибуты кнопки
+        blockBtn.setAttribute('data-user-id', userId);
+        blockBtn.setAttribute('data-is-active', isActive);
+        blockBtn.onclick = function() {
+            const currentIsActive = this.getAttribute('data-is-active') === 'true';
+            toggleUserBlock(userId, currentIsActive);
+        };
+
+        openModal('adminUserDetailModal');
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification('Ошибка загрузки данных пользователя', 'error');
+    }
+}
+
+// Переключатель блокировки пользователя
+async function toggleUserBlock(userId, isActive) {
+    // isActive = true - пользователь активен, false - заблокирован
+    const action = isActive ? 'заблокировать' : 'разблокировать';
+    if (!confirm(`Вы уверены, что хотите ${action} пользователя?`)) return;
+
+    try {
+        const response = await fetch(`/api/admin/users/${userId}/toggle-block`, {
+            method: 'PATCH',
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка');
+        }
+
+        const data = await response.json();
+        showNotification(`Пользователь ${data.is_active ? 'разблокирован' : 'заблокирован'}`, 'success');
+
+        // Обновляем кнопку в детальной модалке, если она открыта
+        const blockBtn = document.getElementById('adminUserDetailBlockBtn');
+        if (blockBtn && blockBtn.getAttribute('data-user-id') == userId) {
+            if (data.is_active) {
+                blockBtn.textContent = '🔒 Заблокировать';
+                blockBtn.className = 'btn-warning';
+                blockBtn.style.background = '#ffc107';
+                blockBtn.style.color = '#212529';
+                blockBtn.setAttribute('data-is-active', 'true');
+            } else {
+                blockBtn.textContent = '🔓 Разблокировать';
+                blockBtn.className = 'btn-success';
+                blockBtn.style.background = '#28a745';
+                blockBtn.style.color = 'white';
+                blockBtn.setAttribute('data-is-active', 'false');
+            }
+        }
+
+        // Обновляем список пользователей
+        loadAdminUsers(adminUsersCurrentPage);
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+// Показать детали объекта для админа
+async function showAdminProperty(propertyId) {
+    currentPropertyId = propertyId;
+
+    try {
+        const response = await fetch(`/api/property/${propertyId}`, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки');
+
+        const prop = await response.json();
+
+        const content = document.getElementById('adminPropertyContent');
+
+        // Формируем галерею фотографий
+        let photosHtml = '';
+        if (prop.photos && prop.photos.length > 0) {
+            photosHtml = '<div style="display: flex; gap: 10px; overflow-x: auto; margin-bottom: 15px; padding-bottom: 5px;">';
+            prop.photos.forEach(photo => {
+                photosHtml += `
+                    <div style="flex-shrink: 0; width: 100px; height: 70px; border-radius: 6px; overflow: hidden; border: 2px solid ${photo.is_main ? '#007bff' : 'transparent'};">
+                        <img src="${photo.url}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/resources/placeholder-image.png'">
+                    </div>
+                `;
+            });
+            photosHtml += '</div>';
+        } else {
+            photosHtml = '<div style="margin-bottom: 15px;"><img src="/resources/placeholder-image.png" style="width: 100%; height: 200px; object-fit: cover; border-radius: 8px; background: #f8f9fa;"></div>';
+        }
+
+        // Информация о владельце
+        const ownerInfo = prop.owner ?
+            `<div><strong>Владелец:</strong> ${prop.owner.full_name || 'Не указан'} (${prop.owner.email || 'нет email'})</div>` :
+            '<div><strong>Владелец:</strong> Не указан</div>';
+
+        content.innerHTML = `
+            ${photosHtml}
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                <div>
+                    <div style="font-size: 12px; color: #6c757d;">ID объекта</div>
+                    <div style="font-weight: 600; font-size: 16px;">${prop.property_id}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #6c757d;">Статус</div>
+                    <div><span class="status-badge ${getStatusClass(prop.status)}" style="display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px;">${getStatusText(prop.status)}</span></div>
+                </div>
+                <div style="grid-column: span 2;">
+                    <div style="font-size: 12px; color: #6c757d;">Название</div>
+                    <div style="font-weight: 600; font-size: 18px;">${prop.title}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #6c757d;">Город</div>
+                    <div style="font-weight: 500;">${prop.city}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #6c757d;">Адрес</div>
+                    <div style="font-weight: 500;">${prop.address}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #6c757d;">Тип</div>
+                    <div style="font-weight: 500;">${getPropertyTypeName(prop.property_type)}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #6c757d;">Площадь</div>
+                    <div style="font-weight: 500;">${prop.area} м²</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #6c757d;">Комнат</div>
+                    <div style="font-weight: 500;">${prop.rooms || '—'}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #6c757d;">Цена</div>
+                    <div style="font-weight: 700; color: #28a745; font-size: 18px;">${formatPrice(prop.price, prop.interval_pay)}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #6c757d;">Создан</div>
+                    <div style="font-weight: 500;">${formatDate(prop.created_at)}</div>
+                </div>
+                <div style="grid-column: span 2;">
+                    ${ownerInfo}
+                </div>
+            </div>
+
+            <div style="margin-top: 15px;">
+                <div style="font-weight: 600; margin-bottom: 8px;">Описание</div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; line-height: 1.6; color: #495057;">
+                    ${prop.description || 'Нет описания'}
+                </div>
+            </div>
+        `;
+
+        document.getElementById('adminPropertyTitle').textContent = `Объект №${prop.property_id}`;
+        openModal('adminPropertyModal');
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification('Ошибка загрузки объекта', 'error');
+    }
+}
+
+// Удаление объекта администратором
+async function adminDeleteProperty(propertyId) {
+    if (!confirm('⚠️ ВНИМАНИЕ! Вы уверены, что хотите удалить этот объект? Это действие необратимо.')) return;
+
+    try {
+        const response = await fetch(`/api/admin/properties/${propertyId}`, {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка удаления');
+        }
+
+        showNotification('Объект успешно удалён', 'success');
+        hidePropertyModal(); // Закрываем модалку
+
+        // Обновляем страницу или список объектов
+        setTimeout(() => {
+            window.location.reload();
+        }, 1500);
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+// Вспомогательные функции
+function getPropertyTypeName(type) {
+    const types = {
+        'apartment': 'Квартира',
+        'house': 'Дом',
+        'commercial': 'Коммерческая'
+    };
+    return types[type] || type;
+}
+
+function getStatusClass(status) {
+    const classes = {
+        'active': 'status-active',
+        'draft': 'status-draft',
+        'rented': 'status-rented',
+        'archived': 'status-archived'
+    };
+    return classes[status] || 'status-draft';
+}
+
+function getStatusText(status) {
+    const texts = {
+        'active': 'Активно',
+        'draft': 'Черновик',
+        'rented': 'Сдано',
+        'archived': 'В архиве'
+    };
+    return texts[status] || status;
+}
+
+function showAdminProperties() {
+    console.log('showAdminProperties вызван');
+    document.getElementById('userDropdown')?.classList.remove('show');
+    document.getElementById('dashboardDropdown')?.classList.remove('show');
+    // Здесь можно открыть модалку со списком объектов или перейти на отдельную страницу
+    window.location.href = '/admin/properties'; // или своя логика
+}
+
+
 
 // Закрытие по клику на фон
 window.addEventListener('click', function(event) {
@@ -3836,6 +4879,8 @@ document.addEventListener('keydown', function(event) {
 });
 
 // ==================== ЭКСПОРТ ФУНКЦИЙ В ГЛОБАЛЬНУЮ ОБЛАСТЬ ====================
+
+// Существующие функции (которые уже были)
 window.showCityPopup = showCityPopup;
 window.hideCityPopup = hideCityPopup;
 window.showGuidePopup = showGuidePopup;
@@ -3864,14 +4909,9 @@ window.closeModal = closeModal;
 window.showAddPropertyModal = showAddPropertyModal;
 window.editProperty = editProperty;
 window.deleteProperty = deleteProperty;
-window.handlePhotoSelect = handlePhotoSelect;
-window.removePhoto = removePhoto;
-window.updatePhotoPreview = updatePhotoPreview;
 window.synchronizeCity = synchronizeCity;
 window.uploadAvatar = uploadAvatar;
 window.deleteAvatar = deleteAvatar;
-
-// Функции для заявок
 window.loadMyApplications = loadMyApplications;
 window.showIncomingApplications = showIncomingApplications;
 window.showApplicationDetail = showApplicationDetail;
@@ -3887,8 +4927,6 @@ window.loadIncomingApplications = loadIncomingApplications;
 window.submitPropertyForm = submitPropertyForm;
 window.updatePropertyEditButtonsForEditing = updatePropertyEditButtonsForEditing;
 window.goToContractFromApplication = goToContractFromApplication;
-
-// Функции для чата
 window.showDialogsList = showDialogsList;
 window.openChat = openChat;
 window.closeChat = closeChat;
@@ -3897,27 +4935,38 @@ window.contactUser = contactUser;
 window.cancelContract = cancelContract;
 window.isUserLoggedIn = isUserLoggedIn;
 window.initWebSocket = initWebSocket;
-
-// ✅ НОВЫЕ ФУНКЦИИ ДЛЯ УВЕДОМЛЕНИЙ И СООБЩЕНИЙ
 window.toggleNotifications = toggleNotifications;
 window.toggleMessages = toggleMessages;
 window.loadNotifications = loadNotifications;
 window.loadRecentMessages = loadRecentMessages;
 window.markAllNotificationsRead = markAllNotificationsRead;
 window.updateBadges = updateBadges;
-
-window.switchGuideTab = switchGuideTab;
-
 window.updateModalGallery = updateModalGallery;
 window.downloadContract = downloadContract;
 window.downloadAct = downloadAct;
 window.exportAgentStats = exportAgentStats;
 window.signContract = signContract;
 window.showContractDetail = showContractDetail;
-
 window.openFullscreenGallery = openFullscreenGallery;
 window.closeFullscreenGallery = closeFullscreenGallery;
 window.nextGalleryImage = nextGalleryImage;
 window.prevGalleryImage = prevGalleryImage;
+window.switchGuideTab = switchGuideTab;
+
+// ========== НОВЫЕ ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ ФОТОГРАФИЯМИ ==========
+window.handlePhotoSelect = handlePhotoSelect;
+window.deletePhoto = deletePhoto;
+window.setMainPhoto = setMainPhoto;
+window.updatePhotoGrid = updatePhotoGrid;
+window.displayExistingPhotos = displayExistingPhotos;
+
+// Админ-функции
+window.showAdminUsers = showAdminUsers;
+window.loadAdminUsers = loadAdminUsers;
+window.resetAdminUserFilters = resetAdminUserFilters;
+window.showAdminUserDetail = showAdminUserDetail;
+window.toggleUserBlock = toggleUserBlock;
+window.showAdminProperty = showAdminProperty;
+window.adminDeleteProperty = adminDeleteProperty;
 
 console.log('script.js полностью загружен, все функции экспортированы');

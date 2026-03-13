@@ -870,15 +870,88 @@ body {
     background: #e9ecef;
 }
 
-/* ==================== РЕЖИМ СЕТКИ (по умолчанию) ==================== */
+/* ==================== РЕЖИМ СЕТКИ (GRID) ==================== */
 .results-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 25px;
     margin-bottom: 40px;
 }
 
-/* ==================== РЕЖИМ СПИСКА ==================== */
+.results-grid .property-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 450px;
+}
+
+.results-grid .property-image {
+    height: 220px;
+    flex-shrink: 0;
+}
+
+.results-grid .property-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.results-grid .property-info h3 {
+    font-size: 18px;
+    line-height: 1.4;
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 50px;
+}
+
+.results-grid .property-address {
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 42px;
+}
+
+.results-grid .property-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    min-height: 30px;
+}
+
+.results-grid .property-details span {
+    background: #f8f9fa;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.results-grid .property-price {
+    font-size: 22px;
+    margin-top: auto;
+    margin-bottom: 8px;
+}
+
+.results-grid .property-meta {
+    font-size: 12px;
+    color: #6c757d;
+    border-top: 1px solid #e9ecef;
+    padding-top: 10px;
+    margin-top: auto;
+}
+
+/* ==================== РЕЖИМ СПИСКА (LIST) ==================== */
 .results-list {
     display: flex;
     flex-direction: column;
@@ -889,36 +962,158 @@ body {
 .results-list .property-card {
     display: flex;
     flex-direction: row;
-    height: 200px;
+    min-height: 220px;
+    height: auto;
     overflow: hidden;
+    width: 100%;
 }
 
 .results-list .property-image {
-    width: 250px;
-    height: 100%;
+    width: 280px;
+    height: 220px;
     flex-shrink: 0;
-}
-
-.results-list .property-image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
 }
 
 .results-list .property-info {
     flex: 1;
-    padding: 20px;
+    padding: 20px 25px;
     display: flex;
     flex-direction: column;
+    overflow: visible;
+    min-width: 300px; /* Минимальная ширина для текста */
+}
+
+.results-list .property-info h3 {
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 10px;
+    color: #212529;
+    white-space: normal;
+    word-wrap: break-word;
+    max-width: 100%;
+}
+
+.results-list .property-address {
+    font-size: 16px;
+    color: #6c757d;
+    margin-bottom: 15px;
+    white-space: normal;
+    word-wrap: break-word;
+    line-height: 1.5;
 }
 
 .results-list .property-details {
-    margin-bottom: 10px;
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.results-list .property-details span {
+    background: #f8f9fa;
+    padding: 6px 15px;
+    border-radius: 25px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #495057;
+    white-space: nowrap;
+}
+
+.results-list .property-description {
+    font-size: 15px;
+    color: #495057;
+    line-height: 1.6;
+    margin-bottom: 15px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-height: 48px;
 }
 
 .results-list .property-price {
+    font-size: 26px;
+    color: #007bff;
+    font-weight: 700;
     margin-top: auto;
-    font-size: 22px;
+    margin-bottom: 5px;
+}
+
+.results-list .property-meta {
+    font-size: 14px;
+    color: #6c757d;
+    margin-top: 5px;
+    border-top: 1px solid #e9ecef;
+    padding-top: 10px;
+}
+
+/* Адаптивность для планшетов */
+@media (max-width: 992px) {
+    .results-list .property-card {
+        min-height: 200px;
+    }
+
+    .results-list .property-image {
+        width: 240px;
+        height: 200px;
+    }
+
+    .results-list .property-info {
+        padding: 15px 20px;
+        min-width: 250px;
+    }
+
+    .results-list .property-info h3 {
+        font-size: 20px;
+    }
+
+    .results-list .property-price {
+        font-size: 22px;
+    }
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 768px) {
+    .results-list .property-card {
+        flex-direction: column;
+        min-height: auto;
+    }
+
+    .results-list .property-image {
+        width: 100%;
+        height: 200px;
+    }
+
+    .results-list .property-info {
+        padding: 15px;
+        min-width: auto;
+    }
+
+    .results-list .property-info h3 {
+        font-size: 18px;
+    }
+
+    .results-list .property-details span {
+        padding: 4px 12px;
+        font-size: 13px;
+    }
+
+    .results-list .property-price {
+        font-size: 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    .results-list .property-details {
+        gap: 8px;
+    }
+
+    .results-list .property-details span {
+        padding: 4px 10px;
+        font-size: 12px;
+    }
 }
 
 /* ==================== КАРТОЧКА ОБЪЕКТА ==================== */
@@ -1394,6 +1589,168 @@ body {
     .modal-main-image {
         height: 250px;
     }
+}
+
+/* ==================== УПРАВЛЕНИЕ ФОТОГРАФИЯМИ ==================== */
+.photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.photo-item {
+    position: relative;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+    transition: all 0.3s ease;
+    cursor: move;
+    user-select: none;
+}
+
+.photo-item.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.photo-item.drag-over {
+    border: 2px dashed #007bff;
+    transform: scale(1.02);
+}
+
+/* Добавьте в static/style.css */
+.photo-item.main-photo {
+    border: 3px solid #28a745;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.3);
+}
+
+.photo-btn-star.active {
+    background: #28a745 !important;
+    color: white !important;
+}
+
+.photo-btn-star.active::after {
+    content: '';
+}
+
+.photo-item.existing-photo {
+    border-color: #17a2b8;
+}
+
+.photo-item.new-photo {
+    border-color: #ffc107;
+}
+
+.photo-image {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    display: block;
+}
+
+.photo-actions {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    display: flex;
+    gap: 5px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.photo-item:hover .photo-actions {
+    opacity: 1;
+}
+
+.photo-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.photo-btn:hover {
+    transform: scale(1.1);
+}
+
+.photo-btn-star {
+    background: #ffc107;
+    color: #212529;
+}
+
+
+
+.photo-btn-delete {
+    background: #dc3545;
+    color: white;
+}
+
+.photo-info {
+    padding: 8px;
+    background: rgba(255,255,255,0.9);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #e9ecef;
+}
+
+.photo-badge {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.badge-existing {
+    background: #17a2b8;
+    color: white;
+}
+
+.badge-new {
+    background: #ffc107;
+    color: #212529;
+}
+
+.photo-index {
+    font-weight: 600;
+    color: #6c757d;
+}
+
+.empty-photo-message {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    color: #6c757d;
+    border: 2px dashed #dee2e6;
+}
+
+.photo-item.drag-over {
+    border: 2px dashed #007bff;
+    transform: scale(1.02);
+    opacity: 0.8;
+}
+
+.photo-item.drag-over-top {
+    border-top: 4px solid #007bff;
+    border-bottom: none;
+}
+
+.photo-item.drag-over-bottom {
+    border-bottom: 4px solid #007bff;
+    border-top: none;
 }
 
 /* ==================== МЕНЮ ПОЛЬЗОВАТЕЛЯ ==================== */

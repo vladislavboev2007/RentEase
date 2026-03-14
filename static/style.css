@@ -2429,3 +2429,230 @@ input[type="file"]::file-selector-button:hover {
     opacity: 0.7;
     margin-right: 4px;
 }
+
+.message-status {
+    display: inline-block;
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+.message-status.sent {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.message-status.read {
+    color: #53bdeb;
+}
+
+.unread-badge {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.1);
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.typing-indicator {
+    display: flex;
+    gap: 3px;
+    padding: 10px 15px;
+    background: white;
+    border-radius: 18px 18px 18px 4px;
+    max-width: 70%;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.typing-dot {
+    width: 8px;
+    height: 8px;
+    background: #6c757d;
+    border-radius: 50%;
+    animation: typingBounce 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+    0%, 60%, 100% {
+        transform: translateY(0);
+    }
+    30% {
+        transform: translateY(-10px);
+    }
+}
+/* В static/style.css добавьте: */
+.typing-dots {
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.typing-dot {
+    display: inline-block;
+    animation: typingWave 1.4s infinite;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typingWave {
+    0%, 60%, 100% {
+        transform: translateY(0);
+    }
+    30% {
+        transform: translateY(-5px);
+    }
+}
+
+/* Убираем уведомления о новых сообщениях в чате */
+.message-notification {
+    display: none !important;
+}
+
+/* В static/style.css добавьте: */
+.date-separator {
+    display: flex;
+    justify-content: center;
+    margin: 20px 0 10px 0;
+    clear: both;
+    width: 100%;
+}
+
+.date-separator span {
+    background: rgba(0,0,0,0.05);
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 12px;
+    color: #6c757d;
+    display: inline-block;
+}
+
+/* Убедимся, что разделители занимают всю ширину */
+#chatMessages > div {
+    width: 100%;
+}
+
+/* Отступы между сообщениями */
+#chatMessages > div:not(.date-separator) {
+    margin-bottom: 8px;
+}
+
+/* Убираем лишние отступы */
+#chatMessages > div:last-child {
+    margin-bottom: 0;
+}
+
+/* В static/style.css добавьте: */
+.typing-dots {
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.typing-dot {
+    display: inline-block;
+    animation: typingWave 1.4s infinite;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typingWave {
+    0%, 60%, 100% {
+        transform: translateY(0);
+    }
+    30% {
+        transform: translateY(-5px);
+    }
+}
+
+#typingIndicator {
+    transition: opacity 0.3s;
+}
+
+/* В static/style.css добавьте: */
+.notification-item {
+    padding: 12px 15px;
+    border-bottom: 1px solid #e9ecef;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.notification-item:hover {
+    background: #f8f9fa;
+}
+
+.notification-item.unread {
+    background: #e7f1ff;
+}
+
+.notification-item.unread:hover {
+    background: #d4e4ff;
+}
+
+.notification-content {
+    font-size: 13px;
+    color: #495057;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.notification-time {
+    font-size: 11px;
+    color: #6c757d;
+    white-space: nowrap;
+}
+
+.notification-sender {
+    font-weight: 600;
+    font-size: 13px;
+    color: #007bff;
+}
+
+/* Иконки для разных типов уведомлений */
+.notification-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.notification-icon.application {
+    background: #e7f1ff;
+    color: #007bff;
+}
+
+.notification-icon.contract {
+    background: #d4edda;
+    color: #28a745;
+}
+
+.notification-icon.message {
+    background: #fff3cd;
+    color: #856404;
+}

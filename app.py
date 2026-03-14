@@ -297,12 +297,17 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[int, WebSocket] = {}
         self.online_users: Set[int] = set()
+        self.user_typing: Dict[int, Set[int]] = {}  # кто печатает кому
 
     async def connect(self, websocket: WebSocket, user_id: int):
         await websocket.accept()
         self.active_connections[user_id] = websocket
         self.online_users.add(user_id)
         print(f"✅ Пользователь {user_id} подключился. Онлайн: {self.online_users}")
+
+        # Отправляем текущий список онлайн пользователей новому пользователю
+        await self.send_online_list(user_id)
+
         # Оповещаем всех о новом онлайн пользователе
         await self.broadcast_online_status(user_id, True)
 
@@ -311,7 +316,20 @@ class ConnectionManager:
             del self.active_connections[user_id]
         if user_id in self.online_users:
             self.online_users.remove(user_id)
+        if user_id in self.user_typing:
+            del self.user_typing[user_id]
         print(f"❌ Пользователь {user_id} отключился. Онлайн: {self.online_users}")
+
+    async def send_online_list(self, user_id: int):
+        """Отправить пользователю список онлайн пользователей"""
+        if user_id in self.active_connections:
+            try:
+                await self.active_connections[user_id].send_text(json.dumps({
+                    "type": "online_list",
+                    "online_users": list(self.online_users)
+                }))
+            except Exception as e:
+                print(f"❌ Ошибка отправки списка онлайн: {e}")
 
     async def broadcast_online_status(self, user_id: int, is_online: bool):
         """Отправить всем подключенным клиентам обновление статуса"""
@@ -320,37 +338,83 @@ class ConnectionManager:
             "user_id": user_id,
             "is_online": is_online
         })
-        print(f"📢 Рассылка статуса: пользователь {user_id} = {is_online}")
-        print(f"   Активные соединения: {list(self.active_connections.keys())}")
 
         # Отправляем всем активным соединениям
-        for uid, connection in self.active_connections.items():
-            try:
-                await connection.send_text(message)
-                print(f"   -> Отправлено пользователю {uid}")
-            except Exception as e:
-                print(f"   ❌ Ошибка отправки пользователю {uid}: {e}")
+        for uid, connection in list(self.active_connections.items()):
+            if uid != user_id:  # Не отправляем самому себе
+                try:
+                    await connection.send_text(message)
+                except Exception as e:
+                    print(f"❌ Ошибка отправки пользователю {uid}: {e}")
 
-    async def send_personal_message(self, user_id: int, message: str):
-        """Отправить сообщение конкретному пользователю"""
-        if user_id in self.active_connections:
+    async def send_new_message_notification(self, from_user_id: int, to_user_id: int, message_data: dict):
+        """Отправить уведомление о новом сообщении"""
+        if to_user_id in self.active_connections:
             try:
-                await self.active_connections[user_id].send_text(message)
-            except:
-                pass
+                await self.active_connections[to_user_id].send_text(json.dumps({
+                    "type": "new_message",
+                    "from_user_id": from_user_id,
+                    "message": message_data
+                }))
+                print(f"📨 Уведомление о новом сообщении отправлено пользователю {to_user_id}")
+            except Exception as e:
+                print(f"❌ Ошибка отправки уведомления: {e}")
+
+    async def send_typing_status(self, from_user_id: int, to_user_id: int, is_typing: bool):
+        """Отправить статус печатания"""
+        if to_user_id in self.active_connections:
+            try:
+                await self.active_connections[to_user_id].send_text(json.dumps({
+                    "type": "typing",
+                    "user_id": from_user_id,
+                    "is_typing": is_typing
+                }))
+            except Exception as e:
+                print(f"❌ Ошибка отправки статуса печатания: {e}")
+
+    async def send_message_read_status(self, from_user_id: int, to_user_id: int, message_ids: List[int]):
+        """Отправить статус прочтения сообщений"""
+        if from_user_id in self.active_connections:
+            try:
+                await self.active_connections[from_user_id].send_text(json.dumps({
+                    "type": "messages_read",
+                    "user_id": to_user_id,
+                    "message_ids": message_ids
+                }))
+            except Exception as e:
+                print(f"❌ Ошибка отправки статуса прочтения: {e}")
+
 
 manager = ConnectionManager()
+
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: int):
     await manager.connect(websocket, user_id)
     try:
         while True:
-            # Ждём сообщения от клиента (можно использовать для ping-pong)
             data = await websocket.receive_text()
-            # Обрабатываем полученные сообщения (например, ping)
-            if data == "ping":
-                await websocket.send_text("pong")
+            try:
+                message = json.loads(data)
+                msg_type = message.get("type")
+
+                if msg_type == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+
+                elif msg_type == "typing":
+                    to_user_id = message.get("to_user_id")
+                    is_typing = message.get("is_typing", False)
+                    await manager.send_typing_status(user_id, to_user_id, is_typing)
+
+                elif msg_type == "message_read":
+                    # Сообщение прочитано
+                    from_user_id = message.get("from_user_id")
+                    message_ids = message.get("message_ids", [])
+                    await manager.send_message_read_status(from_user_id, user_id, message_ids)
+
+            except json.JSONDecodeError:
+                print(f"❌ Невалидный JSON: {data}")
+
     except WebSocketDisconnect:
         manager.disconnect(user_id)
         await manager.broadcast_online_status(user_id, False)
@@ -1980,6 +2044,36 @@ async def respond_application(
 
     return {"success": True}
 
+
+def create_notification(db: Session, to_user_id: int, content: str, from_user_id: Optional[int] = None):
+    """Создать уведомление для пользователя"""
+    notification = Message(
+        from_user_id=from_user_id,  # Если None, то системное
+        to_user_id=to_user_id,
+        content=content,
+        is_read=False,
+        created_at=datetime.now()
+    )
+    db.add(notification)
+    db.commit()
+
+    # Отправляем через WebSocket, если пользователь онлайн
+    asyncio.create_task(manager.send_new_message_notification(
+        from_user_id=from_user_id or 0,
+        to_user_id=to_user_id,
+        message_data={
+            "id": notification.message_id,
+            "from_user_id": from_user_id,
+            "to_user_id": to_user_id,
+            "content": content,
+            "created_at": notification.created_at.isoformat(),
+            "is_read": False,
+            "is_mine": False
+        }
+    ))
+
+    return notification
+
 # ==================== УПРАВЛЕНИЕ ДОГОВОРАМИ ====================
 
 @app.post("/api/applications/{app_id}/create-contract")
@@ -2394,10 +2488,15 @@ async def get_messages(chat_with: int, current_user: User = Depends(get_current_
 
 
 @app.post("/api/messages")
-async def send_message(msg: MessageCreate, current_user: User = Depends(get_current_user),
-                       db: Session = Depends(get_db)):
+async def send_message(
+        msg: MessageCreate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
+
+    # Создаем сообщение
     new_msg = Message(
         from_user_id=current_user.user_id,
         to_user_id=msg.to_user_id,
@@ -2405,6 +2504,26 @@ async def send_message(msg: MessageCreate, current_user: User = Depends(get_curr
     )
     db.add(new_msg)
     db.commit()
+    db.refresh(new_msg)
+
+    # Формируем данные для отправки через WebSocket
+    message_data = {
+        "id": new_msg.message_id,
+        "from_user_id": new_msg.from_user_id,
+        "to_user_id": new_msg.to_user_id,
+        "content": new_msg.content,
+        "created_at": new_msg.created_at.isoformat() if new_msg.created_at else None,
+        "is_read": new_msg.is_read,
+        "is_mine": False
+    }
+
+    # Отправляем уведомление через WebSocket
+    await manager.send_new_message_notification(
+        from_user_id=current_user.user_id,
+        to_user_id=msg.to_user_id,
+        message_data=message_data
+    )
+
     return {"success": True, "message_id": new_msg.message_id}
 
 

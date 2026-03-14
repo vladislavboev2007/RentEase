@@ -2953,13 +2953,14 @@ function showDialogsList() {
     openModal('dialogsListModal');
 }
 
+// Загрузить список диалогов с WebSocket обновлениями
 async function loadDialogsList() {
     try {
         const response = await fetch('/api/my/dialogs', { credentials: 'same-origin' });
         if (!response.ok) throw new Error('Ошибка загрузки');
 
         const dialogs = await response.json();
-        console.log('Диалоги (только личные):', dialogs);
+        console.log('Диалоги:', dialogs);
 
         const container = document.getElementById('dialogsList');
         if (!container) return;
@@ -2971,7 +2972,6 @@ async function loadDialogsList() {
 
         let html = '';
         for (const dialog of dialogs) {
-            // Форматируем время последнего сообщения
             let lastTimeText = '';
             if (dialog.last_time) {
                 const lastDate = new Date(dialog.last_time);
@@ -2988,62 +2988,41 @@ async function loadDialogsList() {
                 }
             }
 
-            // Аватар
             let avatarHtml = '';
             if (dialog.avatar_url) {
-                avatarHtml = `<img src="${dialog.avatar_url}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentNode.innerHTML='<span style=\'color: white; font-weight: 600; font-size: 18px;\'>${dialog.user_initials || '?'}</span>';">`;
+                avatarHtml = `<img src="${dialog.avatar_url}" style="width: 100%; height: 100%; object-fit: cover;">`;
             } else {
                 avatarHtml = `<span style="color: white; font-weight: 600; font-size: 18px;">${dialog.user_initials || '?'}</span>`;
             }
 
             html += `
-                <div class="dialog-item" data-user-id="${dialog.user_id}" onclick="openChat(${dialog.user_id})" style="display: flex; align-items: center; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef; cursor: pointer; position: relative; transition: background 0.2s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
-                    <!-- Аватар с индикатором статуса -->
+                <div class="dialog-item" data-user-id="${dialog.user_id}" onclick="openChat(${dialog.user_id})"
+                     style="display: flex; align-items: center; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef; cursor: pointer; transition: background 0.2s;">
                     <div style="position: relative;">
                         <div class="dialog-avatar" style="width: 50px; height: 50px; border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #007bff, #0056b3); display: flex; align-items: center; justify-content: center;">
                             ${avatarHtml}
                         </div>
-                        <span class="online-dot" data-user-id="${dialog.user_id}" style="position: absolute; bottom: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%; background: #6c757d; border: 2px solid white;"></span>
+                        <span class="online-dot" data-user-id="${dialog.user_id}"
+                              style="position: absolute; bottom: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%; background: #6c757d; border: 2px solid white;"></span>
                     </div>
 
-                    <!-- Информация о диалоге -->
-                    <div class="dialog-info" style="flex: 1;">
+                    <div style="flex: 1;">
                         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                            <span class="dialog-name" style="font-weight: 600; font-size: 16px;">${dialog.user_name || 'Пользователь'}</span>
-                            ${dialog.unread > 0 ? `<span style="background: #007bff; color: white; border-radius: 20px; padding: 2px 8px; font-size: 11px; font-weight: 600;">${dialog.unread}</span>` : ''}
+                            <span style="font-weight: 600; font-size: 16px;">${dialog.user_name || 'Пользователь'}</span>
+                            ${dialog.unread > 0 ? `<span class="unread-badge" data-user-id="${dialog.user_id}" style="background: #007bff; color: white; border-radius: 20px; padding: 2px 8px; font-size: 11px; font-weight: 600;">${dialog.unread}</span>` : ''}
                         </div>
-                        <div class="dialog-last-message" style="color: ${dialog.unread > 0 ? '#212529' : '#6c757d'}; font-size: 14px; display: flex; justify-content: space-between;">
+                        <div style="color: ${dialog.unread > 0 ? '#212529' : '#6c757d'}; font-size: 14px; display: flex; justify-content: space-between;">
                             <span style="font-weight: ${dialog.unread > 0 ? '500' : 'normal'};">${dialog.last_message || 'Нет сообщений'}</span>
                             <span style="font-size: 11px; color: #999; margin-left: 10px;">${lastTimeText || ''}</span>
                         </div>
-                    </div>
-
-                    <!-- Кнопки действий -->
-                    <div class="dialog-actions" style="display: flex; gap: 8px;">
-                        <button class="icon-btn" onclick="openChat(${dialog.user_id}); event.stopPropagation();" style="background: none; border: none; cursor: pointer; padding: 8px; border-radius: 50%;" title="Открыть чат">
-                            💬
-                        </button>
-                        <button class="icon-btn" onclick="deleteDialog(${dialog.user_id}); event.stopPropagation();" style="background: none; border: none; cursor: pointer; padding: 8px; border-radius: 50%;" title="Удалить диалог">
-                            🗑️
-                        </button>
                     </div>
                 </div>
             `;
         }
         container.innerHTML = html;
 
-        // Запрашиваем начальные статусы для всех диалогов
-        for (const dialog of dialogs) {
-            try {
-                const statusResponse = await fetch(`/api/user/${dialog.user_id}/status`, { credentials: 'same-origin' });
-                if (statusResponse.ok) {
-                    const statusData = await statusResponse.json();
-                    updateUserOnlineStatus(dialog.user_id, statusData.is_online);
-                }
-            } catch (e) {
-                console.error(`Ошибка получения статуса для пользователя ${dialog.user_id}:`, e);
-            }
-        }
+        // Запрашиваем статусы
+        updateOnlineStatuses(dialogs);
 
     } catch (error) {
         console.error('Ошибка загрузки диалогов:', error);
@@ -3051,23 +3030,67 @@ async function loadDialogsList() {
     }
 }
 
-// Открыть чат с пользователем
+// Обновление онлайн статусов
+function updateOnlineStatuses(dialogs) {
+    dialogs.forEach(async (dialog) => {
+        try {
+            const statusResponse = await fetch(`/api/user/${dialog.user_id}/status`, { credentials: 'same-origin' });
+            if (statusResponse.ok) {
+                const statusData = await statusResponse.json();
+                updateUserOnlineStatus(dialog.user_id, statusData.is_online);
+            }
+        } catch (e) {
+            console.error(`Ошибка получения статуса:`, e);
+        }
+    });
+}
+
+// Настройка обработчика печатания
+function setupTypingHandler(toUserId) {
+    const input = document.getElementById('messageInput');
+    if (!input) return;
+
+    input.addEventListener('input', function() {
+        if (typingTimeout) {
+            clearTimeout(typingTimeout);
+        } else {
+            // Начал печатать - отправляем статус
+            sendWebSocketMessage({
+                type: 'typing',
+                to_user_id: toUserId,
+                is_typing: true
+            });
+        }
+
+        // Через 2 секунды после остановки отправляем "перестал печатать"
+        typingTimeout = setTimeout(() => {
+            sendWebSocketMessage({
+                type: 'typing',
+                to_user_id: toUserId,
+                is_typing: false
+            });
+            typingTimeout = null;
+        }, 2000);
+    });
+}
+
+// Открыть чат (исправленная)
 async function openChat(userId) {
     console.log('openChat', userId);
     currentChatUserId = userId;
 
     try {
-        // Получаем данные пользователя
         const response = await fetch(`/api/user/${userId}`, { credentials: 'same-origin' });
         if (!response.ok) throw new Error('Ошибка загрузки данных пользователя');
 
         const userData = await response.json();
-        console.log('Данные пользователя:', userData);
+
+        // Сохраняем имя собеседника
+        currentChatUserName = userData.full_name || 'Пользователь';
 
         // Обновляем шапку чата
-        document.getElementById('chatUserName').textContent = userData.full_name || 'Пользователь';
+        document.getElementById('chatUserName').textContent = currentChatUserName;
 
-        // Аватар в шапке
         const avatarContainer = document.getElementById('chatAvatarContainer');
         if (avatarContainer) {
             if (userData.avatar_url) {
@@ -3078,35 +3101,30 @@ async function openChat(userId) {
             }
         }
 
-        // ПОЛУЧАЕМ АКТУАЛЬНЫЙ СТАТУС
+        // Получаем статус
         try {
             const statusResponse = await fetch(`/api/user/${userId}/status`, { credentials: 'same-origin' });
             if (statusResponse.ok) {
                 const statusData = await statusResponse.json();
                 updateUserStatus(statusData.is_online);
-                console.log(`Статус пользователя ${userId} при открытии чата: ${statusData.is_online ? 'онлайн' : 'офлайн'}`);
             }
         } catch (e) {
-            console.error('Ошибка получения статуса:', e);
             updateUserStatus(false);
         }
 
         // Загружаем сообщения
         await loadMessages(userId);
 
-        // Помечаем сообщения как прочитанные (уже делается в loadMessages через API)
+        closeModal('dialogsListModal');
+        openModal('chatModal');
+
+        // Добавляем обработчик печатания
+        setupTypingHandler(userId);
 
     } catch (error) {
-        console.error('Ошибка загрузки данных пользователя:', error);
-        document.getElementById('chatUserName').textContent = 'Пользователь';
-        updateUserStatus(false);
+        console.error('Ошибка:', error);
+        showNotification('Ошибка загрузки данных', 'error');
     }
-
-    closeModal('dialogsListModal');
-    openModal('chatModal');
-
-    // Запускаем периодическое обновление
-    startMessagesRefresh(userId);
 }
 
 // Проверка статуса через REST API (запасной вариант)
@@ -3123,61 +3141,64 @@ async function checkUserStatus(userId) {
     return false;
 }
 
-// Загрузить сообщения
-// Загрузить сообщения
+// Загрузить сообщения (исправленная)
 async function loadMessages(userId) {
     try {
         const response = await fetch(`/api/messages?chat_with=${userId}`, { credentials: 'same-origin' });
         if (!response.ok) throw new Error('Ошибка загрузки сообщений');
 
         const data = await response.json();
-        console.log('Сообщения:', data);
 
         const messagesContainer = document.getElementById('chatMessages');
         if (!messagesContainer) return;
 
         if (!data.messages || data.messages.length === 0) {
-            messagesContainer.innerHTML = '<p style="text-align: center; padding: 40px; color: #6c757d;">Пусто</p>';
+            messagesContainer.innerHTML = '<p style="text-align: center; padding: 40px; color: #6c757d;">Нет сообщений</p>';
             return;
         }
 
         let html = '';
         let currentDate = null;
+        let messageCount = 0;
 
-        data.messages.forEach(msg => {
+        data.messages.forEach((msg, index) => {
             const msgDate = new Date(msg.created_at);
             const msgDateStr = msgDate.toDateString();
 
-            // Добавляем разделитель дня, если день изменился
+            // Добавляем разделитель только если день изменился
             if (msgDateStr !== currentDate) {
-                currentDate = msgDateStr;
+                // Если это не первое сообщение, добавляем отступ
+                if (currentDate !== null) {
+                    html += '<div style="height: 10px;"></div>';
+                }
                 html += getDateSeparator(msgDate);
+                currentDate = msgDateStr;
+                messageCount = 0;
             }
 
             if (msg.is_mine) {
-                // Моё сообщение (справа)
                 html += `
-                    <div style="display: flex; justify-content: flex-end; margin-bottom: 5px;">
-                        <div style="background: #007bff; color: white; padding: 10px 15px; border-radius: 18px 18px 4px 18px; max-width: 70%; word-wrap: break-word; position: relative;">
+                    <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+                        <div style="background: #007bff; color: white; padding: 10px 15px; border-radius: 18px 18px 4px 18px; max-width: 70%; word-wrap: break-word;">
                             ${msg.content}
                             <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 11px; opacity: 0.7; margin-top: 4px;">
                                 <span>${formatMessageTime(msg.created_at)}</span>
-                                ${getMessageStatusIcon(msg.is_read)}
+                                <span class="message-status" data-message-id="${msg.id}">${msg.is_read ? '✓✓' : '✓'}</span>
                             </div>
                         </div>
                     </div>
                 `;
             } else {
-                // Сообщение собеседника (слева)
                 html += `
-                    <div style="display: flex; justify-content: flex-start; margin-bottom: 5px;">
-                        <div style="background: white; padding: 10px 15px; border-radius: 18px 18px 18px 4px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-wrap: break-word; position: relative;">
+                    <div style="display: flex; justify-content: flex-start; margin-bottom: 8px;">
+                        <div style="background: white; padding: 10px 15px; border-radius: 18px 18px 18px 4px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-wrap: break-word;">
                             ${msg.content}
-                            <div style="font-size: 11px; color: #6c757d; margin-top: 4px;">${formatMessageTime(msg.created_at)}</div>
+                            <div style="font-size: 11px; color: #6c757d; margin-top: 4px;" class="message-time" data-datetime="${msg.created_at}">${formatMessageTime(msg.created_at)}</div>
                         </div>
                     </div>
                 `;
             }
+            messageCount++;
         });
 
         messagesContainer.innerHTML = html;
@@ -3205,34 +3226,34 @@ function getMessageStatusIcon(isRead) {
     }
 }
 
-// Функция для разделителя дней
+// Функция для разделителя дней (исправленная)
 function getDateSeparator(date) {
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    let dateText = '';
+    // Сбрасываем время для корректного сравнения
+    today.setHours(0, 0, 0, 0);
+    yesterday.setHours(0, 0, 0, 0);
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
 
-    if (date.toDateString() === today.toDateString()) {
+    let dateText = '';
+    if (compareDate.getTime() === today.getTime()) {
         dateText = 'Сегодня';
-    } else if (date.toDateString() === yesterday.toDateString()) {
+    } else if (compareDate.getTime() === yesterday.getTime()) {
         dateText = 'Вчера';
     } else {
-        // Форматируем дату: "28 февраля" или "27 февраля 2025 г."
-        const now = new Date();
-        const diffYears = now.getFullYear() - date.getFullYear();
-
-        if (diffYears === 0) {
-            // В этом году: "28 февраля"
-            dateText = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-        } else {
-            // Больше года назад: "27 февраля 2025 г."
-            dateText = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + ' г.';
-        }
+        dateText = date.toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+        });
     }
 
     return `
-        <div style="display: flex; justify-content: center; margin: 15px 0;">
+        <div class="date-separator" data-date="${date.toISOString()}"
+             style="display: flex; justify-content: center; margin: 20px 0 10px 0;">
             <span style="background: rgba(0,0,0,0.05); padding: 5px 15px; border-radius: 20px; font-size: 12px; color: #6c757d;">
                 ${dateText}
             </span>
@@ -3297,7 +3318,7 @@ function closeChat() {
     showDialogsList(); // Возвращаемся к списку диалогов
 }
 
-// Отправить сообщение
+// Отправка сообщения с улучшенной обработкой
 async function sendMessage(toUserId, content) {
     if (!content.trim()) return;
 
@@ -3317,16 +3338,101 @@ async function sendMessage(toUserId, content) {
             throw new Error(err.detail || 'Ошибка отправки');
         }
 
+        const result = await response.json();
+
         // Очищаем поле ввода
         document.getElementById('messageInput').value = '';
 
-        // Обновляем сообщения
-        await loadMessages(toUserId);
+        // Отправляем статус "перестал печатать"
+        sendWebSocketMessage({
+            type: 'typing',
+            to_user_id: toUserId,
+            is_typing: false
+        });
+
+        // Добавляем сообщение в чат (оптимистичное обновление)
+        const tempMessage = {
+            id: result.message_id,
+            from_user_id: currentUserId,
+            to_user_id: toUserId,
+            content: content.trim(),
+            created_at: new Date().toISOString(),
+            is_read: false,
+            is_mine: true
+        };
+
+        appendMyMessageToChat(tempMessage);
 
     } catch (error) {
         console.error('Ошибка отправки сообщения:', error);
         showNotification(error.message, 'error');
     }
+}
+
+// Добавление своего сообщения в чат (исправленная)
+function appendMyMessageToChat(message) {
+    const messagesContainer = document.getElementById('chatMessages');
+    if (!messagesContainer) return;
+
+    const msgDate = new Date(message.created_at);
+    const lastMessage = messagesContainer.lastElementChild;
+
+    // Проверяем, нужно ли добавить разделитель даты
+    let needsSeparator = true;
+
+    if (lastMessage) {
+        // Ищем последний разделитель даты
+        const separators = messagesContainer.querySelectorAll('.date-separator');
+        if (separators.length > 0) {
+            const lastSeparator = separators[separators.length - 1];
+            const lastDate = new Date(lastSeparator.dataset.date);
+
+            // Если последний разделитель для той же даты, не добавляем новый
+            if (isSameDay(lastDate, msgDate)) {
+                needsSeparator = false;
+            }
+        } else {
+            // Если нет разделителей, добавляем
+            needsSeparator = true;
+        }
+    } else {
+        // Если нет сообщений, добавляем
+        needsSeparator = true;
+    }
+
+    if (needsSeparator) {
+        messagesContainer.insertAdjacentHTML('beforeend', getDateSeparator(msgDate));
+    }
+
+    // Добавляем сообщение
+    const messageHtml = `
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+            <div style="background: #007bff; color: white; padding: 10px 15px; border-radius: 18px 18px 4px 18px; max-width: 70%; word-wrap: break-word;">
+                ${message.content}
+                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 11px; opacity: 0.7; margin-top: 4px;">
+                    <span>${formatMessageTime(message.created_at)}</span>
+                    <span class="message-status">✓</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
+
+    // Прокручиваем вниз
+    const container = document.getElementById('chatMessagesContainer');
+    if (container) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+// Обновление статусов прочтения
+function updateMessageReadStatus(messageIds) {
+    const messages = document.querySelectorAll('.message-status');
+    messages.forEach(msg => {
+        msg.textContent = '✓✓';
+        msg.style.color = '#53bdeb';
+    });
 }
 
 // Удалить диалог
@@ -3370,80 +3476,42 @@ async function contactUser(userId, userName) {
 let socket = null;
 let currentUserId = null;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
+const MAX_RECONNECT_ATTEMPTS = 10;
+let heartbeatInterval = null;
+let typingTimeout = null;
 
-// Получить ID текущего пользователя (нужно добавить в шаблон)
+// Получить ID текущего пользователя
 function getCurrentUserId() {
-    console.log('🔍 Поиск ID пользователя...');
-
-    // Способ 1: из data-атрибута
+    // Из data-атрибута
     const userData = document.getElementById('user-data');
     if (userData && userData.dataset.userId && userData.dataset.userId !== '') {
-        const userId = parseInt(userData.dataset.userId);
-        if (!isNaN(userId) && userId > 0) {
-            console.log('✅ ID из data-атрибута:', userId);
-            return userId;
-        }
+        return parseInt(userData.dataset.userId);
     }
-
-    // Способ 2: из глобальной переменной
+    // Из глобальной переменной
     if (window.currentUser && window.currentUser.id) {
-        console.log('✅ ID из window.currentUser:', window.currentUser.id);
         return window.currentUser.id;
     }
-
-    // Способ 3: из cookie (пробуем декодировать JWT)
-    try {
-        const cookies = document.cookie.split(';');
-        const tokenCookie = cookies.find(c => c.trim().startsWith('access_token='));
-        if (tokenCookie) {
-            const token = tokenCookie.split('=')[1];
-            const base64Url = token.split('.')[1];
-            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-            const payload = JSON.parse(atob(base64));
-
-            if (payload.user_id) {
-                console.log('✅ ID из JWT токена:', payload.user_id);
-                return payload.user_id;
-            }
-        }
-    } catch (e) {
-        console.warn('⚠️ Не удалось декодировать JWT:', e);
-    }
-
-    console.log('❌ ID пользователя не найден');
     return null;
 }
 
 // Инициализация WebSocket соединения
 function initWebSocket() {
     const userId = getCurrentUserId();
-    console.log('initWebSocket: userId =', userId, 'попытка:', reconnectAttempts + 1);
 
     if (!userId) {
         console.warn('⚠️ Нет ID пользователя, WebSocket не инициализируется');
-
-        // Пробуем переподключиться позже
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            reconnectAttempts++;
-            setTimeout(initWebSocket, 2000 * reconnectAttempts);
-        }
         return;
     }
 
-    // Сброс счетчика при успешном получении ID
-    reconnectAttempts = 0;
+    currentUserId = userId;
 
     // Закрываем старый сокет
     if (socket) {
         try {
             socket.close();
-        } catch (e) {
-            console.warn('Ошибка при закрытии сокета:', e);
-        }
+        } catch (e) {}
     }
 
-    // Определяем протокол
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/${userId}`;
 
@@ -3452,45 +3520,34 @@ function initWebSocket() {
     try {
         socket = new WebSocket(wsUrl);
 
-        socket.onopen = function(event) {
-            console.log('✅ WebSocket соединение установлено для пользователя', userId);
+        socket.onopen = function() {
+            console.log('✅ WebSocket соединение установлено');
             reconnectAttempts = 0;
+
+            // Запускаем heartbeat
+            startHeartbeat();
+
+            // Отправляем запрос на получение списка онлайн
+            sendWebSocketMessage({ type: 'get_online' });
         };
 
         socket.onmessage = function(event) {
-            console.log('📨 WebSocket сообщение:', event.data);
-
-            if (event.data.startsWith('{')) {
-                try {
-                    const data = JSON.parse(event.data);
-
-                    if (data.type === 'status_update') {
-                        updateUserOnlineStatus(data.user_id, data.is_online);
-                    }
-                    else if (data.type === 'online_list') {
-                        console.log('📋 Онлайн пользователи:', data.online_users);
-                        data.online_users.forEach(onlineUserId => {
-                            if (onlineUserId != userId) {
-                                updateUserOnlineStatus(onlineUserId, true);
-                            }
-                        });
-                    }
-
-                } catch (e) {
-                    console.error('❌ Ошибка парсинга JSON:', e);
-                }
-            } else {
-                // Игнорируем pong и другие не-JSON сообщения
+            try {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            } catch (e) {
+                console.error('❌ Ошибка парсинга сообщения:', e);
             }
         };
 
-        socket.onclose = function(event) {
-            console.log('❌ WebSocket соединение закрыто', event.code, event.reason);
+        socket.onclose = function() {
+            console.log('❌ WebSocket соединение закрыто');
+            stopHeartbeat();
 
-            // Пытаемся переподключиться
+            // Переподключение
             if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 reconnectAttempts++;
-                const delay = 2000 * reconnectAttempts;
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
                 console.log(`🔄 Переподключение через ${delay}ms...`);
                 setTimeout(initWebSocket, delay);
             }
@@ -3505,6 +3562,180 @@ function initWebSocket() {
     }
 }
 
+// Отправка сообщения через WebSocket
+function sendWebSocketMessage(data) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(data));
+    }
+}
+
+// Обработка входящих WebSocket сообщений
+function handleWebSocketMessage(data) {
+    console.log('📨 WebSocket сообщение:', data);
+
+    switch (data.type) {
+        case 'status_update':
+            updateUserOnlineStatus(data.user_id, data.is_online);
+            break;
+
+        case 'online_list':
+            console.log('📋 Онлайн пользователи:', data.online_users);
+            data.online_users.forEach(userId => {
+                if (userId != currentUserId) {
+                    updateUserOnlineStatus(userId, true);
+                }
+            });
+            break;
+
+        case 'new_message':
+            handleNewMessage(data);
+            break;
+
+        case 'typing':
+            handleTypingStatus(data);
+            break;
+
+        case 'messages_read':
+            handleMessagesRead(data);
+            break;
+
+        case 'pong':
+            // Heartbeat response
+            break;
+    }
+}
+
+// Обновление бейджей через REST API
+async function updateBadgesFromServer() {
+    try {
+        const response = await fetch('/api/my/dialogs', { credentials: 'same-origin' });
+        if (response.ok) {
+            const dialogs = await response.json();
+            updateBadges(dialogs);
+        }
+    } catch (error) {
+        console.error('Ошибка обновления бейджей:', error);
+    }
+}
+
+// Обработка нового сообщения
+function handleNewMessage(data) {
+    console.log('📨 Новое сообщение от пользователя', data.from_user_id);
+
+    // Обновляем счетчики
+    updateBadgesFromServer();
+
+    // Если открыт чат с этим пользователем, добавляем сообщение
+    if (currentChatUserId === data.from_user_id) {
+        appendMessageToChat(data.message);
+    } else {
+        // Показываем уведомление
+
+        // Обновляем список диалогов если он открыт
+        if (document.getElementById('dialogsListModal').style.display === 'flex') {
+            loadDialogsList();
+        }
+    }
+
+    // Обновляем дропдауны
+    loadNotifications();
+    loadRecentMessages();
+}
+
+// Добавление сообщения от собеседника в чат (исправленная)
+function appendMessageToChat(message) {
+    const messagesContainer = document.getElementById('chatMessages');
+    if (!messagesContainer) return;
+
+    const msgDate = new Date(message.created_at);
+    const lastMessage = messagesContainer.lastElementChild;
+
+    // Проверяем, нужно ли добавить разделитель даты
+    let needsSeparator = true;
+
+    if (lastMessage) {
+        // Ищем последний разделитель даты
+        const separators = messagesContainer.querySelectorAll('.date-separator');
+        if (separators.length > 0) {
+            const lastSeparator = separators[separators.length - 1];
+            const lastDate = new Date(lastSeparator.dataset.date);
+
+            // Если последний разделитель для той же даты, не добавляем новый
+            if (isSameDay(lastDate, msgDate)) {
+                needsSeparator = false;
+            }
+        } else {
+            // Если нет разделителей, добавляем
+            needsSeparator = true;
+        }
+    } else {
+        // Если нет сообщений, добавляем
+        needsSeparator = true;
+    }
+
+    if (needsSeparator) {
+        messagesContainer.insertAdjacentHTML('beforeend', getDateSeparator(msgDate));
+    }
+
+    // Добавляем сообщение
+    const messageHtml = `
+        <div style="display: flex; justify-content: flex-start; margin-bottom: 8px;">
+            <div style="background: white; padding: 10px 15px; border-radius: 18px 18px 18px 4px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-wrap: break-word;">
+                ${message.content}
+                <div style="font-size: 11px; color: #6c757d; margin-top: 4px;">${formatMessageTime(message.created_at)}</div>
+            </div>
+        </div>
+    `;
+
+    messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
+
+    // Прокручиваем вниз
+    const container = document.getElementById('chatMessagesContainer');
+    if (container) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+// Обработка статуса печатания
+function handleTypingStatus(data) {
+    if (currentChatUserId === data.user_id) {
+        const typingIndicator = document.getElementById('typingIndicator');
+
+        if (typingIndicator) {
+            if (data.is_typing) {
+                // Используем имя из шапки чата (оно уже содержит имя собеседника)
+                typingIndicator.style.display = 'block';
+            } else {
+                typingIndicator.style.display = 'none';
+            }
+        }
+    }
+}
+
+// Обработка прочтения сообщений
+function handleMessagesRead(data) {
+    if (currentChatUserId === data.user_id) {
+        // Обновляем статусы сообщений в чате
+        updateMessageReadStatus(data.message_ids);
+    }
+}
+
+// Heartbeat для поддержания соединения
+function startHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+    heartbeatInterval = setInterval(() => {
+        sendWebSocketMessage({ type: 'ping' });
+    }, 30000); // Каждые 30 секунд
+}
+
+function stopHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+}
 // Обновление статуса пользователя в интерфейсе
 function updateUserOnlineStatus(userId, isOnline) {
     console.log(`🟢 Обновление статуса пользователя ${userId}: ${isOnline ? 'онлайн' : 'офлайн'}`);
@@ -3571,27 +3802,59 @@ function startMessagesRefresh(userId) {
     }, 10000); // Каждые 10 секунд
 }
 
+// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+
+function isSameDay(date1, date2) {
+    const d1 = new Date(date1);
+    const d2 = new Date(date2);
+    d1.setHours(0, 0, 0, 0);
+    d2.setHours(0, 0, 0, 0);
+    return d1.getTime() === d2.getTime();
+}
+
+function getDateSeparator(date) {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    let dateText = '';
+    if (date.toDateString() === today.toDateString()) {
+        dateText = 'Сегодня';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+        dateText = 'Вчера';
+    } else {
+        dateText = date.toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+        });
+    }
+
+    return `
+        <div class="date-separator" data-date="${date.toISOString()}"
+             style="display: flex; justify-content: center; margin: 15px 0;">
+            <span style="background: rgba(0,0,0,0.05); padding: 5px 15px; border-radius: 20px; font-size: 12px; color: #6c757d;">
+                ${dateText}
+            </span>
+        </div>
+    `;
+}
+
 // Запуск при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM загружен, инициализация...');
-
-    // Небольшая задержка для гарантии загрузки всех данных
     setTimeout(() => {
         const userId = getCurrentUserId();
-        console.log('Пользователь ID после задержки:', userId);
-
         if (userId) {
             initWebSocket();
-        } else {
-            console.warn('⚠️ Пользователь не авторизован, WebSocket не запущен');
+            // Обновляем бейджи каждые 30 секунд как запасной вариант
+            setInterval(updateBadgesFromServer, 30000);
         }
     }, 100);
 });
 
 // Переподключение при возвращении на страницу
 document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'visible' && !socket) {
-        console.log('🔄 Страница снова активна, переподключаем WebSocket');
+    if (document.visibilityState === 'visible' && (!socket || socket.readyState !== WebSocket.OPEN)) {
         initWebSocket();
     }
 });
@@ -3608,6 +3871,33 @@ window.debugAuth = function() {
         .then(data => console.log('Онлайн пользователи:', data))
         .catch(err => console.error('Ошибка:', err));
 };
+
+
+// Получить последнюю дату в чате
+function getLastMessageDate() {
+    const messagesContainer = document.getElementById('chatMessages');
+    if (!messagesContainer) return null;
+
+    const separators = messagesContainer.querySelectorAll('.date-separator');
+    if (separators.length > 0) {
+        const lastSeparator = separators[separators.length - 1];
+        return new Date(lastSeparator.dataset.date);
+    }
+
+    // Если нет разделителей, ищем последнее сообщение
+    const messages = messagesContainer.children;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (!messages[i].classList?.contains('date-separator')) {
+            // Извлекаем дату из сообщения (если есть)
+            const timeElement = messages[i].querySelector('.message-time');
+            if (timeElement && timeElement.dataset.datetime) {
+                return new Date(timeElement.dataset.datetime);
+            }
+        }
+    }
+
+    return null;
+}
 
 // ==================== ОБРАБОТЧИКИ СОБЫТИЙ ====================
 
@@ -4107,7 +4397,7 @@ function toggleMessages() {
     }
 }
 
-// Загрузить уведомления (непрочитанные сообщения)
+// Загрузить уведомления (только входящие для текущего пользователя)
 async function loadNotifications() {
     try {
         // Получаем диалоги с непрочитанными
@@ -4120,7 +4410,8 @@ async function loadNotifications() {
         const container = document.getElementById('notificationsList');
         if (!container) return;
 
-        // Фильтруем только диалоги с непрочитанными
+        // Фильтруем только диалоги с непрочитанными сообщениями (где текущий пользователь - получатель)
+        // В dialogs уже есть информация о непрочитанных, но нам нужны конкретные сообщения
         const unreadDialogs = dialogs.filter(d => d.unread > 0);
 
         if (unreadDialogs.length === 0) {
@@ -4128,23 +4419,77 @@ async function loadNotifications() {
             return;
         }
 
+        // Для каждого диалога загружаем последние непрочитанные сообщения
+        let allNotifications = [];
+
+        for (const dialog of unreadDialogs) {
+            try {
+                const messagesResponse = await fetch(`/api/messages?chat_with=${dialog.user_id}`, { credentials: 'same-origin' });
+                if (messagesResponse.ok) {
+                    const messagesData = await messagesResponse.json();
+
+                    // Берем только непрочитанные сообщения (is_read = false)
+                    const unreadMessages = messagesData.messages.filter(m => !m.is_read && !m.is_mine);
+
+                    unreadMessages.forEach(msg => {
+                        allNotifications.push({
+                            id: msg.id,
+                            from_user_id: msg.from_user_id,
+                            user_name: dialog.user_name,
+                            content: msg.content,
+                            created_at: msg.created_at,
+                            type: 'message'
+                        });
+                    });
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки сообщений диалога:', e);
+            }
+        }
+
+        // Сортируем по дате (сначала новые)
+        allNotifications.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        if (allNotifications.length === 0) {
+            container.innerHTML = '<div class="notification-item loading">Нет новых уведомлений</div>';
+            return;
+        }
+
         let html = '';
-        unreadDialogs.forEach(dialog => {
-            const time = dialog.last_time ? new Date(dialog.last_time).toLocaleString('ru-RU', {
+        allNotifications.forEach(notification => {
+            const time = new Date(notification.created_at).toLocaleString('ru-RU', {
                 hour: '2-digit',
                 minute: '2-digit',
                 day: '2-digit',
                 month: '2-digit'
-            }) : '';
+            });
+
+            // Определяем иконку в зависимости от типа сообщения
+            let icon = '💬';
+            let messageType = 'Сообщение';
+
+            if (notification.content.includes('**Заявка')) {
+                icon = '📋';
+                messageType = 'Заявка';
+            } else if (notification.content.includes('**Договор')) {
+                icon = '📄';
+                messageType = 'Договор';
+            }
 
             html += `
-                <div class="notification-item" onclick="openChat(${dialog.user_id}); toggleNotifications()">
-                    <div class="notification-sender">${dialog.user_name}</div>
-                    <div class="notification-content">${dialog.last_message || '...'}</div>
-                    <div class="notification-time">${time}</div>
+                <div class="notification-item" onclick="openChat(${notification.from_user_id}); toggleNotifications()">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <span style="font-size: 14px;">${icon}</span>
+                        <span style="font-weight: 600; font-size: 13px;">${notification.user_name}</span>
+                        <span style="font-size: 11px; color: #999; margin-left: auto;">${time}</span>
+                    </div>
+                    <div class="notification-content" style="font-size: 13px; color: #212529; margin-left: 22px;">
+                        ${notification.content.replace(/\*\*/g, '')}
+                    </div>
                 </div>
             `;
         });
+
         container.innerHTML = html;
 
         // Обновляем счетчик
@@ -4255,11 +4600,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-// Обновить все счетчики
+// Обновление бейджей в интерфейсе
 function updateBadges(dialogs) {
-    // Счетчик для уведомлений (непрочитанные сообщения)
     const notificationsBadge = document.getElementById('notificationsBadge');
+    const messagesBadge = document.getElementById('messagesBadge');
+
+    // Для уведомлений считаем ВСЕ непрочитанные сообщения
     const unreadCount = dialogs.reduce((sum, dialog) => sum + (dialog.unread || 0), 0);
+
+    // Для сообщений считаем количество диалогов с непрочитанными
+    const unreadDialogsCount = dialogs.filter(d => d.unread > 0).length;
 
     if (unreadCount > 0) {
         notificationsBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
@@ -4267,10 +4617,6 @@ function updateBadges(dialogs) {
     } else {
         notificationsBadge.style.display = 'none';
     }
-
-    // Счетчик для сообщений (общее количество диалогов с непрочитанными)
-    const messagesBadge = document.getElementById('messagesBadge');
-    const unreadDialogsCount = dialogs.filter(d => d.unread > 0).length;
 
     if (unreadDialogsCount > 0) {
         messagesBadge.textContent = unreadDialogsCount > 99 ? '99+' : unreadDialogsCount;

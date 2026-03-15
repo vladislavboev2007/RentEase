@@ -559,201 +559,387 @@
     </div>
 
     <script>
-    // Текущий шаг
-    let currentStep = 1;
-    let timerInterval;
-    let userEmail = '';
 
-    // Функция переключения шагов
-    function goToStep(step) {
-        document.getElementById('step1').style.display = 'none';
-        document.getElementById('step2').style.display = 'none';
-        document.getElementById('step3').style.display = 'none';
-        document.getElementById(`step${step}`).style.display = 'block';
+        // Функция переключения шагов
+        function goToStep(step) {
+            // Скрываем все шаги
+            const step1 = document.getElementById('step1');
+            const step2 = document.getElementById('step2');
+            const step3 = document.getElementById('step3');
 
-        for (let i = 1; i <= 3; i++) {
-            const indicator = document.getElementById(`step${i}-indicator`);
-            indicator.classList.remove('active', 'completed');
-            if (i < step) {
-                indicator.classList.add('completed');
-            } else if (i === step) {
-                indicator.classList.add('active');
+            if (step1) step1.style.display = 'none';
+            if (step2) step2.style.display = 'none';
+            if (step3) step3.style.display = 'none';
+
+            // Показываем нужный шаг
+            const currentStepEl = document.getElementById(`step${step}`);
+            if (currentStepEl) currentStepEl.style.display = 'block';
+
+            // Обновляем индикаторы
+            for (let i = 1; i <= 3; i++) {
+                const indicator = document.getElementById(`step${i}-indicator`);
+                if (indicator) {
+                    indicator.classList.remove('active', 'completed');
+                    if (i < step) {
+                        indicator.classList.add('completed');
+                    } else if (i === step) {
+                        indicator.classList.add('active');
+                    }
+                }
+            }
+
+            currentStep = step;
+
+            // Прокручиваем контейнер вверх (с проверкой)
+            const container = document.querySelector('.recovery-form-container');
+            if (container) {
+                container.scrollTop = 0;
             }
         }
 
-        currentStep = step;
-        document.querySelector('.recovery-form-container').scrollTop = 0;
-    }
+        // Таймер для кода
+        function startTimer(duration) {
+            const timerDisplay = document.getElementById('timer');
+            if (!timerDisplay) return;
 
-    // Таймер для кода
-    function startTimer(duration) {
-        const timerDisplay = document.getElementById('timer');
-        let timer = duration;
-        if (timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(() => {
-            const minutes = Math.floor(timer / 60);
-            const seconds = timer % 60;
-            timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            if (--timer < 0) {
-                clearInterval(timerInterval);
-                timerDisplay.textContent = '00:00';
-                timerDisplay.style.color = '#dc3545';
+            let timer = duration;
+            if (timerInterval) clearInterval(timerInterval);
+
+            timerInterval = setInterval(() => {
+                const minutes = Math.floor(timer / 60);
+                const seconds = timer % 60;
+                timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                if (--timer < 0) {
+                    clearInterval(timerInterval);
+                    timerDisplay.textContent = '00:00';
+                    timerDisplay.style.color = '#dc3545';
+                }
+            }, 1000);
+        }
+
+        // Повторная отправка кода
+        document.getElementById('resendCode')?.addEventListener('click', async function() {
+            try {
+                const formData = new FormData();
+                formData.append('email', userEmail);
+
+                const response = await fetch('/api/register/resend-code', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                console.log('Ответ resend:', data);
+
+                if (data.success) {
+                    alert('Новый код отправлен');
+                    startTimer(300);
+                } else {
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка при отправке кода');
             }
-        }, 1000);
-    }
+        });
 
-    // Обработка ввода кода
-    document.addEventListener('DOMContentLoaded', function() {
-        const codeInputs = document.querySelectorAll('.code-digit');
-        codeInputs.forEach((input, index) => {
-            input.addEventListener('input', function() {
-                if (this.value.length === 1 && index < codeInputs.length - 1) {
-                    codeInputs[index + 1].focus();
-                }
-            });
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'Backspace' && index > 0 && this.value.length === 0) {
-                    codeInputs[index - 1].focus();
-                }
+        // Обработка ввода кода
+        document.addEventListener('DOMContentLoaded', function() {
+            const codeInputs = document.querySelectorAll('.code-digit');
+            codeInputs.forEach((input, index) => {
+                input.addEventListener('input', function() {
+                    if (this.value.length === 1 && index < codeInputs.length - 1) {
+                        codeInputs[index + 1].focus();
+                    }
+                });
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Backspace' && index > 0 && this.value.length === 0) {
+                        codeInputs[index - 1].focus();
+                    }
+                });
             });
         });
-    });
 
-    // ШАГ 1: Отправка email для получения кода
-document.querySelector('#step1 .btn-primary').addEventListener('click', async function() {
-    const email = document.getElementById('email').value;
-    if (!email) {
-        alert('Введите email');
-        return;
-    }
+        // Предпросмотр аватарки при регистрации
+        function previewRegisterAvatar(input) {
+            const preview = document.getElementById('registerAvatarPreview');
+            const img = preview.querySelector('img');
+            const placeholder = preview.querySelector('.placeholder');
 
-    try {
-        const formData = new FormData();
-        formData.append('email', email);
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
 
-        const response = await fetch('/api/recovery/request', {
-            method: 'POST',
-            body: formData
+                reader.onload = function(e) {
+                    if (img) {
+                        img.src = e.target.result;
+                        img.style.display = 'block';
+                        if (placeholder) placeholder.style.display = 'none';
+                    }
+                };
+
+                reader.readAsDataURL(input.files[0]);
+
+                // Сохраняем файл для отправки
+                window.registerAvatar = input.files[0];
+            }
+        }
+
+        // Функция "Пропустить и завершить"
+        document.querySelector('#step3 .btn-secondary')?.addEventListener('click', async function() {
+            try {
+                const formData = new FormData();
+                formData.append('email', userEmail);
+
+                const response = await fetch('/api/register/step3', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                console.log('Ответ step3 (пропуск):', data);
+
+                if (data.success) {
+                    alert('Регистрация успешно завершена! Теперь вы можете войти.');
+                    window.location.href = '/';
+                } else {
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка при завершении регистрации');
+            }
+        });
+        // Текущий шаг
+        let currentStep = 1;
+        let timerInterval;
+        let userEmail = '';
+
+        // ==================== ВАЛИДАЦИЯ ====================
+
+        function validateEmail(email) {
+            const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return re.test(email);
+        }
+
+        function validatePassword(password) {
+            const errors = [];
+            if (password.length < 8) {
+                errors.push('Пароль должен быть не менее 8 символов');
+            }
+            if (!/[a-zA-Z]/.test(password)) {
+                errors.push('Пароль должен содержать хотя бы одну букву');
+            }
+            if (!/\d/.test(password)) {
+                errors.push('Пароль должен содержать хотя бы одну цифру');
+            }
+            return {
+                isValid: errors.length === 0,
+                errors: errors
+            };
+        }
+
+        function showFieldError(inputElement, message) {
+            const existingError = inputElement.parentNode.querySelector('.field-error');
+            if (existingError) existingError.remove();
+
+            inputElement.classList.add('error-field');
+
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'field-error';
+            errorDiv.textContent = message;
+            errorDiv.style.color = '#dc3545';
+            errorDiv.style.fontSize = '12px';
+            errorDiv.style.marginTop = '4px';
+            inputElement.parentNode.appendChild(errorDiv);
+        }
+
+        function clearFieldError(inputElement) {
+            inputElement.classList.remove('error-field');
+            const existingError = inputElement.parentNode.querySelector('.field-error');
+            if (existingError) existingError.remove();
+        }
+
+        // ==================== ВАЛИДАЦИЯ ШАГА 1 ====================
+
+        function validateStep1() {
+            const emailInput = document.getElementById('email');
+            const email = emailInput.value.trim();
+
+            if (!email) {
+                showFieldError(emailInput, 'Email обязателен');
+                return false;
+            }
+
+            if (!validateEmail(email)) {
+                showFieldError(emailInput, 'Введите корректный email');
+                return false;
+            }
+
+            clearFieldError(emailInput);
+            return true;
+        }
+
+        // ==================== ВАЛИДАЦИЯ ШАГА 2 ====================
+
+        function validateStep2() {
+            const codeInputs = document.querySelectorAll('#step2 .code-digit');
+            let code = '';
+            codeInputs.forEach(input => { code += input.value; });
+
+            if (code.length !== 8) {
+                alert('Введите полный код подтверждения');
+                return false;
+            }
+
+            return true;
+        }
+
+        // ==================== ВАЛИДАЦИЯ ШАГА 3 ====================
+
+        function validateStep3() {
+            let isValid = true;
+
+            const newPassInput = document.getElementById('new-password');
+            const confirmInput = document.getElementById('confirm-password');
+
+            const newPass = newPassInput.value;
+            const confirm = confirmInput.value;
+
+            if (!newPass) {
+                showFieldError(newPassInput, 'Введите новый пароль');
+                isValid = false;
+            } else {
+                const passValidation = validatePassword(newPass);
+                if (!passValidation.isValid) {
+                    showFieldError(newPassInput, passValidation.errors.join(', '));
+                    isValid = false;
+                } else {
+                    clearFieldError(newPassInput);
+                }
+            }
+
+            if (!confirm) {
+                showFieldError(confirmInput, 'Подтвердите пароль');
+                isValid = false;
+            } else if (newPass !== confirm) {
+                showFieldError(confirmInput, 'Пароли не совпадают');
+                isValid = false;
+            } else {
+                clearFieldError(confirmInput);
+            }
+
+            return isValid;
+        }
+
+        // ==================== ОБРАБОТЧИКИ ====================
+
+        // ШАГ 1: Отправка email для получения кода
+        document.querySelector('#step1 .btn-primary').addEventListener('click', async function(e) {
+            e.preventDefault();
+
+            if (!validateStep1()) {
+                return;
+            }
+
+            const email = document.getElementById('email').value;
+
+            try {
+                const formData = new FormData();
+                formData.append('email', email);
+
+                const response = await fetch('/api/recovery/request', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    userEmail = email;
+                    document.getElementById('displayEmail').textContent = email;
+                    alert('Код отправлен на вашу почту (смотрите консоль сервера)');
+                    goToStep(2);
+                    startTimer(300);
+                } else {
+                    alert(data.message || 'Ошибка при запросе кода');
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка при запросе кода');
+            }
         });
 
-        const data = await response.json();
+        // ШАГ 2: Подтверждение кода
+        document.querySelector('#step2 .btn-primary').addEventListener('click', async function(e) {
+            e.preventDefault();
 
-        if (data.success) {
-            userEmail = email;
-            document.getElementById('displayEmail').textContent = email;
-            alert('Код отправлен на вашу почту (смотрите консоль сервера)');
-            goToStep(2);
-            startTimer(300);
-        } else {
-            alert(data.message || 'Ошибка при запросе кода');
-        }
-    } catch (error) {
-        console.error('Ошибка:', error);
-        alert('Ошибка при запросе кода');
-    }
-});
-
-    // ШАГ 2: Подтверждение кода
-    document.querySelector('#step2 .btn-primary').addEventListener('click', async function() {
-        const codeInputs = document.querySelectorAll('#step2 .code-digit');
-        let code = '';
-        codeInputs.forEach(input => { code += input.value; });
-
-        if (code.length !== 8) {
-            alert('Введите полный код');
-            return;
-        }
-
-        try {
-            const formData = new FormData();
-            formData.append('email', userEmail);
-            formData.append('code', code);
-
-            const response = await fetch('/api/recovery/verify', {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                alert('Код подтверждён');
-                goToStep(3);
-            } else {
-                alert(data.message);
+            if (!validateStep2()) {
+                return;
             }
-        } catch (error) {
-            console.error('Ошибка:', error);
-            alert('Ошибка при подтверждении кода');
-        }
-    });
 
-    // Повторная отправка кода
-    document.getElementById('resendCode').addEventListener('click', async function() {
-        try {
-            const formData = new FormData();
-            formData.append('email', userEmail);
+            const codeInputs = document.querySelectorAll('#step2 .code-digit');
+            let code = '';
+            codeInputs.forEach(input => { code += input.value; });
 
-            const response = await fetch('/api/recovery/resend', {
-                method: 'POST',
-                body: formData
-            });
+            try {
+                const formData = new FormData();
+                formData.append('email', userEmail);
+                formData.append('code', code);
 
-            const data = await response.json();
+                const response = await fetch('/api/recovery/verify', {
+                    method: 'POST',
+                    body: formData
+                });
 
-            if (data.success) {
-                alert('Новый код отправлен');
-                startTimer(300);
-            } else {
-                alert(data.message);
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('Код подтверждён');
+                    goToStep(3);
+                } else {
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка при подтверждении кода');
             }
-        } catch (error) {
-            console.error('Ошибка:', error);
-            alert('Ошибка при повторной отправке');
-        }
-    });
+        });
 
-    // ШАГ 3: Установка нового пароля
-    document.querySelector('#step3 .btn-primary').addEventListener('click', async function() {
-        const newPass = document.getElementById('new-password').value;
-        const confirmPass = document.getElementById('confirm-password').value;
+        // ШАГ 3: Установка нового пароля
+        document.querySelector('#step3 .btn-primary').addEventListener('click', async function(e) {
+            e.preventDefault();
 
-        if (!newPass || !confirmPass) {
-            alert('Заполните все поля');
-            return;
-        }
-        if (newPass.length < 8) {
-            alert('Пароль должен быть не менее 8 символов');
-            return;
-        }
-        if (newPass !== confirmPass) {
-            alert('Пароли не совпадают');
-            return;
-        }
-
-        try {
-            const formData = new FormData();
-            formData.append('email', userEmail);
-            formData.append('password', newPass);
-
-            const response = await fetch('/api/recovery/reset', {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                alert('Пароль успешно изменён! Теперь вы можете войти.');
-                window.location.href = '/';
-            } else {
-                alert(data.message);
+            if (!validateStep3()) {
+                return;
             }
-        } catch (error) {
-            console.error('Ошибка:', error);
-            alert('Ошибка при сбросе пароля');
-        }
-    });
+
+            const newPass = document.getElementById('new-password').value;
+            const confirmPass = document.getElementById('confirm-password').value;
+
+            try {
+                const formData = new FormData();
+                formData.append('email', userEmail);
+                formData.append('password', newPass);
+
+                const response = await fetch('/api/recovery/reset', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('Пароль успешно изменён! Теперь вы можете войти.');
+                    window.location.href = '/';
+                } else {
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка при сбросе пароля');
+            }
+        });
 </script>
 </body>
 </html>

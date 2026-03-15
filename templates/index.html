@@ -57,7 +57,9 @@
                 <div class="notifications-dropdown" id="notificationsDropdown">
                     <div class="dropdown-header">
                         <h3>Уведомления</h3>
-                        <button onclick="markAllNotificationsRead()" class="mark-read-btn">✓ Все прочитано</button>
+                        <button onclick="markAllNotificationsRead()" class="mark-read-btn">
+                            ✓ Все прочитано
+                        </button>
                     </div>
                     <div class="notifications-list" id="notificationsList">
                         <div class="notification-item loading">Загрузка...</div>
@@ -161,92 +163,101 @@
     </div>
 </div>
 
-<!-- ФИЛЬТР ПОИСКА -->
-<div class="filter-section">
-    <div class="filter-container">
-        <form action="/search" method="get" class="filter-form" id="searchForm">
-            <div class="filter-row">
+    <!-- ФИЛЬТР ПОИСКА -->
+    <div class="filter-section">
+        <div class="filter-container">
+            <form action="/search" method="get" class="filter-form" id="searchForm">
                 <input type="hidden" name="page" id="pageInput" value="{{ page|default(1) }}">
-                <!-- ПОЛЕ ПОИСКА -->
-                <div class="filter-group search-field">
-                    <label for="search">Поиск</label>
-                    <input type="text"
-                           id="search"
-                           name="search"
-                           placeholder="Поиск по адресу или названию"
-                           value="{{ search_text or '' }}">
-                </div>
 
-                <div class="filter-group">
-                    <label for="city">Город</label>
-                    <input type="text"
-                           id="city"
-                           name="city"
-                           placeholder="Город или район"
-                           value="{{ search_city or '' }}"
-                           list="citySuggestions"
-                           hx-get="/api/cities/search"
-                           hx-trigger="keyup changed delay:300ms"
-                           hx-target="#citySuggestions">
-                    <datalist id="citySuggestions"></datalist>
-                </div>
+                <!-- Верхний ряд: поиск с кнопкой внутри -->
+                <div class="filter-row">
+                    <!-- ПОЛЕ ПОИСКА С КНОПКОЙ ВНУТРИ -->
+                    <div class="filter-group search-field">
+                        <label for="search">Поиск</label>
+                        <div style="position: relative;">
+                            <input type="text"
+                                   id="search"
+                                   name="search"
+                                   placeholder="Поиск по адресу или названию"
+                                   value="{{ search_text or '' }}">
+                            <button type="submit" class="search-btn-inside">
+                                <img src="/resources/search.png" alt=""> Найти
+                            </button>
+                        </div>
+                    </div>
 
-                <div class="filter-group">
-                    <label for="property_type">Тип</label>
-                    <select name="property_type" id="property_type">
-                        <option value="all" {% if search_type == 'all' %}selected{% endif %}>Любой тип</option>
-                        <option value="apartment" {% if search_type == 'apartment' %}selected{% endif %}>Квартира</option>
-                        <option value="house" {% if search_type == 'house' %}selected{% endif %}>Дом</option>
-                        <option value="commercial" {% if search_type == 'commercial' %}selected{% endif %}>Коммерческая</option>
-                    </select>
-                </div>
-
-                <div class="filter-group">
-                    <label for="rooms">Комнат</label>
-                    <select name="rooms" id="rooms">
-                        <option value="all">Любое</option>
-                        <option value="1">1 комната</option>
-                        <option value="2">2 комнаты</option>
-                        <option value="3">3 комнаты</option>
-                        <option value="4">4+ комнат</option>
-                    </select>
-                </div>
-
-                <div class="filter-group">
-                    <label for="min_price">Цена, ₽</label>
-                    <div class="price-range">
-                        <input type="number" name="min_price" placeholder="от" value="{{ search_min_price or '' }}">
-                        <span>—</span>
-                        <input type="number" name="max_price" placeholder="до" value="{{ search_max_price or '' }}">
+                    <!-- Кнопка сброса (справа) -->
+                    <div style="display: flex; align-items: center; margin-bottom: 2px;">
+                        <button type="button" class="filter-reset" onclick="resetFilters()">Сбросить</button>
                     </div>
                 </div>
 
-                <div class="filter-group">
-                    <label for="min_area">Площадь, м²</label>
-                    <div class="price-range">
-                        <input type="number" name="min_area" placeholder="от" value="{{ search_min_area or '' }}">
-                        <span>—</span>
-                        <input type="number" name="max_area" placeholder="до" value="{{ search_max_area or '' }}">
+                <!-- Разделитель -->
+                <div class="filter-divider"></div>
+
+                <!-- Нижний ряд: все фильтры -->
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="city">Город</label>
+                        <input type="text"
+                               id="city"
+                               name="city"
+                               placeholder="Город или район"
+                               value="{{ search_city or '' }}"
+                               list="citySuggestions">
+                        <datalist id="citySuggestions"></datalist>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="property_type">Тип</label>
+                        <select name="property_type" id="property_type">
+                            <option value="all" {% if search_type == 'all' %}selected{% endif %}>Любой тип</option>
+                            <option value="apartment" {% if search_type == 'apartment' %}selected{% endif %}>Квартира</option>
+                            <option value="house" {% if search_type == 'house' %}selected{% endif %}>Дом</option>
+                            <option value="commercial" {% if search_type == 'commercial' %}selected{% endif %}>Коммерческая</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="rooms">Комнат</label>
+                        <select name="rooms" id="rooms">
+                            <option value="all">Любое</option>
+                            <option value="1">1 комната</option>
+                            <option value="2">2 комнаты</option>
+                            <option value="3">3 комнаты</option>
+                            <option value="4">4+ комнат</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Цена, ₽</label>
+                        <div class="price-range">
+                            <input type="number" name="min_price" placeholder="от" value="{{ search_min_price or '' }}">
+                            <span>—</span>
+                            <input type="number" name="max_price" placeholder="до" value="{{ search_max_price or '' }}">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Площадь, м²</label>
+                        <div class="price-range">
+                            <input type="number" name="min_area" placeholder="от" value="{{ search_min_area or '' }}">
+                            <span>—</span>
+                            <input type="number" name="max_area" placeholder="до" value="{{ search_max_area or '' }}">
+                        </div>
                     </div>
                 </div>
-
-                <div class="filter-group filter-actions">
-                    <button type="submit" class="filter-btn">
-                        <img src="/resources/search.png" alt="Search"> Найти
-                    </button>
-                    <button type="button" class="filter-reset" onclick="resetFilters()">Сбросить</button>
-                </div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 
 <!-- ОСНОВНОЙ КОНТЕЙНЕР С ОБЪЕКТАМИ -->
 <div class="main-container">
     <!-- Верхняя панель управления списком объектов -->
     <div class="results-header">
+        <!-- В index.html найдите блок с количеством объектов и обновите: -->
         <div class="results-count">
-            <h2>Всего найдено: <span id="totalCount">{{ total if total else properties|length }}</span> объектов</h2>
+            <h2>Всего найдено: <strong>{{ total if total else properties|length }}</strong> объектов</h2>
         </div>
         <div class="results-controls">
             <div class="sorting">

@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict 4W6sfJfEh8Rw5GuzvwjZGiTJv1414dCKfe9uQcwv7RruN2ltisdwJPyPbU1hbdS
+\restrict KXCbDutkrQDa8japcufURkxv8FPisfE8GJnxSsr2tSNqN29Cl0sPAQGkUKAg7rG
 
 -- Dumped from database version 18.1
 -- Dumped by pg_dump version 18.1
 
--- Started on 2026-03-13 22:11:01
+-- Started on 2026-03-14 20:37:05
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -22,7 +22,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- TOC entry 253 (class 1255 OID 90264)
+-- TOC entry 254 (class 1255 OID 90264)
 -- Name: audit_log_delete(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -80,7 +80,7 @@ $$;
 ALTER FUNCTION public.audit_log_delete() OWNER TO postgres;
 
 --
--- TOC entry 251 (class 1255 OID 90262)
+-- TOC entry 252 (class 1255 OID 90262)
 -- Name: audit_log_insert(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -139,7 +139,7 @@ $$;
 ALTER FUNCTION public.audit_log_insert() OWNER TO postgres;
 
 --
--- TOC entry 252 (class 1255 OID 90263)
+-- TOC entry 253 (class 1255 OID 90263)
 -- Name: audit_log_update(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -217,7 +217,7 @@ $$;
 ALTER FUNCTION public.audit_log_update() OWNER TO postgres;
 
 --
--- TOC entry 244 (class 1255 OID 82019)
+-- TOC entry 245 (class 1255 OID 82019)
 -- Name: create_contract_on_approval(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -274,7 +274,7 @@ $$;
 ALTER FUNCTION public.create_contract_on_approval() OWNER TO postgres;
 
 --
--- TOC entry 255 (class 1255 OID 49248)
+-- TOC entry 256 (class 1255 OID 49248)
 -- Name: get_agent_application_status_stats(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -319,7 +319,7 @@ $$;
 ALTER FUNCTION public.get_agent_application_status_stats(p_agent_id integer, p_days integer) OWNER TO postgres;
 
 --
--- TOC entry 254 (class 1255 OID 49246)
+-- TOC entry 255 (class 1255 OID 49246)
 -- Name: get_agent_monthly_stats(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -377,7 +377,7 @@ $$;
 ALTER FUNCTION public.get_agent_monthly_stats(p_agent_id integer, p_months integer) OWNER TO postgres;
 
 --
--- TOC entry 249 (class 1255 OID 49247)
+-- TOC entry 250 (class 1255 OID 49247)
 -- Name: get_agent_performance_stats(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -472,7 +472,7 @@ $$;
 ALTER FUNCTION public.get_agent_performance_stats(p_agent_id integer, p_months integer) OWNER TO postgres;
 
 --
--- TOC entry 246 (class 1255 OID 90207)
+-- TOC entry 247 (class 1255 OID 90207)
 -- Name: notify_application_status_change(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -480,15 +480,52 @@ CREATE FUNCTION public.notify_application_status_change() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE
-    prop_title TEXT;
+    v_property_title TEXT;
+    v_status_text TEXT;
+    v_owner_name TEXT;
 BEGIN
-    IF NEW.status != OLD.status THEN
-        SELECT title INTO prop_title FROM properties WHERE property_id = NEW.property_id;
-        INSERT INTO messages (from_user_id, to_user_id, content, created_at)
-        VALUES (NULL, NEW.tenant_id,
-                '**Заявка ' || NEW.status || '** на объект "' || prop_title || '"',
-                NOW());
+    -- Если статус не изменился, ничего не делаем
+    IF OLD.status = NEW.status THEN
+        RETURN NEW;
     END IF;
+
+    -- Получаем название объекта
+    SELECT title INTO v_property_title
+    FROM properties
+    WHERE property_id = NEW.property_id;
+
+    -- Определяем текст уведомления в зависимости от нового статуса
+    CASE NEW.status
+        WHEN 'approved' THEN
+            v_status_text := '✅ **Заявка одобрена**';
+        WHEN 'rejected' THEN
+            v_status_text := '❌ **Заявка отклонена**';
+        WHEN 'cancelled' THEN
+            v_status_text := '🚫 **Заявка отменена**';
+        ELSE
+            v_status_text := '📋 **Заявка ' || NEW.status || '**';
+    END CASE;
+
+    -- Уведомление арендатору
+    INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+    VALUES (NULL, NEW.tenant_id,
+            v_status_text || ' на объект "' || v_property_title || '"',
+            FALSE, NOW());
+
+    -- Если есть ответ, добавляем отдельное уведомление с текстом ответа
+    IF NEW.answer IS NOT NULL AND NEW.answer != '' AND NEW.answer != OLD.answer THEN
+        -- Получаем имя собственника (или агента), чтобы персонализировать ответ
+        SELECT COALESCE(u.full_name, 'Собственник') INTO v_owner_name
+        FROM properties p
+        LEFT JOIN users u ON p.owner_id = u.user_id
+        WHERE p.property_id = NEW.property_id;
+
+        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+        VALUES (NULL, NEW.tenant_id,
+                '💬 **Ответ от ' || v_owner_name || '**: ' || NEW.answer,
+                FALSE, NOW());
+    END IF;
+
     RETURN NEW;
 END;
 $$;
@@ -534,7 +571,7 @@ $$;
 ALTER FUNCTION public.notify_contract_cancellation() OWNER TO postgres;
 
 --
--- TOC entry 247 (class 1255 OID 90209)
+-- TOC entry 249 (class 1255 OID 90209)
 -- Name: notify_contract_signature(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -542,26 +579,59 @@ CREATE FUNCTION public.notify_contract_signature() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE
-    other_party_id INTEGER;
-    prop_title TEXT;
-    signer TEXT;
+    v_tenant_id INTEGER;
+    v_owner_id INTEGER;
+    v_property_title TEXT;
+    v_tenant_name TEXT;
+    v_owner_name TEXT;
 BEGIN
-    IF NEW.tenant_signed IS DISTINCT FROM OLD.tenant_signed AND NEW.tenant_signed = TRUE THEN
-        other_party_id := (SELECT owner_id FROM properties p JOIN applications a ON a.property_id = p.property_id WHERE a.application_id = NEW.application_id);
-        signer := 'Арендатор';
-        SELECT title INTO prop_title FROM properties p JOIN applications a ON a.property_id = p.property_id WHERE a.application_id = NEW.application_id;
-    ELSIF NEW.owner_signed IS DISTINCT FROM OLD.owner_signed AND NEW.owner_signed = TRUE THEN
-        other_party_id := (SELECT tenant_id FROM applications WHERE application_id = NEW.application_id);
-        signer := 'Собственник';
-        SELECT title INTO prop_title FROM properties p JOIN applications a ON a.property_id = p.property_id WHERE a.application_id = NEW.application_id;
-    ELSE
+    -- Получаем связанные данные через application
+    SELECT a.tenant_id, p.owner_id, p.title,
+           COALESCE(tu.full_name, 'Арендатор') as tenant_name,
+           COALESCE(ou.full_name, 'Собственник') as owner_name
+    INTO v_tenant_id, v_owner_id, v_property_title, v_tenant_name, v_owner_name
+    FROM applications a
+    JOIN properties p ON a.property_id = p.property_id
+    LEFT JOIN users tu ON tu.user_id = a.tenant_id
+    LEFT JOIN users ou ON ou.user_id = p.owner_id
+    WHERE a.application_id = NEW.application_id;
+
+    -- Проверяем, что данные получены
+    IF v_tenant_id IS NULL OR v_owner_id IS NULL THEN
         RETURN NEW;
     END IF;
 
-    INSERT INTO messages (from_user_id, to_user_id, content, created_at)
-    VALUES (NULL, other_party_id,
-            '**Договор подписан**: ' || signer || ' подписал договор на объект "' || prop_title || '"',
-            NOW());
+    -- Если арендатор только что подписал
+    IF NEW.tenant_signed IS DISTINCT FROM OLD.tenant_signed AND NEW.tenant_signed = TRUE THEN
+        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+        VALUES (NULL, v_owner_id,
+                '✍️ **Арендатор подписал договор**: ' || v_tenant_name || ' подписал договор на объект "' || v_property_title || '"',
+                FALSE, NOW());
+    END IF;
+
+    -- Если собственник только что подписал
+    IF NEW.owner_signed IS DISTINCT FROM OLD.owner_signed AND NEW.owner_signed = TRUE THEN
+        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+        VALUES (NULL, v_tenant_id,
+                '✍️ **Собственник подписал договор**: ' || v_owner_name || ' подписал договор на объект "' || v_property_title || '"',
+                FALSE, NOW());
+    END IF;
+
+    -- Если статус договора стал 'signed' (обе стороны подписали)
+    IF NEW.signing_status = 'signed' AND (OLD.signing_status IS DISTINCT FROM 'signed') THEN
+        -- Уведомление арендатору
+        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+        VALUES (NULL, v_tenant_id,
+                '✅ **Договор полностью подписан** на объект "' || v_property_title || '"',
+                FALSE, NOW());
+
+        -- Уведомление собственнику
+        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+        VALUES (NULL, v_owner_id,
+                '✅ **Договор полностью подписан** на объект "' || v_property_title || '"',
+                FALSE, NOW());
+    END IF;
+
     RETURN NEW;
 END;
 $$;
@@ -570,7 +640,43 @@ $$;
 ALTER FUNCTION public.notify_contract_signature() OWNER TO postgres;
 
 --
--- TOC entry 250 (class 1255 OID 90243)
+-- TOC entry 233 (class 1255 OID 98398)
+-- Name: notify_new_application(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.notify_new_application() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_property_title TEXT;
+    v_owner_id INTEGER;
+    v_tenant_name TEXT;
+BEGIN
+    -- Получаем название объекта и ID собственника
+    SELECT p.title, p.owner_id INTO v_property_title, v_owner_id
+    FROM properties p
+    WHERE p.property_id = NEW.property_id;
+
+    -- Получаем имя арендатора
+    SELECT COALESCE(full_name, 'Арендатор') INTO v_tenant_name
+    FROM users
+    WHERE user_id = NEW.tenant_id;
+
+    -- Вставляем уведомление собственнику
+    INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+    VALUES (NULL, v_owner_id,
+            '📋 **Новая заявка** от ' || v_tenant_name || ' на объект "' || v_property_title || '"',
+            FALSE, NOW());
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.notify_new_application() OWNER TO postgres;
+
+--
+-- TOC entry 251 (class 1255 OID 90243)
 -- Name: set_current_user_id(integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -586,7 +692,7 @@ $$;
 ALTER FUNCTION public.set_current_user_id(user_id integer) OWNER TO postgres;
 
 --
--- TOC entry 245 (class 1255 OID 82017)
+-- TOC entry 246 (class 1255 OID 82017)
 -- Name: update_contract_signing_status(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -660,7 +766,7 @@ CREATE SEQUENCE public.applications_application_id_seq
 ALTER SEQUENCE public.applications_application_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5045 (class 0 OID 0)
+-- TOC entry 5049 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: applications_application_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -703,7 +809,7 @@ CREATE SEQUENCE public.audit_logs_log_id_seq
 ALTER SEQUENCE public.audit_logs_log_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5046 (class 0 OID 0)
+-- TOC entry 5050 (class 0 OID 0)
 -- Dependencies: 231
 -- Name: audit_logs_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -749,7 +855,7 @@ CREATE SEQUENCE public.contracts_contract_id_seq
 ALTER SEQUENCE public.contracts_contract_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5047 (class 0 OID 0)
+-- TOC entry 5051 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: contracts_contract_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -791,7 +897,7 @@ CREATE SEQUENCE public.messages_message_id_seq
 ALTER SEQUENCE public.messages_message_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5048 (class 0 OID 0)
+-- TOC entry 5052 (class 0 OID 0)
 -- Dependencies: 229
 -- Name: messages_message_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -843,7 +949,7 @@ CREATE SEQUENCE public.properties_property_id_seq
 ALTER SEQUENCE public.properties_property_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5049 (class 0 OID 0)
+-- TOC entry 5053 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: properties_property_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -884,7 +990,7 @@ CREATE SEQUENCE public.property_photos_photo_id_seq
 ALTER SEQUENCE public.property_photos_photo_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5050 (class 0 OID 0)
+-- TOC entry 5054 (class 0 OID 0)
 -- Dependencies: 223
 -- Name: property_photos_photo_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -930,7 +1036,7 @@ CREATE SEQUENCE public.users_user_id_seq
 ALTER SEQUENCE public.users_user_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5051 (class 0 OID 0)
+-- TOC entry 5055 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_user_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -939,7 +1045,7 @@ ALTER SEQUENCE public.users_user_id_seq OWNED BY public.users.user_id;
 
 
 --
--- TOC entry 4806 (class 2604 OID 32841)
+-- TOC entry 4807 (class 2604 OID 32841)
 -- Name: applications application_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -947,7 +1053,7 @@ ALTER TABLE ONLY public.applications ALTER COLUMN application_id SET DEFAULT nex
 
 
 --
--- TOC entry 4817 (class 2604 OID 32933)
+-- TOC entry 4818 (class 2604 OID 32933)
 -- Name: audit_logs log_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -955,7 +1061,7 @@ ALTER TABLE ONLY public.audit_logs ALTER COLUMN log_id SET DEFAULT nextval('publ
 
 
 --
--- TOC entry 4809 (class 2604 OID 32871)
+-- TOC entry 4810 (class 2604 OID 32871)
 -- Name: contracts contract_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -963,7 +1069,7 @@ ALTER TABLE ONLY public.contracts ALTER COLUMN contract_id SET DEFAULT nextval('
 
 
 --
--- TOC entry 4814 (class 2604 OID 32910)
+-- TOC entry 4815 (class 2604 OID 32910)
 -- Name: messages message_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -971,7 +1077,7 @@ ALTER TABLE ONLY public.messages ALTER COLUMN message_id SET DEFAULT nextval('pu
 
 
 --
--- TOC entry 4801 (class 2604 OID 32792)
+-- TOC entry 4802 (class 2604 OID 32792)
 -- Name: properties property_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -979,7 +1085,7 @@ ALTER TABLE ONLY public.properties ALTER COLUMN property_id SET DEFAULT nextval(
 
 
 --
--- TOC entry 4804 (class 2604 OID 32822)
+-- TOC entry 4805 (class 2604 OID 32822)
 -- Name: property_photos photo_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -987,7 +1093,7 @@ ALTER TABLE ONLY public.property_photos ALTER COLUMN photo_id SET DEFAULT nextva
 
 
 --
--- TOC entry 4797 (class 2604 OID 32773)
+-- TOC entry 4798 (class 2604 OID 32773)
 -- Name: users user_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -995,7 +1101,7 @@ ALTER TABLE ONLY public.users ALTER COLUMN user_id SET DEFAULT nextval('public.u
 
 
 --
--- TOC entry 5033 (class 0 OID 32838)
+-- TOC entry 5037 (class 0 OID 32838)
 -- Dependencies: 226
 -- Data for Name: applications; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1100,7 +1206,7 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 175	165	7	Планирую отдых летом, интересует аренда на курортный сезон	2025-07-20	110	Объект свободен на эти даты, жду подтверждения	approved	2025-03-29 00:00:00	2025-03-20 00:00:00
 139	131	9	Желаю заселиться	2026-03-01	34	\N	cancelled	2026-02-26 17:26:41.519866	2026-02-26 13:45:00
 140	133	9	Мне нужно заселиться	2026-03-15	140	\N	pending	2026-03-09 09:24:57.84671	2026-03-09 13:45:00
-141	129	9	Как можно скорее	2026-03-19	365	\N	pending	2026-03-09 19:17:20.68289	2026-03-10 09:17:20
+141	129	9	Как можно скорее	2026-03-19	365	\N	approved	2026-03-09 19:17:20.68289	2026-03-10 09:17:20
 176	147	17	Планирую отдых летом, интересует аренда на курортный сезон	2025-08-24	100	Объект свободен на эти даты, жду подтверждения	approved	2025-03-30 00:00:00	2025-03-17 00:00:00
 361	140	16	Нужна дополнительная информация	2025-12-04	452	К сожалению, объект уже сдан	approved	2025-11-20 00:00:00	2025-11-22 00:00:00
 178	2	13	Срочно требуется жилье	2025-06-13	365	Можем заключить договор	approved	2025-05-16 00:00:00	2025-05-26 00:00:00
@@ -1174,6 +1280,7 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 391	152	15	Отличный вариант, готов обсудить условия	2026-03-28	351	Можем встретиться для обсуждения	approved	2026-03-14 00:00:00	2026-03-15 00:00:00
 392	149	11	Интересует аренда на длительный срок	2026-03-18	211	Добро пожаловать! Жду на подписание	approved	2026-03-04 00:00:00	2026-03-10 00:00:00
 393	155	15	Отличный вариант, готов обсудить условия	2026-03-27	233	Можем встретиться для обсуждения	approved	2026-03-13 00:00:00	2026-03-16 00:00:00
+394	1	6	Тест	2026-03-14	365	\N	pending	2026-03-14 19:01:53.808364	\N
 254	5	17	Нужна квартира срочно	2026-02-25	365	Можем встретиться на неделе	approved	2026-01-29 00:00:00	2026-01-20 00:00:00
 263	6	6	Планирую переезд	2026-03-07	365	\N	cancelled	2026-02-03 00:00:00	\N
 265	4	6	Планирую переезд	2026-03-20	365	Созвонимся для уточнения	approved	2026-02-05 00:00:00	2026-02-14 00:00:00
@@ -1194,11 +1301,12 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 136	1	6	Повторно интересуюсь квартирой на Тверской	2026-03-15	365	Квартира ещё свободна	approved	2026-02-17 08:50:00	2026-02-18 10:45:00
 137	3	7	А дом у озера на лето ещё свободен?	2026-06-15	90	Уже сдан	rejected	2026-02-16 14:30:00	2026-02-17 08:45:00
 138	5	9	Рассматриваю коммерческое помещение в Новосибирске	2026-04-01	365	\N	cancelled	2026-02-24 12:10:00	2026-02-25 13:45:00
+395	149	9	Арендуем четко!	2026-05-09	90	\N	approved	2026-03-14 19:32:58.087737	2026-03-14 19:35:16.674374
 \.
 
 
 --
--- TOC entry 5039 (class 0 OID 32930)
+-- TOC entry 5043 (class 0 OID 32930)
 -- Dependencies: 232
 -- Data for Name: audit_logs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1261,6 +1369,7 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 55	\N	UPDATE	applications	125	{"table": "applications", "changes": {"responded_at": {"new": "2026-02-22T14:15:00", "old": null}}, "old_data": {"answer": "Да, возможен. Жду вас на просмотр в среду", "status": "approved", "message": "Интересует помещение для магазина, возможен ли долгосрочный договор?", "tenant_id": 6, "created_at": "2026-02-21T14:15:00", "property_id": 3, "desired_date": "2026-03-05", "responded_at": null, "duration_days": 730, "application_id": 125}}	2026-03-13 21:53:27.631634
 56	\N	UPDATE	applications	126	{"table": "applications", "changes": {"responded_at": {"new": "2026-02-16T09:45:00", "old": null}}, "old_data": {"answer": "Дом уже сдан на этот период", "status": "rejected", "message": "Хотим снять дом на лето для семьи с детьми", "tenant_id": 6, "created_at": "2026-02-15T09:45:00", "property_id": 5, "desired_date": "2026-06-01", "responded_at": null, "duration_days": 120, "application_id": 126}}	2026-03-13 21:53:27.631634
 57	\N	UPDATE	applications	128	{"table": "applications", "changes": {"responded_at": {"new": "2026-02-18T16:30:00", "old": null}}, "old_data": {"answer": "Приходите в пятницу в 15:00", "status": "approved", "message": "Студия очень понравилась, готова заключить договор", "tenant_id": 7, "created_at": "2026-02-18T12:30:00", "property_id": 2, "desired_date": "2026-03-01", "responded_at": null, "duration_days": 365, "application_id": 128}}	2026-03-13 21:53:27.631634
+90	\N	INSERT	messages	248	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка approved** на объект 'Коттедж с бассейном'. ", "is_read": false, "created_at": "2026-03-14T19:35:16.768746", "message_id": 248, "to_user_id": 9, "from_user_id": null}}	2026-03-14 19:35:16.766092
 58	\N	UPDATE	applications	129	{"table": "applications", "changes": {"responded_at": {"new": "2026-02-22T19:30:00", "old": null}}, "old_data": {"answer": null, "status": "pending", "message": "Квартира в новостройке - мечта! Когда можно посмотреть?", "tenant_id": 7, "created_at": "2026-02-22T11:10:00", "property_id": 128, "desired_date": "2026-03-02", "responded_at": null, "duration_days": 180, "application_id": 129}}	2026-03-13 21:53:27.631634
 59	\N	UPDATE	applications	130	{"table": "applications", "changes": {"responded_at": {"new": "2026-02-19T14:45:00", "old": null}}, "old_data": {"answer": "Цена фиксированная", "status": "rejected", "message": "Квартира на Невском - отличный вариант, но дороговато", "tenant_id": 7, "created_at": "2026-02-19T13:45:00", "property_id": 4, "desired_date": "2026-03-15", "responded_at": null, "duration_days": 365, "application_id": 130}}	2026-03-13 21:53:27.631634
 60	\N	UPDATE	applications	131	{"table": "applications", "changes": {"responded_at": {"new": "2026-02-22T13:45:00", "old": null}}, "old_data": {"answer": "Жду вас в субботу в 14:00", "status": "approved", "message": "Интересует квартира в Куровском", "tenant_id": 7, "created_at": "2026-02-21T10:00:00", "property_id": 131, "desired_date": "2026-03-05", "responded_at": null, "duration_days": 365, "application_id": 131}}	2026-03-13 21:53:27.631634
@@ -1277,11 +1386,47 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 71	\N	UPDATE	properties	2	{"table": "properties", "changes": {"status": {"new": "rented", "old": "active"}}, "old_data": {"area": 32.00, "city": "Москва", "price": 35000.00, "rooms": 1, "title": "Студия в новостройке", "status": "active", "address": "ул. Ленина, д. 15", "owner_id": 2, "created_at": "2026-02-13T21:58:34.38867", "description": "Современная студия с дизайнерским ремонтом, есть всё для комфортного проживания", "property_id": 2, "interval_pay": "month", "property_type": "apartment"}}	2026-03-13 21:54:39.221094
 72	\N	UPDATE	properties	1	{"table": "properties", "changes": {"status": {"new": "rented", "old": "active"}}, "old_data": {"area": 65.50, "city": "Москва", "price": 45000.00, "rooms": 2, "title": "Уютная квартира в центре", "status": "active", "address": "ул. Тверская, д. 10, кв. 45", "owner_id": 2, "created_at": "2026-02-13T21:58:34.38867", "description": "Тест аудита", "property_id": 1, "interval_pay": "month", "property_type": "apartment"}}	2026-03-13 21:54:39.221094
 73	\N	UPDATE	properties	129	{"table": "properties", "changes": {"status": {"new": "rented", "old": "active"}}, "old_data": {"area": 95.00, "city": "Авсюнино", "price": 65000.00, "rooms": 3, "title": "Таунхаус", "status": "active", "address": "ул. Спортивная, д. 10", "owner_id": 2, "created_at": "2026-02-18T15:50:00", "description": "Двухуровневый таунхаус с террасой", "property_id": 129, "interval_pay": "month", "property_type": "house"}}	2026-03-13 21:54:39.221094
+74	\N	INSERT	applications	394	{"table": "applications", "action": "INSERT", "new_data": {"answer": null, "status": "pending", "message": "Тест", "tenant_id": 6, "created_at": "2026-03-14T19:01:53.808364", "property_id": 1, "desired_date": "2026-03-14", "responded_at": null, "duration_days": 365, "application_id": 394}}	2026-03-14 19:01:53.808364
+75	\N	INSERT	messages	242	{"table": "messages", "action": "INSERT", "new_data": {"content": "📋 **Новая заявка** от Тестовый пользователь на объект \\"Уютная квартира в центре\\"", "is_read": false, "created_at": "2026-03-14T19:01:53.808364", "message_id": 242, "to_user_id": 2, "from_user_id": null}}	2026-03-14 19:01:53.808364
+76	\N	UPDATE	messages	187	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "Посоветуй хорошего агента по недвижимости", "is_read": false, "created_at": "2025-06-03T04:52:27.321125", "message_id": 187, "to_user_id": 9, "from_user_id": 3}}	2026-03-14 19:31:27.262299
+77	\N	UPDATE	messages	237	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Системное сообщение** Скоро заканчивается срок аренды", "is_read": false, "created_at": "2026-01-24T06:35:46.48803", "message_id": 237, "to_user_id": 9, "from_user_id": null}}	2026-03-14 19:31:37.859181
+78	\N	UPDATE	messages	231	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Внимание** Обновите данные в профиле", "is_read": false, "created_at": "2026-02-25T01:44:37.017336", "message_id": 231, "to_user_id": 9, "from_user_id": null}}	2026-03-14 19:31:44.658047
+79	\N	UPDATE	messages	224	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Внимание** Обновите данные в профиле", "is_read": false, "created_at": "2025-04-08T20:05:58.992198", "message_id": 224, "to_user_id": 9, "from_user_id": null}}	2026-03-14 19:31:45.983687
+80	\N	INSERT	applications	395	{"table": "applications", "action": "INSERT", "new_data": {"answer": null, "status": "pending", "message": "Арендуем четко!", "tenant_id": 9, "created_at": "2026-03-14T19:32:58.087737", "property_id": 149, "desired_date": "2026-05-09", "responded_at": null, "duration_days": 90, "application_id": 395}}	2026-03-14 19:32:58.068672
+81	\N	INSERT	messages	243	{"table": "messages", "action": "INSERT", "new_data": {"content": "📋 **Новая заявка** от Боев Владислав Максимович на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T19:32:58.068672", "message_id": 243, "to_user_id": 12, "from_user_id": null}}	2026-03-14 19:32:58.068672
+82	\N	UPDATE	messages	243	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "📋 **Новая заявка** от Боев Владислав Максимович на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T19:32:58.068672", "message_id": 243, "to_user_id": 12, "from_user_id": null}}	2026-03-14 19:33:16.422863
+83	\N	INSERT	messages	244	{"table": "messages", "action": "INSERT", "new_data": {"content": "✍️ **Арендатор подписал договор**: Боев Владислав Максимович подписал договор на объект \\"Квартира\\"", "is_read": false, "created_at": "2026-03-14T19:34:43.385256", "message_id": 244, "to_user_id": 5, "from_user_id": null}}	2026-03-14 19:34:43.385256
+84	\N	INSERT	messages	245	{"table": "messages", "action": "INSERT", "new_data": {"content": "✍️ **Арендатор подписал договор**: Боев Владислав Максимович подписал договор на объект \\"Квартира\\"", "is_read": false, "created_at": "2026-03-14T19:34:43.385256", "message_id": 245, "to_user_id": 5, "from_user_id": null}}	2026-03-14 19:34:43.385256
+85	\N	UPDATE	contracts	92	{"table": "contracts", "changes": {"tenant_signed": {"new": true, "old": false}, "signing_status": {"new": "pending", "old": "draft"}}, "old_data": {"end_date": "2027-06-16", "created_at": "2026-03-14T00:03:50.015217", "start_date": "2026-03-18", "contract_id": 92, "owner_signed": false, "total_amount": 208000.00, "tenant_signed": false, "application_id": 388, "signing_status": "draft"}}	2026-03-14 19:34:43.385256
+86	\N	INSERT	contracts	95	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": false, "total_amount": 750000.00, "tenant_signed": false, "application_id": 395, "signing_status": "draft"}}	2026-03-14 19:35:16.672442
+87	\N	INSERT	messages	246	{"table": "messages", "action": "INSERT", "new_data": {"content": "✅ **Заявка одобрена** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T19:35:16.672442", "message_id": 246, "to_user_id": 9, "from_user_id": null}}	2026-03-14 19:35:16.672442
+88	\N	INSERT	messages	247	{"table": "messages", "action": "INSERT", "new_data": {"content": "✅ **Заявка одобрена** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T19:35:16.672442", "message_id": 247, "to_user_id": 9, "from_user_id": null}}	2026-03-14 19:35:16.672442
+89	\N	UPDATE	applications	395	{"table": "applications", "changes": {"status": {"new": "approved", "old": "pending"}, "responded_at": {"new": "2026-03-14T19:35:16.674374", "old": null}}, "old_data": {"answer": null, "status": "pending", "message": "Арендуем четко!", "tenant_id": 9, "created_at": "2026-03-14T19:32:58.087737", "property_id": 149, "desired_date": "2026-05-09", "responded_at": null, "duration_days": 90, "application_id": 395}}	2026-03-14 19:35:16.672442
+91	\N	UPDATE	messages	247	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Заявка одобрена** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T19:35:16.672442", "message_id": 247, "to_user_id": 9, "from_user_id": null}}	2026-03-14 19:35:33.459262
+92	\N	UPDATE	messages	248	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Заявка approved** на объект 'Коттедж с бассейном'. ", "is_read": false, "created_at": "2026-03-14T19:35:16.768746", "message_id": 248, "to_user_id": 9, "from_user_id": null}}	2026-03-14 19:35:36.370394
+93	\N	UPDATE	messages	246	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Заявка одобрена** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T19:35:16.672442", "message_id": 246, "to_user_id": 9, "from_user_id": null}}	2026-03-14 19:35:39.466484
+94	\N	INSERT	messages	249	{"table": "messages", "action": "INSERT", "new_data": {"content": "✍️ **Собственник подписал договор**: Соловьёва Юлия Сергеевна подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:00:50.450466", "message_id": 249, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:00:50.450466
+95	\N	INSERT	messages	250	{"table": "messages", "action": "INSERT", "new_data": {"content": "✍️ **Собственник подписал договор**: Соловьёва Юлия Сергеевна подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:00:50.450466", "message_id": 250, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:00:50.450466
+96	\N	UPDATE	contracts	95	{"table": "contracts", "changes": {"owner_signed": {"new": true, "old": false}, "signing_status": {"new": "pending", "old": "draft"}}, "old_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": false, "total_amount": 750000.00, "tenant_signed": false, "application_id": 395, "signing_status": "draft"}}	2026-03-14 20:00:50.450466
+97	\N	UPDATE	messages	250	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✍️ **Собственник подписал договор**: Соловьёва Юлия Сергеевна подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:00:50.450466", "message_id": 250, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:10:52.000821
+98	\N	UPDATE	messages	249	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✍️ **Собственник подписал договор**: Соловьёва Юлия Сергеевна подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:00:50.450466", "message_id": 249, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:10:59.489419
+99	\N	INSERT	contracts	96	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2027-03-19", "created_at": "2026-03-14T20:27:01.682142", "start_date": "2026-03-19", "contract_id": 96, "owner_signed": false, "total_amount": 845000.00, "tenant_signed": false, "application_id": 141, "signing_status": "draft"}}	2026-03-14 20:27:01.682142
+100	\N	INSERT	messages	251	{"table": "messages", "action": "INSERT", "new_data": {"content": "✅ **Заявка одобрена** на объект \\"Таунхаус\\"", "is_read": false, "created_at": "2026-03-14T20:27:01.682142", "message_id": 251, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:27:01.682142
+101	\N	INSERT	messages	252	{"table": "messages", "action": "INSERT", "new_data": {"content": "✅ **Заявка одобрена** на объект \\"Таунхаус\\"", "is_read": false, "created_at": "2026-03-14T20:27:01.682142", "message_id": 252, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:27:01.682142
+102	\N	UPDATE	applications	141	{"table": "applications", "changes": {"status": {"new": "approved", "old": "pending"}}, "old_data": {"answer": null, "status": "pending", "message": "Как можно скорее", "tenant_id": 9, "created_at": "2026-03-09T19:17:20.68289", "property_id": 129, "desired_date": "2026-03-19", "responded_at": "2026-03-10T09:17:20", "duration_days": 365, "application_id": 141}}	2026-03-14 20:27:01.682142
+105	\N	INSERT	messages	253	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Договор отменён** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:34:30.943048", "message_id": 253, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:34:30.943048
+106	\N	INSERT	messages	254	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Договор отменён** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:34:30.943048", "message_id": 254, "to_user_id": 12, "from_user_id": null}}	2026-03-14 20:34:30.943048
+107	\N	UPDATE	contracts	95	{"table": "contracts", "changes": {"signing_status": {"new": "cancelled", "old": "pending"}}, "old_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": true, "total_amount": 750000.00, "tenant_signed": false, "application_id": 395, "signing_status": "pending"}}	2026-03-14 20:34:30.943048
+108	\N	INSERT	messages	255	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Договор отменён** на объект 'Коттедж с бассейном'. Договор №95", "is_read": false, "created_at": "2026-03-14T20:34:30.972685", "message_id": 255, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:34:30.96904
+109	\N	UPDATE	messages	255	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Договор отменён** на объект 'Коттедж с бассейном'. Договор №95", "is_read": false, "created_at": "2026-03-14T20:34:30.972685", "message_id": 255, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:34:58.93099
+110	\N	UPDATE	messages	253	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Договор отменён** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:34:30.943048", "message_id": 253, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:35:00.256632
+111	\N	UPDATE	messages	251	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Заявка одобрена** на объект \\"Таунхаус\\"", "is_read": false, "created_at": "2026-03-14T20:27:01.682142", "message_id": 251, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:35:01.312104
+112	\N	UPDATE	messages	252	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Заявка одобрена** на объект \\"Таунхаус\\"", "is_read": false, "created_at": "2026-03-14T20:27:01.682142", "message_id": 252, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:35:01.312104
 \.
 
 
 --
--- TOC entry 5035 (class 0 OID 32868)
+-- TOC entry 5039 (class 0 OID 32868)
 -- Dependencies: 228
 -- Data for Name: contracts; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1357,17 +1502,19 @@ COPY public.contracts (contract_id, application_id, start_date, end_date, total_
 89	381	2026-03-01	2027-07-21	4250000.00	signed	2026-02-18 22:03:53.761163	t	f
 90	383	2026-03-07	2027-08-13	1350000.00	draft	2026-02-28 09:39:48.928579	f	t
 91	386	2026-02-26	2027-03-10	1170000.00	draft	2026-02-17 04:22:13.082841	f	t
-92	388	2026-03-18	2027-06-16	208000.00	draft	2026-03-14 00:03:50.015217	f	f
 93	390	2026-03-24	2027-06-10	570000.00	signed	2026-03-18 07:42:33.854232	t	f
 94	392	2026-03-18	2026-10-15	2000000.00	draft	2026-03-14 03:33:32.932517	t	t
 82	339	2025-09-18	2026-05-18	408065.80	signed	2025-09-05 00:19:01.248952	t	t
 28	\N	2025-07-29	2025-11-13	344030.52	signed	2025-03-29 06:05:50.041976	t	t
 33	\N	2025-07-22	2025-11-26	435800.25	signed	2025-03-19 09:07:32.453203	t	t
+92	388	2026-03-18	2027-06-16	208000.00	pending	2026-03-14 00:03:50.015217	t	f
+96	141	2026-03-19	2027-03-19	845000.00	draft	2026-03-14 20:27:01.682142	f	f
+95	395	2026-05-09	2026-08-07	750000.00	cancelled	2026-03-14 19:35:16.672442	f	t
 \.
 
 
 --
--- TOC entry 5037 (class 0 OID 32907)
+-- TOC entry 5041 (class 0 OID 32907)
 -- Dependencies: 230
 -- Data for Name: messages; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1550,7 +1697,6 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 183	15	11	Видел новый объект в нашем районе?	t	2025-09-19 22:52:40.965106
 184	9	6	Есть вопросы по документам, можешь помочь?	f	2025-10-30 20:21:20.489922
 185	3	7	Привет! Как дела?	f	2026-01-04 18:39:26.638369
-187	3	9	Посоветуй хорошего агента по недвижимости	f	2025-06-03 04:52:27.321125
 188	19	6	Посоветуй хорошего агента по недвижимости	f	2025-03-23 20:09:46.204338
 189	16	14	Привет! Как дела?	t	2026-01-03 01:12:44.76113
 190	4	7	Сколько сейчас стоит аренда в центре?	f	2025-05-29 16:21:45.855766
@@ -1585,20 +1731,17 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 221	\N	16	**Системное сообщение** Скоро заканчивается срок аренды	t	2025-06-23 13:13:06.010214
 222	\N	19	**Напоминание** о предстоящем платеже по договору №1098	f	2025-09-11 18:15:19.33286
 223	\N	11	**Напоминание** о предстоящем платеже по договору №1035	t	2026-01-10 21:09:43.627285
-224	\N	9	**Внимание** Обновите данные в профиле	f	2025-04-08 20:05:58.992198
 225	\N	15	**Внимание** Обновите данные в профиле	t	2025-12-14 19:42:02.287013
 226	\N	16	**Внимание** Обновите данные в профиле	t	2025-04-07 11:50:23.954436
 227	\N	13	**Внимание** Обновите данные в профиле	f	2026-02-24 00:03:58.655305
 228	\N	15	**Внимание** Обновите данные в профиле	f	2025-05-16 07:33:19.985049
 229	\N	15	**Системное сообщение** Скоро заканчивается срок аренды	t	2026-01-31 09:14:06.944503
 230	\N	18	**Системное сообщение** Скоро заканчивается срок аренды	f	2025-02-24 00:14:48.988684
-231	\N	9	**Внимание** Обновите данные в профиле	f	2026-02-25 01:44:37.017336
 232	\N	9	**Внимание** Обновите данные в профиле	t	2025-12-28 06:37:48.760187
 233	\N	19	**Внимание** Обновите данные в профиле	f	2025-03-28 09:07:36.974217
 234	\N	19	**Напоминание** о предстоящем платеже по договору №1077	t	2025-07-27 15:49:17.064854
 235	\N	17	**Уведомление** Ваша заявка №1069 одобрена	f	2025-01-05 19:11:16.268937
 236	\N	19	**Системное сообщение** Скоро заканчивается срок аренды	f	2025-04-28 23:14:41.309387
-237	\N	9	**Системное сообщение** Скоро заканчивается срок аренды	f	2026-01-24 06:35:46.48803
 238	\N	7	**Внимание** Обновите данные в профиле	t	2025-08-21 06:19:39.612303
 239	\N	16	**Уведомление** Ваша заявка №1043 одобрена	f	2025-12-04 16:11:52.699589
 240	\N	11	**Напоминание** о предстоящем платеже по договору №1016	f	2026-02-24 07:15:24.308022
@@ -1608,11 +1751,29 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 103	16	12	Здравствуйте! Когда можно подъехать на просмотр?	t	2025-07-06 20:31:52.025269
 193	3	1	Слышал, цены на аренду выросли	t	2026-01-18 16:05:20.898848
 200	5	1	Слышал, цены на аренду выросли	t	2025-08-25 15:05:25.10128
+242	\N	2	📋 **Новая заявка** от Тестовый пользователь на объект "Уютная квартира в центре"	f	2026-03-14 19:01:53.808364
+187	3	9	Посоветуй хорошего агента по недвижимости	t	2025-06-03 04:52:27.321125
+237	\N	9	**Системное сообщение** Скоро заканчивается срок аренды	t	2026-01-24 06:35:46.48803
+231	\N	9	**Внимание** Обновите данные в профиле	t	2026-02-25 01:44:37.017336
+224	\N	9	**Внимание** Обновите данные в профиле	t	2025-04-08 20:05:58.992198
+243	\N	12	📋 **Новая заявка** от Боев Владислав Максимович на объект "Коттедж с бассейном"	t	2026-03-14 19:32:58.068672
+244	\N	5	✍️ **Арендатор подписал договор**: Боев Владислав Максимович подписал договор на объект "Квартира"	f	2026-03-14 19:34:43.385256
+245	\N	5	✍️ **Арендатор подписал договор**: Боев Владислав Максимович подписал договор на объект "Квартира"	f	2026-03-14 19:34:43.385256
+247	\N	9	✅ **Заявка одобрена** на объект "Коттедж с бассейном"	t	2026-03-14 19:35:16.672442
+248	\N	9	**Заявка approved** на объект 'Коттедж с бассейном'. 	t	2026-03-14 19:35:16.768746
+246	\N	9	✅ **Заявка одобрена** на объект "Коттедж с бассейном"	t	2026-03-14 19:35:16.672442
+250	\N	9	✍️ **Собственник подписал договор**: Соловьёва Юлия Сергеевна подписал договор на объект "Коттедж с бассейном"	t	2026-03-14 20:00:50.450466
+249	\N	9	✍️ **Собственник подписал договор**: Соловьёва Юлия Сергеевна подписал договор на объект "Коттедж с бассейном"	t	2026-03-14 20:00:50.450466
+254	\N	12	**Договор отменён** на объект "Коттедж с бассейном"	f	2026-03-14 20:34:30.943048
+255	\N	9	**Договор отменён** на объект 'Коттедж с бассейном'. Договор №95	t	2026-03-14 20:34:30.972685
+253	\N	9	**Договор отменён** на объект "Коттедж с бассейном"	t	2026-03-14 20:34:30.943048
+251	\N	9	✅ **Заявка одобрена** на объект "Таунхаус"	t	2026-03-14 20:27:01.682142
+252	\N	9	✅ **Заявка одобрена** на объект "Таунхаус"	t	2026-03-14 20:27:01.682142
 \.
 
 
 --
--- TOC entry 5029 (class 0 OID 32789)
+-- TOC entry 5033 (class 0 OID 32789)
 -- Dependencies: 222
 -- Data for Name: properties; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1665,7 +1826,7 @@ COPY public.properties (property_id, owner_id, title, description, address, city
 
 
 --
--- TOC entry 5031 (class 0 OID 32819)
+-- TOC entry 5035 (class 0 OID 32819)
 -- Dependencies: 224
 -- Data for Name: property_photos; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1719,7 +1880,7 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 
 
 --
--- TOC entry 5027 (class 0 OID 32770)
+-- TOC entry 5031 (class 0 OID 32770)
 -- Dependencies: 220
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1747,43 +1908,43 @@ COPY public.users (user_id, email, password_hash, avatar_url, full_name, user_ty
 
 
 --
--- TOC entry 5052 (class 0 OID 0)
+-- TOC entry 5056 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: applications_application_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.applications_application_id_seq', 393, true);
+SELECT pg_catalog.setval('public.applications_application_id_seq', 395, true);
 
 
 --
--- TOC entry 5053 (class 0 OID 0)
+-- TOC entry 5057 (class 0 OID 0)
 -- Dependencies: 231
 -- Name: audit_logs_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 73, true);
+SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 112, true);
 
 
 --
--- TOC entry 5054 (class 0 OID 0)
+-- TOC entry 5058 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: contracts_contract_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.contracts_contract_id_seq', 94, true);
+SELECT pg_catalog.setval('public.contracts_contract_id_seq', 96, true);
 
 
 --
--- TOC entry 5055 (class 0 OID 0)
+-- TOC entry 5059 (class 0 OID 0)
 -- Dependencies: 229
 -- Name: messages_message_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.messages_message_id_seq', 241, true);
+SELECT pg_catalog.setval('public.messages_message_id_seq', 255, true);
 
 
 --
--- TOC entry 5056 (class 0 OID 0)
+-- TOC entry 5060 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: properties_property_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -1792,7 +1953,7 @@ SELECT pg_catalog.setval('public.properties_property_id_seq', 173, true);
 
 
 --
--- TOC entry 5057 (class 0 OID 0)
+-- TOC entry 5061 (class 0 OID 0)
 -- Dependencies: 223
 -- Name: property_photos_photo_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -1801,7 +1962,7 @@ SELECT pg_catalog.setval('public.property_photos_photo_id_seq', 71, true);
 
 
 --
--- TOC entry 5058 (class 0 OID 0)
+-- TOC entry 5062 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_user_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -1810,7 +1971,7 @@ SELECT pg_catalog.setval('public.users_user_id_seq', 20, true);
 
 
 --
--- TOC entry 4834 (class 2606 OID 32851)
+-- TOC entry 4835 (class 2606 OID 32851)
 -- Name: applications applications_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1819,7 +1980,7 @@ ALTER TABLE ONLY public.applications
 
 
 --
--- TOC entry 4848 (class 2606 OID 32941)
+-- TOC entry 4849 (class 2606 OID 32941)
 -- Name: audit_logs audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1828,7 +1989,7 @@ ALTER TABLE ONLY public.audit_logs
 
 
 --
--- TOC entry 4839 (class 2606 OID 32885)
+-- TOC entry 4840 (class 2606 OID 32885)
 -- Name: contracts contracts_application_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1837,7 +1998,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- TOC entry 4841 (class 2606 OID 32883)
+-- TOC entry 4842 (class 2606 OID 32883)
 -- Name: contracts contracts_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1846,7 +2007,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- TOC entry 4846 (class 2606 OID 32918)
+-- TOC entry 4847 (class 2606 OID 32918)
 -- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1855,7 +2016,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- TOC entry 4830 (class 2606 OID 32807)
+-- TOC entry 4831 (class 2606 OID 32807)
 -- Name: properties properties_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1864,7 +2025,7 @@ ALTER TABLE ONLY public.properties
 
 
 --
--- TOC entry 4832 (class 2606 OID 32831)
+-- TOC entry 4833 (class 2606 OID 32831)
 -- Name: property_photos property_photos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1873,7 +2034,7 @@ ALTER TABLE ONLY public.property_photos
 
 
 --
--- TOC entry 4826 (class 2606 OID 32787)
+-- TOC entry 4827 (class 2606 OID 32787)
 -- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1882,7 +2043,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4828 (class 2606 OID 32785)
+-- TOC entry 4829 (class 2606 OID 32785)
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1891,7 +2052,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4835 (class 1259 OID 82023)
+-- TOC entry 4836 (class 1259 OID 82023)
 -- Name: idx_applications_property_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1899,7 +2060,7 @@ CREATE INDEX idx_applications_property_id ON public.applications USING btree (pr
 
 
 --
--- TOC entry 4836 (class 1259 OID 82025)
+-- TOC entry 4837 (class 1259 OID 82025)
 -- Name: idx_applications_status; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1907,7 +2068,7 @@ CREATE INDEX idx_applications_status ON public.applications USING btree (status)
 
 
 --
--- TOC entry 4837 (class 1259 OID 82024)
+-- TOC entry 4838 (class 1259 OID 82024)
 -- Name: idx_applications_tenant_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1915,7 +2076,7 @@ CREATE INDEX idx_applications_tenant_id ON public.applications USING btree (tena
 
 
 --
--- TOC entry 4849 (class 1259 OID 82030)
+-- TOC entry 4850 (class 1259 OID 82030)
 -- Name: idx_audit_logs_created_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1923,7 +2084,7 @@ CREATE INDEX idx_audit_logs_created_at ON public.audit_logs USING btree (created
 
 
 --
--- TOC entry 4850 (class 1259 OID 82029)
+-- TOC entry 4851 (class 1259 OID 82029)
 -- Name: idx_audit_logs_user_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1931,7 +2092,7 @@ CREATE INDEX idx_audit_logs_user_id ON public.audit_logs USING btree (user_id);
 
 
 --
--- TOC entry 4842 (class 1259 OID 82026)
+-- TOC entry 4843 (class 1259 OID 82026)
 -- Name: idx_contracts_application_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1939,7 +2100,7 @@ CREATE INDEX idx_contracts_application_id ON public.contracts USING btree (appli
 
 
 --
--- TOC entry 4843 (class 1259 OID 82027)
+-- TOC entry 4844 (class 1259 OID 82027)
 -- Name: idx_messages_from_to; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1947,7 +2108,7 @@ CREATE INDEX idx_messages_from_to ON public.messages USING btree (from_user_id, 
 
 
 --
--- TOC entry 4844 (class 1259 OID 82028)
+-- TOC entry 4845 (class 1259 OID 82028)
 -- Name: idx_messages_is_read; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1955,7 +2116,7 @@ CREATE INDEX idx_messages_is_read ON public.messages USING btree (is_read);
 
 
 --
--- TOC entry 4865 (class 2620 OID 82022)
+-- TOC entry 4866 (class 2620 OID 82022)
 -- Name: applications trg_application_approved; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -1963,7 +2124,7 @@ CREATE TRIGGER trg_application_approved AFTER UPDATE OF status ON public.applica
 
 
 --
--- TOC entry 4866 (class 2620 OID 90208)
+-- TOC entry 4867 (class 2620 OID 90208)
 -- Name: applications trg_application_notify; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -1971,7 +2132,15 @@ CREATE TRIGGER trg_application_notify AFTER UPDATE OF status ON public.applicati
 
 
 --
--- TOC entry 4867 (class 2620 OID 90267)
+-- TOC entry 4868 (class 2620 OID 98400)
+-- Name: applications trg_application_status_notify; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_application_status_notify AFTER UPDATE OF status ON public.applications FOR EACH ROW EXECUTE FUNCTION public.notify_application_status_change();
+
+
+--
+-- TOC entry 4869 (class 2620 OID 90267)
 -- Name: applications trg_applications_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -1979,7 +2148,7 @@ CREATE TRIGGER trg_applications_audit_delete BEFORE DELETE ON public.application
 
 
 --
--- TOC entry 4868 (class 2620 OID 90265)
+-- TOC entry 4870 (class 2620 OID 90265)
 -- Name: applications trg_applications_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -1987,7 +2156,7 @@ CREATE TRIGGER trg_applications_audit_insert AFTER INSERT ON public.applications
 
 
 --
--- TOC entry 4869 (class 2620 OID 90266)
+-- TOC entry 4871 (class 2620 OID 90266)
 -- Name: applications trg_applications_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -1995,7 +2164,7 @@ CREATE TRIGGER trg_applications_audit_update AFTER UPDATE ON public.applications
 
 
 --
--- TOC entry 4870 (class 2620 OID 90212)
+-- TOC entry 4873 (class 2620 OID 90212)
 -- Name: contracts trg_contract_cancel; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2003,7 +2172,7 @@ CREATE TRIGGER trg_contract_cancel AFTER UPDATE OF signing_status ON public.cont
 
 
 --
--- TOC entry 4871 (class 2620 OID 90210)
+-- TOC entry 4874 (class 2620 OID 90210)
 -- Name: contracts trg_contract_signature; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2011,7 +2180,15 @@ CREATE TRIGGER trg_contract_signature AFTER UPDATE OF tenant_signed, owner_signe
 
 
 --
--- TOC entry 4872 (class 2620 OID 90273)
+-- TOC entry 4875 (class 2620 OID 98401)
+-- Name: contracts trg_contract_signature_notify; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_contract_signature_notify AFTER UPDATE OF tenant_signed, owner_signed, signing_status ON public.contracts FOR EACH ROW EXECUTE FUNCTION public.notify_contract_signature();
+
+
+--
+-- TOC entry 4876 (class 2620 OID 90273)
 -- Name: contracts trg_contracts_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2019,7 +2196,7 @@ CREATE TRIGGER trg_contracts_audit_delete BEFORE DELETE ON public.contracts FOR 
 
 
 --
--- TOC entry 4873 (class 2620 OID 90271)
+-- TOC entry 4877 (class 2620 OID 90271)
 -- Name: contracts trg_contracts_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2027,7 +2204,7 @@ CREATE TRIGGER trg_contracts_audit_insert AFTER INSERT ON public.contracts FOR E
 
 
 --
--- TOC entry 4874 (class 2620 OID 90272)
+-- TOC entry 4878 (class 2620 OID 90272)
 -- Name: contracts trg_contracts_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2035,7 +2212,7 @@ CREATE TRIGGER trg_contracts_audit_update AFTER UPDATE ON public.contracts FOR E
 
 
 --
--- TOC entry 4876 (class 2620 OID 90279)
+-- TOC entry 4880 (class 2620 OID 90279)
 -- Name: messages trg_messages_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2043,7 +2220,7 @@ CREATE TRIGGER trg_messages_audit_delete BEFORE DELETE ON public.messages FOR EA
 
 
 --
--- TOC entry 4877 (class 2620 OID 90277)
+-- TOC entry 4881 (class 2620 OID 90277)
 -- Name: messages trg_messages_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2051,7 +2228,7 @@ CREATE TRIGGER trg_messages_audit_insert AFTER INSERT ON public.messages FOR EAC
 
 
 --
--- TOC entry 4878 (class 2620 OID 90278)
+-- TOC entry 4882 (class 2620 OID 90278)
 -- Name: messages trg_messages_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2059,7 +2236,15 @@ CREATE TRIGGER trg_messages_audit_update AFTER UPDATE ON public.messages FOR EAC
 
 
 --
--- TOC entry 4862 (class 2620 OID 90270)
+-- TOC entry 4872 (class 2620 OID 98399)
+-- Name: applications trg_new_application_notify; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_new_application_notify AFTER INSERT ON public.applications FOR EACH ROW EXECUTE FUNCTION public.notify_new_application();
+
+
+--
+-- TOC entry 4863 (class 2620 OID 90270)
 -- Name: properties trg_properties_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2067,7 +2252,7 @@ CREATE TRIGGER trg_properties_audit_delete BEFORE DELETE ON public.properties FO
 
 
 --
--- TOC entry 4863 (class 2620 OID 90268)
+-- TOC entry 4864 (class 2620 OID 90268)
 -- Name: properties trg_properties_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2075,7 +2260,7 @@ CREATE TRIGGER trg_properties_audit_insert AFTER INSERT ON public.properties FOR
 
 
 --
--- TOC entry 4864 (class 2620 OID 90269)
+-- TOC entry 4865 (class 2620 OID 90269)
 -- Name: properties trg_properties_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2083,7 +2268,7 @@ CREATE TRIGGER trg_properties_audit_update AFTER UPDATE ON public.properties FOR
 
 
 --
--- TOC entry 4875 (class 2620 OID 82021)
+-- TOC entry 4879 (class 2620 OID 82021)
 -- Name: contracts trg_update_contract_status; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2091,7 +2276,7 @@ CREATE TRIGGER trg_update_contract_status BEFORE UPDATE OF tenant_signed, owner_
 
 
 --
--- TOC entry 4859 (class 2620 OID 90276)
+-- TOC entry 4860 (class 2620 OID 90276)
 -- Name: users trg_users_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2099,7 +2284,7 @@ CREATE TRIGGER trg_users_audit_delete BEFORE DELETE ON public.users FOR EACH ROW
 
 
 --
--- TOC entry 4860 (class 2620 OID 90274)
+-- TOC entry 4861 (class 2620 OID 90274)
 -- Name: users trg_users_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2107,7 +2292,7 @@ CREATE TRIGGER trg_users_audit_insert AFTER INSERT ON public.users FOR EACH ROW 
 
 
 --
--- TOC entry 4861 (class 2620 OID 90275)
+-- TOC entry 4862 (class 2620 OID 90275)
 -- Name: users trg_users_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2115,7 +2300,7 @@ CREATE TRIGGER trg_users_audit_update AFTER UPDATE ON public.users FOR EACH ROW 
 
 
 --
--- TOC entry 4853 (class 2606 OID 32852)
+-- TOC entry 4854 (class 2606 OID 32852)
 -- Name: applications applications_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2124,7 +2309,7 @@ ALTER TABLE ONLY public.applications
 
 
 --
--- TOC entry 4854 (class 2606 OID 32857)
+-- TOC entry 4855 (class 2606 OID 32857)
 -- Name: applications applications_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2133,7 +2318,7 @@ ALTER TABLE ONLY public.applications
 
 
 --
--- TOC entry 4858 (class 2606 OID 32942)
+-- TOC entry 4859 (class 2606 OID 32942)
 -- Name: audit_logs audit_logs_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2142,7 +2327,7 @@ ALTER TABLE ONLY public.audit_logs
 
 
 --
--- TOC entry 4855 (class 2606 OID 32886)
+-- TOC entry 4856 (class 2606 OID 32886)
 -- Name: contracts contracts_application_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2151,7 +2336,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- TOC entry 4856 (class 2606 OID 32919)
+-- TOC entry 4857 (class 2606 OID 32919)
 -- Name: messages messages_from_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2160,7 +2345,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- TOC entry 4857 (class 2606 OID 32924)
+-- TOC entry 4858 (class 2606 OID 32924)
 -- Name: messages messages_to_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2169,7 +2354,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- TOC entry 4851 (class 2606 OID 32808)
+-- TOC entry 4852 (class 2606 OID 32808)
 -- Name: properties properties_owner_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2178,7 +2363,7 @@ ALTER TABLE ONLY public.properties
 
 
 --
--- TOC entry 4852 (class 2606 OID 32832)
+-- TOC entry 4853 (class 2606 OID 32832)
 -- Name: property_photos property_photos_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2186,11 +2371,11 @@ ALTER TABLE ONLY public.property_photos
     ADD CONSTRAINT property_photos_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(property_id) ON DELETE CASCADE;
 
 
--- Completed on 2026-03-13 22:11:02
+-- Completed on 2026-03-14 20:37:06
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 4W6sfJfEh8Rw5GuzvwjZGiTJv1414dCKfe9uQcwv7RruN2ltisdwJPyPbU1hbdS
+\unrestrict KXCbDutkrQDa8japcufURkxv8FPisfE8GJnxSsr2tSNqN29Cl0sPAQGkUKAg7rG
 

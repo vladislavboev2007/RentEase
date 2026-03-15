@@ -21,6 +21,12 @@ window.uploadedFiles = [];
 
 console.log('🚀 script.js загружен, версия 2.0');
 
+function formatNotificationText(text) {
+    if (!text) return '';
+    // Заменяем все **текст** на <strong>текст</strong>
+    return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+}
+
 // ==================== УПРАВЛЕНИЕ МОДАЛЬНЫМИ ОКНАМИ ====================
 
 function showCityPopup() {
@@ -999,7 +1005,7 @@ function showIncomingApplications() {
 
 async function loadIncomingApplications() {
     try {
-        const response = await fetch('/api/my/applications', { credentials: 'same-origin' });
+        const response = await fetch('/api/incoming/applications', { credentials: 'same-origin' });
         if (!response.ok) throw new Error('Ошибка загрузки');
 
         const applications = await response.json();
@@ -1388,7 +1394,18 @@ async function showApplicationDetail(applicationId) {
             }
         }
         document.getElementById('detailPrice').textContent = priceDisplay;
-        document.getElementById('detailPrice').style.color = '#28a745'; // Зелёный цвет
+        document.getElementById('detailPrice').style.color = '#28a745';
+
+        // ===== УПРАВЛЕНИЕ КНОПКОЙ ОТМЕНЫ =====
+        const cancelButton = document.querySelector('#applicationDetailModal .btn-danger');
+        if (cancelButton) {
+            // Показываем кнопку отмены ТОЛЬКО для статуса 'pending'
+            if (app.status === 'pending') {
+                cancelButton.style.display = 'block';
+            } else {
+                cancelButton.style.display = 'none';
+            }
+        }
 
         closeModal('myApplicationsModal');
         openModal('applicationDetailModal');
@@ -1589,6 +1606,21 @@ async function submitPropertyForm(status) {
 
 // Функция для отмены заявки
 async function cancelApplication(applicationId) {
+    // Сначала проверим статус заявки
+    try {
+        const response = await fetch(`/api/applications/${applicationId}`, { credentials: 'same-origin' });
+        if (response.ok) {
+            const app = await response.json();
+            if (app.status !== 'pending') {
+                showNotification(`Нельзя отменить заявку со статусом "${app.status}"`, 'error');
+                loadMyApplications(); // Обновляем список
+                return;
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка проверки статуса:', error);
+    }
+
     if (!confirm('Вы уверены, что хотите отменить заявку?')) return;
 
     try {
@@ -1618,6 +1650,7 @@ function cancelApplicationFromDetail() {
         closeModal('applicationDetailModal');
     }
 }
+
 function closeApplicationDetail() {
     closeModal('applicationDetailModal');
 }
@@ -1846,9 +1879,9 @@ async function loadMyApplications() {
             // Формируем стоимость
             const priceDisplay = app.price ? `${Number(app.price).toLocaleString('ru-RU')} ₽/мес` : 'Цена не указана';
 
-            // Определяем, показывать ли кнопку отмены (ТОЛЬКО ДЛЯ pending И approved)
-            // Если нужно только для pending, замените на: app.status === 'pending'
-            const showCancelButton = app.status === 'pending' || app.status === 'approved';
+            // ===== ВАЖНО: определяем, показывать ли кнопку отмены =====
+            // Кнопка отмены показывается ТОЛЬКО для статуса 'pending' (в ожидании)
+            const showCancelButton = app.status === 'pending';
 
             html += `
                 <div class="application-item" style="display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef; align-items: center;">
@@ -3618,28 +3651,51 @@ async function updateBadgesFromServer() {
     }
 }
 
-// Обработка нового сообщения
+// Обработка нового сообщения через WebSocket
 function handleNewMessage(data) {
-    console.log('📨 Новое сообщение от пользователя', data.from_user_id);
+    console.log('📨 Новое сообщение:', data);
 
-    // Обновляем счетчики
-    updateBadgesFromServer();
+    if (data.from_user_id === 0) { // системное уведомление
+        // Проверяем, не дубликат ли это
+        const existingNotifications = document.querySelectorAll('.notification-item');
+        let isDuplicate = false;
 
-    // Если открыт чат с этим пользователем, добавляем сообщение
-    if (currentChatUserId === data.from_user_id) {
-        appendMessageToChat(data.message);
-    } else {
-        // Показываем уведомление
+        // Простая проверка на дубликат (по содержимому за последние 2 секунды)
+        existingNotifications.forEach(item => {
+            const content = item.querySelector('.notification-content')?.textContent;
+            if (content && data.message.content.includes(content)) {
+                const timeEl = item.querySelector('[style*="font-size: 11px"]');
+                if (timeEl) {
+                    const timeText = timeEl.textContent;
+                    const now = new Date();
+                    const timeMatch = timeText.match(/(\d{2})\.(\d{2}), (\d{2}):(\d{2})/);
+                    if (timeMatch) {
+                        const [_, day, month, hour, minute] = timeMatch;
+                        const itemDate = new Date();
+                        itemDate.setMonth(parseInt(month) - 1);
+                        itemDate.setDate(parseInt(day));
+                        itemDate.setHours(parseInt(hour), parseInt(minute), 0);
 
-        // Обновляем список диалогов если он открыт
-        if (document.getElementById('dialogsListModal').style.display === 'flex') {
-            loadDialogsList();
+                        // Если уведомление создано менее 2 секунд назад - считаем дубликатом
+                        if (Math.abs(now - itemDate) < 2000) {
+                            isDuplicate = true;
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!isDuplicate) {
+            // Показываем уведомление в интерфейсе
+            showNotification('🔔 Новое уведомление', 'info');
+
+            // Перезагружаем уведомления
+            setTimeout(() => {
+                loadNotifications();
+                updateBadgesFromServer();
+            }, 500);
         }
     }
-
-    // Обновляем дропдауны
-    loadNotifications();
-    loadRecentMessages();
 }
 
 // Добавление сообщения от собеседника в чат (исправленная)
@@ -4397,106 +4453,128 @@ function toggleMessages() {
     }
 }
 
-// Загрузить уведомления (только входящие для текущего пользователя)
+// Загрузить уведомления (только системные для текущего пользователя)
 async function loadNotifications() {
     try {
-        // Получаем диалоги с непрочитанными
-        const response = await fetch('/api/my/dialogs', { credentials: 'same-origin' });
-        if (!response.ok) throw new Error('Ошибка загрузки');
+        const response = await fetch('/api/notifications', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки уведомлений');
 
-        const dialogs = await response.json();
-        console.log('Диалоги для уведомлений:', dialogs);
+        const notifications = await response.json();
+        console.log('Уведомления:', notifications);
 
         const container = document.getElementById('notificationsList');
         if (!container) return;
 
-        // Фильтруем только диалоги с непрочитанными сообщениями (где текущий пользователь - получатель)
-        // В dialogs уже есть информация о непрочитанных, но нам нужны конкретные сообщения
-        const unreadDialogs = dialogs.filter(d => d.unread > 0);
-
-        if (unreadDialogs.length === 0) {
-            container.innerHTML = '<div class="notification-item loading">Нет новых уведомлений</div>';
+        if (notifications.length === 0) {
+            container.innerHTML = '<div class="notification-item">Нет новых уведомлений</div>';
+            updateNotificationsBadge([]);
             return;
         }
 
-        // Для каждого диалога загружаем последние непрочитанные сообщения
-        let allNotifications = [];
+        // Группируем уведомления по содержанию, чтобы избежать дубликатов
+        const uniqueNotifications = [];
+        const seen = new Set();
 
-        for (const dialog of unreadDialogs) {
-            try {
-                const messagesResponse = await fetch(`/api/messages?chat_with=${dialog.user_id}`, { credentials: 'same-origin' });
-                if (messagesResponse.ok) {
-                    const messagesData = await messagesResponse.json();
-
-                    // Берем только непрочитанные сообщения (is_read = false)
-                    const unreadMessages = messagesData.messages.filter(m => !m.is_read && !m.is_mine);
-
-                    unreadMessages.forEach(msg => {
-                        allNotifications.push({
-                            id: msg.id,
-                            from_user_id: msg.from_user_id,
-                            user_name: dialog.user_name,
-                            content: msg.content,
-                            created_at: msg.created_at,
-                            type: 'message'
-                        });
-                    });
-                }
-            } catch (e) {
-                console.error('Ошибка загрузки сообщений диалога:', e);
+        notifications.forEach(n => {
+            const contentKey = n.content.replace(/\s+/g, ' ').trim();
+            if (!seen.has(contentKey)) {
+                seen.add(contentKey);
+                uniqueNotifications.push(n);
             }
-        }
-
-        // Сортируем по дате (сначала новые)
-        allNotifications.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-        if (allNotifications.length === 0) {
-            container.innerHTML = '<div class="notification-item loading">Нет новых уведомлений</div>';
-            return;
-        }
+        });
 
         let html = '';
-        allNotifications.forEach(notification => {
-            const time = new Date(notification.created_at).toLocaleString('ru-RU', {
+        uniqueNotifications.forEach(n => {
+            const date = new Date(n.created_at);
+            const timeStr = date.toLocaleString('ru-RU', {
                 hour: '2-digit',
                 minute: '2-digit',
                 day: '2-digit',
                 month: '2-digit'
-            });
+            }).replace(',', '');
 
-            // Определяем иконку в зависимости от типа сообщения
-            let icon = '💬';
-            let messageType = 'Сообщение';
+            // Определяем иконку и заголовок по содержимому
+            let icon = '📋';
+            let title = '';
+            let description = n.content;
+            let bgColor = '#f8f9fa';
 
-            if (notification.content.includes('**Заявка')) {
-                icon = '📋';
-                messageType = 'Заявка';
-            } else if (notification.content.includes('**Договор')) {
-                icon = '📄';
-                messageType = 'Договор';
+            // Извлекаем заголовок из текста (то, что в **)
+            const titleMatch = n.content.match(/\*\*(.*?)\*\*/);
+            if (titleMatch) {
+                title = titleMatch[1];
+                description = n.content.replace(titleMatch[0], '').trim();
+            }
+
+            // Определяем иконку по заголовку или содержимому
+            if (title.includes('одобрена') || title.includes('approved') || n.content.includes('одобрена')) {
+                icon = '✅';
+                bgColor = '#d4edda';
+            } else if (title.includes('отклонена') || title.includes('rejected') || n.content.includes('отклонена')) {
+                icon = '❌';
+                bgColor = '#f8d7da';
+            } else if (title.includes('подписал') || n.content.includes('подписал')) {
+                icon = '✍️';
+                bgColor = '#cce5ff';
+            } else if (title.includes('Новая заявка') || n.content.includes('Новая заявка')) {
+                icon = '🏠';
+                bgColor = '#fff3cd';
+            } else if (title.includes('Договор отменён') || n.content.includes('Договор отменён')) {
+                icon = '🚫';
+                bgColor = '#f8d7da';
             }
 
             html += `
-                <div class="notification-item" onclick="openChat(${notification.from_user_id}); toggleNotifications()">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                        <span style="font-size: 14px;">${icon}</span>
-                        <span style="font-weight: 600; font-size: 13px;">${notification.user_name}</span>
-                        <span style="font-size: 11px; color: #999; margin-left: auto;">${time}</span>
+                <div class="notification-item ${n.is_read ? '' : 'unread'}"
+                     onclick="markNotificationRead(${n.id})"
+                     style="background-color: ${bgColor}20; border-left: 3px solid ${bgColor.replace('#', '')}">
+
+                    <!-- Верхняя строка с иконкой и временем -->
+                    <div class="notification-header">
+                        <span class="notification-icon">${icon}</span>
+                        ${title ? `<div class="notification-title"><strong>${title}</strong></div>` : ''}
+                        <span class="notification-time">${timeStr}</span>
                     </div>
-                    <div class="notification-content" style="font-size: 13px; color: #212529; margin-left: 22px;">
-                        ${notification.content.replace(/\*\*/g, '')}
-                    </div>
+
+                    <!-- Заголовок (жирный текст) - на одной строке с иконкой по сути, но с отступом -->
+
+
+                    <!-- Описание (остальной текст) -->
+                    ${description ? `<div class="notification-description">${description}</div>` : ''}
+
+                    ${n.is_read ? '' : '<span class="unread-dot"></span>'}
                 </div>
             `;
         });
 
         container.innerHTML = html;
-
-        // Обновляем счетчик
-        updateBadges(dialogs);
+        updateNotificationsBadge(notifications);
 
     } catch (error) {
         console.error('Ошибка загрузки уведомлений:', error);
+    }
+}
+
+// Отметить уведомление как прочитанное (можно вызвать при клике)
+async function markNotificationRead(notificationId) {
+    try {
+        await fetch(`/api/notifications/${notificationId}/read`, { method: 'POST', credentials: 'same-origin' });
+        loadNotifications(); // обновить список
+        updateBadgesFromServer();
+    } catch (error) {
+        console.error('Ошибка:', error);
+    }
+}
+
+// Обновить счётчик уведомлений с поддержкой +9
+function updateNotificationsBadge(notifications) {
+    const unreadCount = notifications.filter(n => !n.is_read).length;
+    const badge = document.getElementById('notificationsBadge');
+    if (unreadCount > 0) {
+        badge.textContent = unreadCount > 9 ? '+9' : unreadCount;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
     }
 }
 
@@ -4629,23 +4707,17 @@ function updateBadges(dialogs) {
 // Отметить все уведомления как прочитанные
 async function markAllNotificationsRead() {
     try {
-        // Получаем все диалоги
-        const response = await fetch('/api/my/dialogs', { credentials: 'same-origin' });
-        if (!response.ok) throw new Error('Ошибка загрузки');
+        const response = await fetch('/api/notifications/read-all', {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
 
-        const dialogs = await response.json();
-
-        // Для каждого диалога с непрочитанными - открываем чат (они прочитаются автоматически)
-        for (const dialog of dialogs) {
-            if (dialog.unread > 0) {
-                await fetch(`/api/messages?chat_with=${dialog.user_id}`, { credentials: 'same-origin' });
-            }
+        if (response.ok) {
+            // Обновляем список
+            await loadNotifications();
+            await updateBadgesFromServer();
+            showNotification('Все уведомления отмечены как прочитанные', 'success');
         }
-
-        // Обновляем список и счетчики
-        loadNotifications();
-        loadRecentMessages();
-
     } catch (error) {
         console.error('Ошибка:', error);
     }
@@ -4657,14 +4729,21 @@ function startNotificationsRefresh() {
         clearInterval(notificationsRefreshInterval);
     }
 
-    notificationsRefreshInterval = setInterval(() => {
+    notificationsRefreshInterval = setInterval(async () => {
         if (window.currentUser?.id) {
-            fetch('/api/my/dialogs', { credentials: 'same-origin' })
-                .then(res => res.json())
-                .then(dialogs => updateBadges(dialogs))
-                .catch(err => console.error('Ошибка обновления счетчиков:', err));
+            await loadNotifications();
+            await updateBadgesFromServer();
+
+            // Если дропдаун открыт, прокручиваем к новым
+            const dropdown = document.getElementById('notificationsDropdown');
+            if (dropdown && dropdown.classList.contains('show')) {
+                const list = dropdown.querySelector('.notifications-list');
+                if (list && list.scrollTop > 0) {
+                    // Не сбрасываем прокрутку, если пользователь уже скроллил
+                }
+            }
         }
-    }, 30000); // Каждые 30 секунд
+    }, 5000); // Каждые 5 секунд
 }
 
 // ==================== АДМИН-ФУНКЦИИ ====================

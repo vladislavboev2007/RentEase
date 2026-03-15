@@ -14,103 +14,103 @@
             padding: 0 20px;
         }
 
+        /* Уменьшенная кнопка назад */
         .back-link {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            color: #007bff;
+            gap: 6px;
+            color: #6c757d;
             text-decoration: none;
             margin-bottom: 20px;
-            font-weight: 500;
+            font-size: 14px;
+            transition: color 0.2s;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #f8f9fa;
         }
 
         .back-link:hover {
-            color: #0056b3;
+            color: #007bff;
+            background: #e7f1ff;
+        }
+
+        .back-link img {
+            width: 14px;
+            height: 14px;
+            opacity: 0.6;
         }
 
         .page-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
         }
 
         .page-header h1 {
-            font-size: 32px;
+            font-size: 28px;
             color: #212529;
             margin: 0;
+            font-weight: 600;
         }
 
-        .filters-section {
+        /* Умный поиск */
+        .smart-search {
+            margin-bottom: 25px;
+        }
+
+        .search-container {
+            position: relative;
+            max-width: 500px;
+        }
+
+        .smart-search-input {
+            width: 100%;
+            padding: 14px 20px 14px 45px;
+            border: 2px solid #e9ecef;
+            border-radius: 30px;
+            font-size: 15px;
+            transition: all 0.3s;
             background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            border: 1px solid #e9ecef;
         }
 
-        .filters-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 15px;
+        .smart-search-input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.1);
         }
 
-        .filter-group {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
+        .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            opacity: 0.5;
         }
 
-        .filter-group label {
-            font-size: 13px;
-            font-weight: 600;
-            color: #495057;
+        .search-hint {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 6px;
+            margin-left: 15px;
         }
 
-        .filter-group input,
-        .filter-group select {
-            padding: 10px;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-
-        .filter-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .btn-secondary {
+        .search-hint span {
             background: #f8f9fa;
-            border: 1px solid #ced4da;
-            color: #495057;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-right: 8px;
+            font-size: 11px;
         }
 
-        .btn-secondary:hover {
-            background: #e9ecef;
-        }
-
+        /* Таблица */
         .logs-table {
             background: white;
-            border-radius: 12px;
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.05);
             border: 1px solid #e9ecef;
         }
 
@@ -121,47 +121,135 @@
 
         th {
             background: #f8f9fa;
-            padding: 15px;
+            padding: 16px;
             text-align: left;
             font-weight: 600;
             color: #495057;
             border-bottom: 2px solid #e9ecef;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         td {
-            padding: 15px;
+            padding: 16px;
             border-bottom: 1px solid #e9ecef;
             color: #212529;
+            vertical-align: middle;
         }
 
         tr:hover td {
             background: #f8f9fa;
         }
 
+        /* Аватар пользователя */
+        .user-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-avatar-small {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .user-avatar-small img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: #212529;
+            font-size: 14px;
+        }
+
+        .user-email {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        /* Бейджи для действий */
         .badge {
             display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
+            padding: 6px 12px;
+            border-radius: 30px;
             font-size: 12px;
             font-weight: 500;
         }
 
-        .badge-action {
-            background: #e7f1ff;
-            color: #0056b3;
+        .badge-insert {
+            background: #d4edda;
+            color: #155724;
         }
 
-        .badge-entity {
+        .badge-update {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .badge-delete {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .badge-toggle {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        /* Тип объекта */
+        .entity-type {
+            display: inline-block;
+            padding: 4px 8px;
             background: #e9ecef;
+            border-radius: 4px;
+            font-size: 11px;
             color: #495057;
         }
 
-        .changes-cell {
-            max-width: 300px;
-            font-size: 13px;
+        .entity-id {
+            font-family: monospace;
+            font-size: 12px;
             color: #6c757d;
+            margin-left: 5px;
         }
 
+        /* Изменения */
+        .changes-cell {
+            max-width: 350px;
+            font-size: 13px;
+            color: #495057;
+            line-height: 1.5;
+        }
+
+        .change-item {
+            background: #f8f9fa;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin: 2px 0;
+            display: inline-block;
+            border-left: 2px solid #007bff;
+        }
+
+        /* Пагинация */
         .pagination {
             display: flex;
             justify-content: center;
@@ -170,13 +258,19 @@
         }
 
         .page-btn {
-            width: 40px;
-            height: 40px;
-            border: 1px solid #ced4da;
+            width: 38px;
+            height: 38px;
+            border: 1px solid #dee2e6;
             background: white;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .page-btn:hover:not(.active):not(:disabled) {
+            background: #e9ecef;
+            border-color: #007bff;
         }
 
         .page-btn.active {
@@ -196,24 +290,104 @@
             color: #6c757d;
         }
 
-        .details-link {
-            color: #007bff;
-            text-decoration: none;
-            font-size: 13px;
+        /* Подсветка поиска */
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 0;
+            border-radius: 2px;
+            font-weight: 500;
         }
 
-        .details-link:hover {
-            text-decoration: underline;
-        }
+        /* В стилях страницы добавьте: */
+.logs-table table {
+    table-layout: fixed; /* Фиксированная ширина колонок */
+    width: 100%;
+}
 
-        .ip-address {
-            font-family: monospace;
-            font-size: 13px;
-            color: #6c757d;
-        }
+.logs-table th,
+.logs-table td {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.logs-table td:first-child {
+    white-space: nowrap;
+}
+
+/* Для колонки с действиями */
+.logs-table td:nth-child(3) {
+    white-space: normal;
+}
+
+/* Для колонки с изменениями */
+.logs-table td:last-child {
+    word-break: break-word;
+}
+        /* Переопределяем .badge только внутри таблицы */
+.logs-table .badge {
+    position: static; /* Отменяем absolute */
+    top: auto;
+    right: auto;
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 500;
+    min-width: auto;
+    height: auto;
+    border: none;
+    background: transparent;
+    color: inherit;
+}
+
+.logs-table .badge-insert {
+    background: #d4edda !important;
+    color: #155724 !important;
+}
+
+.logs-table .badge-update {
+    background: #cce5ff !important;
+    color: #004085 !important;
+}
+
+.logs-table .badge-delete {
+    background: #f8d7da !important;
+    color: #721c24 !important;
+}
+
+.logs-table .badge-toggle {
+    background: #fff3cd !important;
+    color: #856404 !important;
+}
     </style>
 </head>
 <body>
+<!-- Скрытые данные пользователя -->
+{% if current_user %}
+    <div id="user-data"
+         data-user-id="{{ current_user.user_id }}"
+         data-user-email="{{ current_user.email }}"
+         data-user-name="{{ current_user.full_name|default('') }}"
+         data-user-type="{{ current_user.user_type }}"
+         data-user-avatar="{{ current_user.avatar_url|default('') }}"
+         style="display: none;"></div>
+
+    <script>
+        window.currentUser = {
+            id: {{ current_user.user_id }},
+            email: "{{ current_user.email }}",
+            name: "{{ current_user.full_name|default('') }}",
+            type: "{{ current_user.user_type }}",
+            avatar_url: "{{ current_user.avatar_url|default('') }}"
+        };
+        console.log('Current user initialized:', window.currentUser);
+    </script>
+{% else %}
+    <div id="user-data" style="display: none;"></div>
+    <script>
+        window.currentUser = null;
+    </script>
+{% endif %}
     <div class="header">
         <div class="logo">RentEase</div>
         <div class="menu">
@@ -224,73 +398,68 @@
                 <span id="selectedCity">Москва</span>
                 <img src="/resources/pin.png" alt="Location">
             </div>
-            <a href="#" class="login" onclick="logout()">Выйти</a>
+
+            <!-- Аватар пользователя -->
+            <div class="user-menu">
+                <div class="user-avatar" onclick="toggleUserMenu(event)" id="userAvatarContainer" data-initials="{{ user_initials }}">
+                    {% if current_user and current_user.avatar_url %}
+                        <img src="{{ current_user.avatar_url }}" alt="Avatar" class="user-avatar-img">
+                    {% else %}
+                        <span class="user-initials">{{ user_initials }}</span>
+                    {% endif %}
+                </div>
+                <div id="userDropdown" class="dropdown-content user-dropdown">
+                    <div class="dropdown-header">
+                        <div class="dropdown-user-info">
+                            <span class="dropdown-user-name">{{ current_user.full_name or current_user.email }}</span>
+                            <span class="dropdown-user-email">{{ current_user.email }}</span>
+                        </div>
+                    </div>
+                    <div class="dropdown-divider"></div>
+                    <a href="#" onclick="showProfileModal(); return false;">
+                        <span class="dropdown-icon">👤</span> Мой профиль
+                    </a>
+                    <a href="#" onclick="logout(); return false;" class="logout-link">
+                        <span class="dropdown-icon">🚪</span> Выйти
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 
     <div class="admin-page">
+        <!-- Уменьшенная кнопка назад -->
         <a href="/" class="back-link">
-            <img src="/resources/back-icon.png" alt="Back"> Вернуться на главную
+            <img src="/resources/back-icon.png" alt="Back"> ← На главную
         </a>
 
         <div class="page-header">
             <h1>Аудит-лог</h1>
         </div>
 
-        <div class="filters-section">
-            <div class="filters-grid">
-                <div class="filter-group">
-                    <label>Дата с</label>
-                    <input type="date" id="dateFrom">
-                </div>
-                <div class="filter-group">
-                    <label>Дата по</label>
-                    <input type="date" id="dateTo">
-                </div>
-                <div class="filter-group">
-                    <label>Пользователь</label>
-                    <select id="userId">
-                        <option value="">Все пользователи</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Действие</label>
-                    <select id="action">
-                        <option value="">Все действия</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Тип объекта</label>
-                    <select id="entityType">
-                        <option value="">Все типы</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Поиск</label>
-                    <input type="text" id="search" placeholder="Поиск по действию или пользователю">
-                </div>
-            </div>
-            <div class="filter-actions">
-                <button class="btn-secondary" onclick="resetFilters()">Сбросить</button>
-                <button class="btn-primary" onclick="loadAuditLogs()">Найти</button>
+        <!-- Умный поиск (без фильтров) -->
+        <div class="smart-search">
+            <div class="search-container">
+                <img src="/resources/search.png" class="search-icon" alt="Search">
+                <input type="text"
+                       class="smart-search-input"
+                       id="smartSearch"
+                       placeholder="Поиск по пользователям, действиям, объектам..."
+                       autocomplete="off">
             </div>
         </div>
 
         <div class="logs-table">
             <table>
-                <!-- В шапке таблицы удаляем колонку IP-адрес -->
                 <thead>
                     <tr>
-                        <th>Дата и время</th>
-                        <th>Пользователь</th>
-                        <th>Действие</th>
-                        <th>Объект</th>
-                        <th>Изменения</th>
-                        <!-- Колонка IP-адрес удалена -->
+                        <th style="width: 15%;">Дата и время</th>
+                        <th style="width: 20%;">Пользователь</th>
+                        <th style="width: 15%;">Действие</th>
+                        <th style="width: 20%;">Объект</th>
+                        <th style="width: 30%;">Изменения</th>
                     </tr>
                 </thead>
-
-                <!-- В теле таблицы тоже удаляем -->
                 <tbody id="logsTableBody">
                     <!-- Данные загружаются динамически -->
                 </tbody>
@@ -303,138 +472,142 @@
     <script>
         let currentPage = 1;
         let totalPages = 1;
+        let searchTimeout = null;
 
-        async function loadAuditFilters() {
+        // Функция для получения инициалов
+        function getInitials(fullName) {
+            if (!fullName) return '?';
+            const parts = fullName.split(' ');
+            if (parts.length >= 2) {
+                return (parts[0][0] + parts[1][0]).toUpperCase();
+            }
+            return fullName[0].toUpperCase();
+        }
+
+        // Функция для подсветки текста поиска
+        function highlightText(text, searchTerm) {
+            if (!searchTerm || !text) return text;
+            const regex = new RegExp(`(${searchTerm})`, 'gi');
+            return text.replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        // Загрузка аудит-логов с умным поиском
+        async function loadAuditLogs(page = 1) {
+            currentPage = page;
+            const searchTerm = document.getElementById('smartSearch').value.trim();
+
+            let url = `/api/admin/audit-logs?page=${page}&per_page=50`;
+            if (searchTerm) {
+                url += `&search=${encodeURIComponent(searchTerm)}`;
+            }
+
             try {
-                const response = await fetch('/api/admin/audit-logs/filters', { credentials: 'same-origin' });
+                const response = await fetch(url, { credentials: 'same-origin' });
+
+                // Проверяем, что ответ успешный
                 if (!response.ok) {
                     if (response.status === 403) {
                         window.location.href = '/';
                         return;
                     }
-                    throw new Error('Ошибка загрузки фильтров');
+                    // Пробуем получить текст ошибки
+                    const errorText = await response.text();
+                    console.error('Ошибка ответа:', errorText);
+                    throw new Error(`Ошибка загрузки: ${response.status}`);
                 }
-                const filters = await response.json();
 
-                // Заполняем пользователей
-                const userSelect = document.getElementById('userId');
-                filters.users.forEach(user => {
-                    const option = document.createElement('option');
-                    option.value = user.id;
-                    option.textContent = `${user.name || user.email} (${user.email})`;
-                    userSelect.appendChild(option);
-                });
+                // Проверяем, что ответ - JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Получен не JSON ответ:', text.substring(0, 200));
+                    throw new Error('Сервер вернул не JSON');
+                }
 
-                // Заполняем действия
-                const actionSelect = document.getElementById('action');
-                filters.actions.forEach(action => {
-                    const option = document.createElement('option');
-                    option.value = action;
-                    option.textContent = action;
-                    actionSelect.appendChild(option);
-                });
+                const data = await response.json();
+                console.log('Получены данные:', data);
 
-                // Заполняем типы объектов
-                const entitySelect = document.getElementById('entityType');
-                filters.entity_types.forEach(type => {
-                    const option = document.createElement('option');
-                    option.value = type;
-                    option.textContent = type;
-                    entitySelect.appendChild(option);
-                });
+                const tbody = document.getElementById('logsTableBody');
+                totalPages = data.total_pages;
+
+                if (data.logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Записей не найдено</td></tr>';
+                } else {
+                    let html = '';
+                    data.logs.forEach(log => {
+                        const date = new Date(log.created_at).toLocaleString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                        });
+
+                        // Определяем класс для действия
+                        let actionClass = 'badge';
+                        if (log.action === 'INSERT') actionClass += ' badge-insert';
+                        else if (log.action === 'UPDATE') actionClass += ' badge-update';
+                        else if (log.action === 'DELETE') actionClass += ' badge-delete';
+                        else if (log.action === 'TOGGLE_BLOCK') actionClass += ' badge-toggle';
+
+                        // Аватар пользователя
+                        const userInitials = getInitials(log.user_name) || log.user_email?.[0]?.toUpperCase() || '?';
+                        const userAvatar = log.user_avatar ?
+                            `<img src="${log.user_avatar}" alt="Avatar" style="width:100%;height:100%;object-fit:cover;">` :
+                            `<span>${userInitials}</span>`;
+
+                        // Безопасное отображение изменений
+                        const changes = log.changes || '—';
+
+                        html += `
+                            <tr>
+                                <td style="white-space: nowrap; font-size: 13px; vertical-align: top;">${date}</td>
+                                <td style="vertical-align: top;">
+                                    <div class="user-cell">
+                                        <div class="user-avatar-small">
+                                            ${userAvatar}
+                                        </div>
+                                        <div class="user-info">
+                                            <span class="user-name">${log.user_name || 'Система'}</span>
+                                            <span class="user-email">${log.user_email || ''}</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td style="vertical-align: top;">
+                                    <span class="${actionClass}" style="display: inline-block; white-space: nowrap;">${log.action_display || log.action || '—'}</span>
+                                </td>
+                                <td style="vertical-align: top;">
+                                    <div>
+                                        <span class="entity-type">${log.entity_type_display || log.entity_type}</span>
+                                        ${log.entity_id ? `<span class="entity-id">ID: ${log.entity_id}</span>` : ''}
+                                    </div>
+                                    ${log.entity_name ? `<div style="font-size: 12px; color: #28a745; margin-top: 4px; font-weight: 500;">📌 ${log.entity_name}</div>` : ''}
+                                </td>
+                                <td class="changes-cell" style="vertical-align: top;">
+                                    ${changes}
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = html;
+                }
+
+                renderPagination();
 
             } catch (error) {
-                console.error('Ошибка:', error);
+                console.error('Ошибка загрузки аудит-логов:', error);
+                document.getElementById('logsTableBody').innerHTML = `<tr><td colspan="5" class="empty-state">Ошибка загрузки: ${error.message}</td></tr>`;
             }
         }
 
-        async function loadAuditLogs(page = 1) {
-    currentPage = page;
-
-    const dateFrom = document.getElementById('dateFrom').value;
-    const dateTo = document.getElementById('dateTo').value;
-    const userId = document.getElementById('userId').value;
-    const action = document.getElementById('action').value;
-    const entityType = document.getElementById('entityType').value;
-    const search = document.getElementById('search').value;
-
-    let url = `/api/admin/audit-logs?page=${page}&per_page=50`;
-    if (dateFrom) url += `&date_from=${dateFrom}`;
-    if (dateTo) url += `&date_to=${dateTo}`;
-    if (userId) url += `&user_id=${userId}`;
-    if (action) url += `&action=${encodeURIComponent(action)}`;
-    if (entityType) url += `&entity_type=${encodeURIComponent(entityType)}`;
-    if (search) url += `&search=${encodeURIComponent(search)}`;
-
-    try {
-        const response = await fetch(url, { credentials: 'same-origin' });
-        if (!response.ok) {
-            if (response.status === 403) {
-                window.location.href = '/';
-                return;
-            }
-            throw new Error('Ошибка загрузки');
-        }
-        const data = await response.json();
-
-        const tbody = document.getElementById('logsTableBody');
-        totalPages = data.total_pages;
-
-        if (data.logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Нет записей</td></tr>';
-        } else {
-            let html = '';
-            data.logs.forEach(log => {
-                const date = new Date(log.created_at).toLocaleString('ru-RU', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
-
-                // Определяем цвет для действия
-                let actionColor = '#6c757d';
-                if (log.action === 'INSERT') actionColor = '#28a745';
-                else if (log.action === 'UPDATE') actionColor = '#007bff';
-                else if (log.action === 'DELETE') actionColor = '#dc3545';
-                else if (log.action === 'TOGGLE_BLOCK') actionColor = '#ffc107';
-
-                html += `
-                    <tr>
-                        <td style="white-space: nowrap;">${date}</td>
-                        <td>
-                            <strong>${log.user_name}</strong>
-                            <br>
-                            <small style="color: #6c757d;">${log.user_email}</small>
-                        </td>
-                        <td>
-                            <span style="display: inline-block; padding: 4px 8px; border-radius: 4px; background: ${actionColor}20; color: ${actionColor}; font-weight: 500;">
-                                ${log.action_display || log.action}
-                            </span>
-                        </td>
-                        <td>
-                            <div style="font-weight: 500;">${log.entity_type_display || log.entity_type}</div>
-                            ${log.entity_id ? `<small style="color: #6c757d;">ID: ${log.entity_id}</small>` : ''}
-                            ${log.entity_name ? `<div style="font-size: 12px; color: #007bff; margin-top: 2px;">${log.entity_name}</div>` : ''}
-                        </td>
-                        <td class="changes-cell" style="max-width: 300px; word-break: break-word;">
-                            ${log.changes || '—'}
-                        </td>
-                    </tr>
-                `;
-            });
-            tbody.innerHTML = html;
-        }
-
-        renderPagination();
-
-    } catch (error) {
-        console.error('Ошибка:', error);
-        document.getElementById('logsTableBody').innerHTML = '<tr><td colspan="5" class="empty-state">Ошибка загрузки</td></tr>';
-    }
-}
+        // Обработчик умного поиска с debounce
+        document.getElementById('smartSearch').addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                loadAuditLogs(1);
+            }, 500); // Задержка 500ms для избежания частых запросов
+        });
 
         function renderPagination() {
             const pagination = document.getElementById('pagination');
@@ -455,21 +628,17 @@
             pagination.innerHTML = html;
         }
 
-        function resetFilters() {
-            document.getElementById('dateFrom').value = '';
-            document.getElementById('dateTo').value = '';
-            document.getElementById('userId').value = '';
-            document.getElementById('action').value = '';
-            document.getElementById('entityType').value = '';
-            document.getElementById('search').value = '';
-            loadAuditLogs(1);
-        }
-
         // Загрузка при открытии страницы
         document.addEventListener('DOMContentLoaded', () => {
-            loadAuditFilters();
             loadAuditLogs();
+
+            // Синхронизация аватарки
+            const userAvatarContainer = document.getElementById('userAvatarContainer');
+            if (userAvatarContainer && window.currentUser?.avatar_url) {
+                userAvatarContainer.innerHTML = `<img src="${window.currentUser.avatar_url}" alt="Avatar" class="user-avatar-img">`;
+            }
         });
     </script>
 </body>
+
 </html>

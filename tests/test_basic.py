@@ -159,11 +159,41 @@ class TestRentalSystem(unittest.TestCase):
             print(f"✅ Ожидаемая ошибка: {error}")
 
 
+class TestSecurity(unittest.TestCase):
+    """Тестирование безопасности"""
 
-class MyTestCase(unittest.TestCase):
-    def test_something(self):
-        self.assertEqual(True, False)  # add assertion here
+    def test_password_hashing(self):
+        """Тест хеширования паролей"""
+        print("\n🔐 Тест 7: Хеширование паролей")
+
+        password = "Test123!"
+
+        # Хешируем
+        hashed = hash_password(password)
+
+        # Проверяем
+        self.assertNotEqual(hashed, password)
+        self.assertTrue(verify_password(password, hashed))
+        self.assertFalse(verify_password("WrongPass", hashed))
+
+        print("✅ Пароль хешируется и проверяется корректно")
 
 
 if __name__ == '__main__':
-    unittest.main()
+    print("=" * 60)
+    print("🧪 ТЕСТИРОВАНИЕ СИСТЕМЫ АРЕНДЫ НЕДВИЖИМОСТИ")
+    print("=" * 60)
+
+    # Запуск тестов
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestRentalSystem)
+    suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestSecurity))
+
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+
+    print("\n" + "=" * 60)
+    print(f"📊 ИТОГИ ТЕСТИРОВАНИЯ:")
+    print(f"   Всего тестов: {result.testsRun}")
+    print(f"   ✅ Пройдено: {result.testsRun - len(result.failures) - len(result.errors)}")
+    print(f"   ❌ Провалено: {len(result.failures) + len(result.errors)}")
+    print("=" * 60)

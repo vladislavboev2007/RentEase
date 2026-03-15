@@ -1790,32 +1790,14 @@ async def get_property_responsible(property_id: int, db: Session = Depends(get_d
 
 @app.get("/api/my/applications")
 async def get_my_applications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Мои заявки (где я арендатор) - ТОЛЬКО ИСХОДЯЩИЕ"""
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
-    if current_user.user_type == 'tenant':
-        # Арендатор видит свои заявки
-        applications = db.query(Application).filter(
-            Application.tenant_id == current_user.user_id
-        ).all()
-
-    elif current_user.user_type == 'owner':
-        # Собственник видит заявки на свои объекты
-        applications = db.query(Application).join(
-            Property, Application.property_id == Property.property_id
-        ).filter(
-            Property.owner_id == current_user.user_id
-        ).all()
-
-    elif current_user.user_type == 'agent':
-        # Агент видит заявки на объекты, которые он ведёт
-        applications = db.query(Application).join(
-            Property, Application.property_id == Property.property_id
-        ).filter(
-            Property.owner_id == current_user.user_id
-        ).all()
-    else:
-        applications = []
+    # Только заявки, где текущий пользователь - арендатор
+    applications = db.query(Application).filter(
+        Application.tenant_id == current_user.user_id
+    ).all()
 
     result = []
     for app in applications:
@@ -1827,23 +1809,6 @@ async def get_my_applications(current_user: User = Depends(get_current_user), db
             PropertyPhoto.property_id == app.property_id,
             PropertyPhoto.is_main == True
         ).first()
-
-        # Определяем, кто ответственный за объект (для отображения)
-        responsible_party = None
-        if property.owner_id:
-            owner = db.query(User).filter(User.user_id == property.owner_id).first()
-            responsible_party = {
-                "id": owner.user_id,
-                "name": owner.full_name,
-                "type": "owner"
-            }
-        elif property.agent_id:
-            agent = db.query(User).filter(User.user_id == property.agent_id).first()
-            responsible_party = {
-                "id": agent.user_id,
-                "name": agent.full_name,
-                "type": "agent"
-            }
 
         result.append({
             "application_id": app.application_id,
@@ -1861,8 +1826,68 @@ async def get_my_applications(current_user: User = Depends(get_current_user), db
             "answer": app.answer,
             "status": app.status,
             "created_at": app.created_at.isoformat() if app.created_at else None,
-            "responded_at": app.responded_at.isoformat() if app.responded_at else None,
-            "responsible_party": responsible_party  # Кто отвечает за объект
+            "responded_at": app.responded_at.isoformat() if app.responded_at else None
+        })
+
+    return result
+
+
+@app.get("/api/incoming/applications")
+async def get_incoming_applications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Входящие заявки (для собственника/агента)"""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+
+    query = db.query(Application).join(
+        Property, Application.property_id == Property.property_id
+    )
+
+    if current_user.user_type == 'owner':
+        # Собственник видит заявки на свои объекты
+        query = query.filter(Property.owner_id == current_user.user_id)
+
+    elif current_user.user_type == 'agent':
+        # Агент видит заявки на объекты собственников, с которыми работает
+        # Например, если агент связан с собственниками через отдельную таблицу
+        # Пока оставим пустым для агента, если нет связи
+        query = query.filter(Property.owner_id == current_user.user_id)
+
+    elif current_user.user_type == 'admin':
+        # Админ видит все заявки
+        pass
+    else:
+        return []
+
+    applications = query.all()
+
+    result = []
+    for app in applications:
+        property = db.query(Property).filter(Property.property_id == app.property_id).first()
+        tenant = db.query(User).filter(User.user_id == app.tenant_id).first()
+
+        # Получаем главное фото
+        main_photo = db.query(PropertyPhoto).filter(
+            PropertyPhoto.property_id == app.property_id,
+            PropertyPhoto.is_main == True
+        ).first()
+
+        result.append({
+            "application_id": app.application_id,
+            "property_id": app.property_id,
+            "property_title": property.title if property else None,
+            "property_address": property.address if property else None,
+            "property_photo": main_photo.url if main_photo else None,
+            "price": float(property.price) if property and property.price else 0,
+            "interval_pay": property.interval_pay if property else None,
+            "tenant_name": tenant.full_name if tenant else None,
+            "tenant_email": tenant.email if tenant else None,
+            "desired_date": app.desired_date.isoformat() if app.desired_date else None,
+            "duration_days": app.duration_days,
+            "message": app.message,
+            "answer": app.answer,
+            "status": app.status,
+            "created_at": app.created_at.isoformat() if app.created_at else None,
+            "responded_at": app.responded_at.isoformat() if app.responded_at else None
         })
 
     return result
@@ -1911,6 +1936,23 @@ async def create_application(app_data: ApplicationCreate, current_user: User = D
     )
     db.add(new_app)
     db.commit()
+    # Получить только что созданное уведомление и отправить через WebSocket
+    notifications = db.query(Message).filter(
+        Message.to_user_id == owner_id,
+        Message.from_user_id.is_(None),
+        Message.created_at > datetime.now() - timedelta(seconds=5)
+    ).all()
+    for note in notifications:
+        asyncio.create_task(manager.send_new_message_notification(
+            from_user_id=0,  # системное
+            to_user_id=owner_id,
+            message_data={
+                "id": note.message_id,
+                "content": note.content,
+                "created_at": note.created_at.isoformat(),
+                "is_read": note.is_read
+            }
+        ))
     db.refresh(new_app)
 
 
@@ -2073,6 +2115,66 @@ def create_notification(db: Session, to_user_id: int, content: str, from_user_id
     ))
 
     return notification
+
+@app.get("/api/notifications")
+async def get_notifications(
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получить системные уведомления для текущего пользователя (from_user_id IS NULL)"""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+
+    notifications = db.query(Message).filter(
+        Message.to_user_id == current_user.user_id,
+        Message.from_user_id.is_(None)  # только системные
+    ).order_by(Message.created_at.desc()).limit(limit).all()
+
+    return [
+        {
+            "id": n.message_id,
+            "content": n.content,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+            "is_read": n.is_read
+        }
+        for n in notifications
+    ]
+
+@app.post("/api/notifications/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        raise HTTPException(401, "Не авторизован")
+    notification = db.query(Message).filter(
+        Message.message_id == notification_id,
+        Message.to_user_id == current_user.user_id
+    ).first()
+    if notification:
+        notification.is_read = True
+        db.commit()
+    return {"success": True}
+
+
+@app.post("/api/notifications/read-all")
+async def mark_all_notifications_read(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    if not current_user:
+        raise HTTPException(401, "Не авторизован")
+
+    db.query(Message).filter(
+        Message.to_user_id == current_user.user_id,
+        Message.from_user_id.is_(None),
+        Message.is_read == False
+    ).update({"is_read": True})
+
+    db.commit()
+    return {"success": True}
 
 # ==================== УПРАВЛЕНИЕ ДОГОВОРАМИ ====================
 
@@ -2724,102 +2826,82 @@ async def get_audit_logs(
         request: Request,
         page: int = 1,
         per_page: int = 50,
-        user_id: Optional[int] = None,
-        action: Optional[str] = None,
-        entity_type: Optional[str] = None,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
         search: Optional[str] = None,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db_with_audit)
 ):
     """Получить аудит логи с фильтрацией (только для admin)"""
+    print(f"=== ЗАПРОС АУДИТ-ЛОГА ===")
+    print(f"Пользователь: {current_user}")
+    print(f"Страница: {page}, на странице: {per_page}, поиск: {search}")
+
     if not current_user or current_user.user_type != 'admin':
+        print("❌ Доступ запрещён")
         raise HTTPException(status_code=403, detail="Только для администраторов")
 
-    # Базовый запрос
-    query = db.query(AuditLog).join(User, AuditLog.user_id == User.user_id, isouter=True)
+    try:
+        # Базовый запрос
+        query = db.query(AuditLog).join(User, AuditLog.user_id == User.user_id, isouter=True)
 
-    # Фильтры
-    if user_id:
-        query = query.filter(AuditLog.user_id == user_id)
-
-    if action:
-        query = query.filter(AuditLog.action == action)
-
-    if entity_type:
-        query = query.filter(AuditLog.entity_type == entity_type)
-
-    if date_from:
-        try:
-            date_from_obj = datetime.strptime(date_from, "%Y-%m-%d")
-            query = query.filter(AuditLog.created_at >= date_from_obj)
-        except:
-            pass
-
-    if date_to:
-        try:
-            date_to_obj = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
-            query = query.filter(AuditLog.created_at <= date_to_obj)
-        except:
-            pass
-
-    if search:
-        query = query.filter(
-            or_(
+        # Поиск
+        if search:
+            search_filter = or_(
                 AuditLog.action.ilike(f"%{search}%"),
                 AuditLog.entity_type.ilike(f"%{search}%"),
                 User.email.ilike(f"%{search}%"),
-                User.full_name.ilike(f"%{search}%")
+                User.full_name.ilike(f"%{search}%"),
+                AuditLog.details.cast(db.String).ilike(f"%{search}%")
             )
-        )
+            query = query.filter(search_filter)
 
-    # Пагинация
-    total = query.count()
-    logs = query.order_by(AuditLog.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+        # Пагинация
+        total = query.count()
+        print(f"Всего записей: {total}")
 
-    # Формируем результат
-    result = []
-    for log in logs:
-        # Получаем название объекта для entity_id
-        entity_name = get_entity_name(db, log.entity_type, log.entity_id)
+        logs = query.order_by(AuditLog.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+        print(f"Загружено записей: {len(logs)}")
 
-        # Форматируем действие
-        action_display = get_action_display(log.action)
+        # Формируем результат
+        result = []
+        for log in logs:
+            entity_name = get_entity_name(db, log.entity_type, log.entity_id)
+            action_display = get_action_display(log.action)
+            entity_type_display = get_entity_type_display(log.entity_type)
+            changes = format_changes_for_display(log.details)
 
-        # Форматируем тип объекта
-        entity_type_display = get_entity_type_display(log.entity_type)
+            result.append({
+                "log_id": log.log_id,
+                "user_id": log.user_id,
+                "user_email": log.user.email if log.user else "Система",
+                "user_name": log.user.full_name if log.user else "Система",
+                "user_avatar": log.user.avatar_url if log.user else None,
+                "action": log.action,
+                "action_display": action_display,
+                "entity_type": log.entity_type,
+                "entity_type_display": entity_type_display,
+                "entity_id": log.entity_id,
+                "entity_name": entity_name,
+                "changes": changes,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "details": log.details
+            })
 
-        # Форматируем изменения для отображения
-        changes = format_changes_for_display(log.details)
+        response_data = {
+            "logs": result,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page
+        }
 
-        # Получаем IP из details если есть
-        ip_address = log.details.get('ip_address') if log.details else None
+        print(f"✅ Успешно сформирован ответ с {len(result)} записями")
+        return response_data
 
-        result.append({
-            "log_id": log.log_id,
-            "user_id": log.user_id,
-            "user_email": log.user.email if log.user else "Система",
-            "user_name": log.user.full_name if log.user else "Система",
-            "action": log.action,
-            "action_display": action_display,
-            "entity_type": log.entity_type,
-            "entity_type_display": entity_type_display,
-            "entity_id": log.entity_id,
-            "entity_name": entity_name,
-            "changes": changes,
-            "ip_address": ip_address or "Неизвестно",
-            "created_at": log.created_at.isoformat() if log.created_at else None,
-            "details": log.details
-        })
-
-    return {
-        "logs": result,
-        "total": total,
-        "page": page,
-        "per_page": per_page,
-        "total_pages": (total + per_page - 1) // per_page
-    }
+    except Exception as e:
+        print(f"❌ Ошибка при загрузке аудит-лога: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Вспомогательные функции для форматирования
@@ -2860,34 +2942,43 @@ def get_entity_name(db: Session, entity_type: str, entity_id: Optional[int]) -> 
         return ""
 
     try:
-        if entity_type == 'applications':
+        if entity_type == 'applications' or entity_type == 'application':
             app = db.query(Application).filter(Application.application_id == entity_id).first()
             if app:
                 property = db.query(Property).filter(Property.property_id == app.property_id).first()
-                return f"Заявка #{entity_id} на '{property.title if property else 'объект'}'"
+                if property:
+                    return f"Заявка #{entity_id} на '{property.title}'"
+                return f"Заявка #{entity_id}"
+            return f"Заявка #{entity_id}"
 
-        elif entity_type == 'properties':
+        elif entity_type == 'properties' or entity_type == 'property':
             prop = db.query(Property).filter(Property.property_id == entity_id).first()
-            return prop.title if prop else f"Объект #{entity_id}"
+            if prop:
+                return prop.title or f"Объект #{entity_id}"
+            return f"Объект #{entity_id}"
 
-        elif entity_type == 'contracts':
+        elif entity_type == 'contracts' or entity_type == 'contract':
             contract = db.query(Contract).filter(Contract.contract_id == entity_id).first()
             if contract:
-                return f"Договор #{contract.contract_id}"
+                return f"Договор №{contract.contract_id}"
             return f"Договор #{entity_id}"
 
-        elif entity_type == 'users':
+        elif entity_type == 'users' or entity_type == 'user':
             user = db.query(User).filter(User.user_id == entity_id).first()
-            return user.full_name if user else f"Пользователь #{entity_id}"
+            if user:
+                return user.full_name or user.email or f"Пользователь #{entity_id}"
+            return f"Пользователь #{entity_id}"
 
-        elif entity_type == 'messages':
+        elif entity_type == 'messages' or entity_type == 'message':
+            msg = db.query(Message).filter(Message.message_id == entity_id).first()
+            if msg:
+                return f"Сообщение #{entity_id}"
             return f"Сообщение #{entity_id}"
 
     except Exception as e:
         print(f"Ошибка получения имени объекта: {e}")
 
     return ""
-
 
 def format_changes_for_display(details: Optional[dict]) -> str:
     """Форматирует изменения для отображения"""
@@ -2907,13 +2998,17 @@ def format_changes_for_display(details: Optional[dict]) -> str:
             # Форматируем названия полей
             field_display = get_field_display(field)
 
+            # Для JSON полей
+            if isinstance(old_val, dict) or isinstance(new_val, dict):
+                continue
+
             # Сокращаем длинные значения
             old_str = str(old_val)[:50] + "..." if len(str(old_val)) > 50 else str(old_val)
             new_str = str(new_val)[:50] + "..." if len(str(new_val)) > 50 else str(new_val)
 
-            if old_str and new_str:
+            if old_str and new_str and old_str != new_str:
                 changes_list.append(f"{field_display}: {old_str} → {new_str}")
-            elif new_str:
+            elif new_str and (not old_str or old_str != new_str):
                 changes_list.append(f"{field_display}: {new_str}")
 
     return ", ".join(changes_list) if changes_list else "—"
@@ -3009,6 +3104,16 @@ def log_action(
     db.add(log)
     db.commit()
 
+def get_user_initials(user: User):
+    if not user:
+        return "?"
+    if user.full_name:
+        parts = user.full_name.split()
+        if len(parts) >= 2:
+            return f"{parts[0][0]}{parts[1][0]}".upper()
+        return parts[0][0].upper()
+    return user.email[0].upper() if user.email else "?"
+
 @app.get("/admin/audit", response_class=HTMLResponse)
 async def admin_audit_page(
     request: Request,
@@ -3024,9 +3129,6 @@ async def admin_audit_page(
         "current_user": current_user,
         "user_initials": get_user_initials(current_user)
     })
-
-
-
 # ==================== ГЕНЕРАЦИЯ ДОКУМЕНТОВ ====================
 
 @app.post("/api/contracts/{contract_id}/generate-contract")

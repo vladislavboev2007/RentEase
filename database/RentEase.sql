@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict KXCbDutkrQDa8japcufURkxv8FPisfE8GJnxSsr2tSNqN29Cl0sPAQGkUKAg7rG
+\restrict JXZ7QSFCu8N3sLbzH1nu2kq6ygnHedQIWHISQZ1JM8DhWy3VAFiKz4j5wJodi1U
 
 -- Dumped from database version 18.1
 -- Dumped by pg_dump version 18.1
 
--- Started on 2026-03-14 20:37:05
+-- Started on 2026-03-15 22:15:28
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -22,7 +22,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- TOC entry 254 (class 1255 OID 90264)
+-- TOC entry 252 (class 1255 OID 90264)
 -- Name: audit_log_delete(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -80,7 +80,7 @@ $$;
 ALTER FUNCTION public.audit_log_delete() OWNER TO postgres;
 
 --
--- TOC entry 252 (class 1255 OID 90262)
+-- TOC entry 250 (class 1255 OID 90262)
 -- Name: audit_log_insert(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -139,7 +139,7 @@ $$;
 ALTER FUNCTION public.audit_log_insert() OWNER TO postgres;
 
 --
--- TOC entry 253 (class 1255 OID 90263)
+-- TOC entry 251 (class 1255 OID 90263)
 -- Name: audit_log_update(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -217,7 +217,7 @@ $$;
 ALTER FUNCTION public.audit_log_update() OWNER TO postgres;
 
 --
--- TOC entry 245 (class 1255 OID 82019)
+-- TOC entry 247 (class 1255 OID 82019)
 -- Name: create_contract_on_approval(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -227,11 +227,23 @@ CREATE FUNCTION public.create_contract_on_approval() RETURNS trigger
 DECLARE
     v_property properties%ROWTYPE;
     v_total_amount NUMERIC;
+    v_tenant_name TEXT;
+    v_property_title TEXT;
+    v_owner_id INTEGER;
+    v_new_contract_id INTEGER;
 BEGIN
     -- Если статус изменился на 'approved'
     IF NEW.status = 'approved' AND OLD.status != 'approved' THEN
         -- Получаем данные объекта
         SELECT * INTO v_property FROM properties WHERE property_id = NEW.property_id;
+        v_owner_id := v_property.owner_id;
+
+        -- Получаем название объекта
+        SELECT title INTO v_property_title FROM properties WHERE property_id = NEW.property_id;
+
+        -- Получаем имя арендатора
+        SELECT COALESCE(full_name, 'Арендатор') INTO v_tenant_name
+        FROM users WHERE user_id = NEW.tenant_id;
 
         -- Рассчитываем общую сумму
         IF v_property.interval_pay = 'month' THEN
@@ -242,7 +254,7 @@ BEGIN
             v_total_amount := v_property.price;
         END IF;
 
-        -- Вставляем договор (property_id, tenant_id, owner_id получаем через JOIN)
+        -- Вставляем договор
         INSERT INTO contracts (
             application_id,
             start_date,
@@ -261,8 +273,20 @@ BEGIN
             FALSE,
             FALSE,
             NOW()
-        );
-        
+        ) RETURNING contract_id INTO v_new_contract_id;
+
+        -- Уведомление арендатору о создании договора (без смайлика в тексте)
+        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+        VALUES (NULL, NEW.tenant_id,
+                '📄 Договор создан на объект "' || v_property_title || '". Ожидается подписание.',
+                FALSE, NOW());
+
+        -- Уведомление собственнику о создании договора
+        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+        VALUES (NULL, v_owner_id,
+                '📄 Договор создан на объект "' || v_property_title || '" с арендатором ' || v_tenant_name || '. Ожидается подписание.',
+                FALSE, NOW());
+
         -- Обновляем время ответа
         NEW.responded_at := NOW();
     END IF;
@@ -274,7 +298,7 @@ $$;
 ALTER FUNCTION public.create_contract_on_approval() OWNER TO postgres;
 
 --
--- TOC entry 256 (class 1255 OID 49248)
+-- TOC entry 253 (class 1255 OID 49248)
 -- Name: get_agent_application_status_stats(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -283,12 +307,16 @@ CREATE FUNCTION public.get_agent_application_status_stats(p_agent_id integer, p_
     AS $$
 DECLARE
     v_total BIGINT;
+    v_start_date TIMESTAMP;
 BEGIN
+    -- Начало периода - p_days дней назад
+    v_start_date := (CURRENT_DATE - (p_days || ' days')::INTERVAL)::TIMESTAMP;
+
     SELECT COUNT(*) INTO v_total
     FROM applications a
     JOIN properties p ON a.property_id = p.property_id
     WHERE p.owner_id = p_agent_id
-      AND a.created_at >= CURRENT_DATE - (p_days || ' days')::INTERVAL;
+      AND a.created_at >= v_start_date;
 
     RETURN QUERY
     SELECT 
@@ -301,7 +329,7 @@ BEGIN
     FROM applications a
     JOIN properties p ON a.property_id = p.property_id
     WHERE p.owner_id = p_agent_id
-      AND a.created_at >= CURRENT_DATE - (p_days || ' days')::INTERVAL
+      AND a.created_at >= v_start_date
     GROUP BY a.status
     ORDER BY 
         CASE a.status
@@ -319,7 +347,7 @@ $$;
 ALTER FUNCTION public.get_agent_application_status_stats(p_agent_id integer, p_days integer) OWNER TO postgres;
 
 --
--- TOC entry 255 (class 1255 OID 49246)
+-- TOC entry 256 (class 1255 OID 49246)
 -- Name: get_agent_monthly_stats(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -329,6 +357,7 @@ CREATE FUNCTION public.get_agent_monthly_stats(p_agent_id integer, p_months inte
 BEGIN
     RETURN QUERY
     WITH months_series AS (
+        -- Генерируем последовательность месяцев, включая текущий и начиная с (p_months-1) месяцев назад
         SELECT 
             DATE_TRUNC('month', CURRENT_DATE - (n || ' months')::INTERVAL) as month_start,
             TO_CHAR(DATE_TRUNC('month', CURRENT_DATE - (n || ' months')::INTERVAL), 'YYYY-MM') as month_str
@@ -343,7 +372,7 @@ BEGIN
         FROM applications a
         JOIN properties p ON a.property_id = p.property_id
         WHERE p.owner_id = p_agent_id
-          AND a.created_at >= (CURRENT_DATE - (p_months || ' months')::INTERVAL)
+          AND a.created_at >= (DATE_TRUNC('month', CURRENT_DATE - ((p_months - 1) || ' months')::INTERVAL))
         GROUP BY DATE_TRUNC('month', a.created_at)
     ),
     monthly_contracts AS (
@@ -356,7 +385,7 @@ BEGIN
         JOIN properties p ON a.property_id = p.property_id
         WHERE p.owner_id = p_agent_id
           AND c.signing_status = 'signed'
-          AND c.created_at >= (CURRENT_DATE - (p_months || ' months')::INTERVAL)
+          AND c.created_at >= (DATE_TRUNC('month', CURRENT_DATE - ((p_months - 1) || ' months')::INTERVAL))
         GROUP BY DATE_TRUNC('month', c.created_at)
     )
     SELECT 
@@ -369,7 +398,7 @@ BEGIN
     FROM months_series ms
     LEFT JOIN monthly_applications ma ON ms.month_start = ma.month
     LEFT JOIN monthly_contracts mc ON ms.month_start = mc.month
-    ORDER BY ms.month_start DESC;
+    ORDER BY ms.month_start ASC;
 END;
 $$;
 
@@ -377,7 +406,7 @@ $$;
 ALTER FUNCTION public.get_agent_monthly_stats(p_agent_id integer, p_months integer) OWNER TO postgres;
 
 --
--- TOC entry 250 (class 1255 OID 49247)
+-- TOC entry 248 (class 1255 OID 49247)
 -- Name: get_agent_performance_stats(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -393,12 +422,13 @@ DECLARE
     v_total_applications BIGINT := 0;
     v_avg_response NUMERIC := 0;
     v_conversion NUMERIC := 0;
-    v_start_date DATE;
+    v_start_date TIMESTAMP;
 BEGIN
-    -- Дата начала периода
-    v_start_date := (CURRENT_DATE - (p_months || ' months')::INTERVAL)::DATE;
+    -- Начало периода - ПЕРВОЕ ЧИСЛО месяца (p_months-1) месяцев назад
+    -- Например: для 13 месяцев в марте 2026, начало = 2025-03-01
+    v_start_date := DATE_TRUNC('month', CURRENT_DATE - ((p_months - 1) || ' months')::INTERVAL);
 
-    -- Сделки и прибыль (только подписанные договоры)
+    -- Сделки и прибыль
     SELECT 
         COALESCE(SUM(c.total_amount), 0),
         COUNT(DISTINCT c.contract_id)
@@ -415,13 +445,13 @@ BEGIN
     FROM properties
     WHERE owner_id = p_agent_id;
 
-    -- Сданные объекты (rented) - исправлено!
+    -- Сданные объекты
     SELECT COUNT(*) INTO v_rented_properties
     FROM properties
     WHERE owner_id = p_agent_id 
       AND status = 'rented';
 
-    -- Обработанные заявки (те, на которые ответили)
+    -- Обработанные заявки
     SELECT COUNT(*) INTO v_processed_apps
     FROM applications a
     JOIN properties p ON a.property_id = p.property_id
@@ -436,7 +466,7 @@ BEGIN
     WHERE p.owner_id = p_agent_id
       AND a.created_at >= v_start_date;
 
-    -- Среднее время ответа (в часах) - округляем до 2 знаков
+    -- Среднее время ответа
     SELECT COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (a.responded_at - a.created_at)) / 3600)::NUMERIC, 2), 0)
     INTO v_avg_response
     FROM applications a
@@ -445,26 +475,26 @@ BEGIN
       AND a.responded_at IS NOT NULL
       AND a.created_at >= v_start_date;
 
-    -- Конверсия (доля заявок, ставших сделками)
+    -- Конверсия
     IF v_total_applications > 0 THEN
         v_conversion := ROUND((v_total_deals::NUMERIC / v_total_applications * 100)::NUMERIC, 2);
     END IF;
 
     RETURN QUERY
     SELECT 
-        ROUND(COALESCE(v_total_profit, 0), 2) as total_profit,
+        ROUND(v_total_profit, 2),
         CASE 
-            WHEN v_properties_count > 0 THEN ROUND(COALESCE(v_total_profit / v_properties_count, 0), 2)
+            WHEN v_properties_count > 0 THEN ROUND(v_total_profit / v_properties_count, 2)
             ELSE 0
-        END as avg_profit_per_property,
-        COALESCE(v_total_deals, 0) as total_deals,
+        END,
+        v_total_deals,
         CASE 
-            WHEN v_properties_count > 0 THEN ROUND(COALESCE((v_rented_properties * 100.0 / v_properties_count), 0), 2)
+            WHEN v_properties_count > 0 THEN ROUND((v_rented_properties * 100.0 / v_properties_count), 2)
             ELSE 0
-        END as occupancy_rate,
-        COALESCE(v_processed_apps, 0) as processed_applications,
-        COALESCE(v_avg_response, 0) as avg_response_hours,
-        COALESCE(v_conversion, 0) as conversion_rate;
+        END,
+        v_processed_apps,
+        v_avg_response,
+        v_conversion;
 END;
 $$;
 
@@ -472,7 +502,7 @@ $$;
 ALTER FUNCTION public.get_agent_performance_stats(p_agent_id integer, p_months integer) OWNER TO postgres;
 
 --
--- TOC entry 247 (class 1255 OID 90207)
+-- TOC entry 255 (class 1255 OID 90207)
 -- Name: notify_application_status_change(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -481,8 +511,9 @@ CREATE FUNCTION public.notify_application_status_change() RETURNS trigger
     AS $$
 DECLARE
     v_property_title TEXT;
-    v_status_text TEXT;
+    v_owner_id INTEGER;
     v_owner_name TEXT;
+    v_status_text TEXT;
 BEGIN
     -- Если статус не изменился, ничего не делаем
     IF OLD.status = NEW.status THEN
@@ -497,16 +528,16 @@ BEGIN
     -- Определяем текст уведомления в зависимости от нового статуса
     CASE NEW.status
         WHEN 'approved' THEN
-            v_status_text := '✅ **Заявка одобрена**';
+            v_status_text := '✅ Заявка одобрена';
         WHEN 'rejected' THEN
-            v_status_text := '❌ **Заявка отклонена**';
+            v_status_text := '❌ Заявка отклонена';
         WHEN 'cancelled' THEN
-            v_status_text := '🚫 **Заявка отменена**';
+            v_status_text := '🚫 Заявка отменена';
         ELSE
-            v_status_text := '📋 **Заявка ' || NEW.status || '**';
+            v_status_text := '📋 Заявка ' || NEW.status;
     END CASE;
 
-    -- Уведомление арендатору
+    -- Уведомление арендатору об изменении статуса (только одно!)
     INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
     VALUES (NULL, NEW.tenant_id,
             v_status_text || ' на объект "' || v_property_title || '"',
@@ -514,7 +545,7 @@ BEGIN
 
     -- Если есть ответ, добавляем отдельное уведомление с текстом ответа
     IF NEW.answer IS NOT NULL AND NEW.answer != '' AND NEW.answer != OLD.answer THEN
-        -- Получаем имя собственника (или агента), чтобы персонализировать ответ
+        -- Получаем имя собственника
         SELECT COALESCE(u.full_name, 'Собственник') INTO v_owner_name
         FROM properties p
         LEFT JOIN users u ON p.owner_id = u.user_id
@@ -522,7 +553,7 @@ BEGIN
 
         INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
         VALUES (NULL, NEW.tenant_id,
-                '💬 **Ответ от ' || v_owner_name || '**: ' || NEW.answer,
+                '💬 Ответ от ' || v_owner_name || ': ' || NEW.answer,
                 FALSE, NOW());
     END IF;
 
@@ -534,7 +565,7 @@ $$;
 ALTER FUNCTION public.notify_application_status_change() OWNER TO postgres;
 
 --
--- TOC entry 248 (class 1255 OID 90211)
+-- TOC entry 246 (class 1255 OID 90211)
 -- Name: notify_contract_cancellation(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -542,26 +573,43 @@ CREATE FUNCTION public.notify_contract_cancellation() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE
-    tenant_id INTEGER;
-    owner_id INTEGER;
-    prop_title TEXT;
+    v_tenant_id INTEGER;
+    v_owner_id INTEGER;
+    v_property_title TEXT;
+    v_tenant_name TEXT;
+    v_owner_name TEXT;
+    v_contract_number TEXT;
 BEGIN
     IF NEW.signing_status = 'cancelled' AND OLD.signing_status != 'cancelled' THEN
-        SELECT a.tenant_id, p.owner_id, p.title INTO tenant_id, owner_id, prop_title
+        -- Получаем информацию о договоре
+        SELECT a.tenant_id, p.owner_id, p.title,
+               COALESCE(tu.full_name, 'Арендатор') as tenant_name,
+               COALESCE(ou.full_name, 'Собственник') as owner_name
+        INTO v_tenant_id, v_owner_id, v_property_title, v_tenant_name, v_owner_name
         FROM applications a
         JOIN properties p ON a.property_id = p.property_id
+        LEFT JOIN users tu ON tu.user_id = a.tenant_id
+        LEFT JOIN users ou ON ou.user_id = p.owner_id
         WHERE a.application_id = NEW.application_id;
 
-        -- уведомление арендатору
-        INSERT INTO messages (from_user_id, to_user_id, content, created_at)
-        VALUES (NULL, tenant_id,
-                '**Договор отменён** на объект "' || prop_title || '"',
-                NOW());
-        -- уведомление собственнику
-        INSERT INTO messages (from_user_id, to_user_id, content, created_at)
-        VALUES (NULL, owner_id,
-                '**Договор отменён** на объект "' || prop_title || '"',
-                NOW());
+        -- Формируем номер договора
+        v_contract_number := 'Д-' || NEW.contract_id;
+
+        -- Уведомление арендатору
+        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+        VALUES (NULL, v_tenant_id,
+                '🚫 **Договор отменён** ' || v_contract_number || ' на объект "' || v_property_title || '"',
+                FALSE, NOW());
+
+        -- Уведомление собственнику
+        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
+        VALUES (NULL, v_owner_id,
+                '🚫 **Договор отменён** ' || v_contract_number || ' на объект "' || v_property_title || '"',
+                FALSE, NOW());
+
+        -- Возвращаем статус объекта на 'active' если нужно
+        -- UPDATE properties SET status = 'active' 
+        -- WHERE property_id = (SELECT property_id FROM applications WHERE application_id = NEW.application_id);
     END IF;
     RETURN NEW;
 END;
@@ -571,7 +619,7 @@ $$;
 ALTER FUNCTION public.notify_contract_cancellation() OWNER TO postgres;
 
 --
--- TOC entry 249 (class 1255 OID 90209)
+-- TOC entry 254 (class 1255 OID 90209)
 -- Name: notify_contract_signature(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -584,6 +632,7 @@ DECLARE
     v_property_title TEXT;
     v_tenant_name TEXT;
     v_owner_name TEXT;
+    v_contract_number TEXT;
 BEGIN
     -- Получаем связанные данные через application
     SELECT a.tenant_id, p.owner_id, p.title,
@@ -601,11 +650,14 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    -- Формируем номер договора
+    v_contract_number := 'Д-' || NEW.contract_id;
+
     -- Если арендатор только что подписал
     IF NEW.tenant_signed IS DISTINCT FROM OLD.tenant_signed AND NEW.tenant_signed = TRUE THEN
         INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
         VALUES (NULL, v_owner_id,
-                '✍️ **Арендатор подписал договор**: ' || v_tenant_name || ' подписал договор на объект "' || v_property_title || '"',
+                '✍️ **Арендатор подписал договор** ' || v_contract_number || ': ' || v_tenant_name || ' подписал договор на объект "' || v_property_title || '"',
                 FALSE, NOW());
     END IF;
 
@@ -613,7 +665,7 @@ BEGIN
     IF NEW.owner_signed IS DISTINCT FROM OLD.owner_signed AND NEW.owner_signed = TRUE THEN
         INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
         VALUES (NULL, v_tenant_id,
-                '✍️ **Собственник подписал договор**: ' || v_owner_name || ' подписал договор на объект "' || v_property_title || '"',
+                '✍️ **Собственник подписал договор** ' || v_contract_number || ': ' || v_owner_name || ' подписал договор на объект "' || v_property_title || '"',
                 FALSE, NOW());
     END IF;
 
@@ -622,14 +674,18 @@ BEGIN
         -- Уведомление арендатору
         INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
         VALUES (NULL, v_tenant_id,
-                '✅ **Договор полностью подписан** на объект "' || v_property_title || '"',
+                '✅ **Договор полностью подписан** ' || v_contract_number || ' на объект "' || v_property_title || '"',
                 FALSE, NOW());
 
         -- Уведомление собственнику
         INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
         VALUES (NULL, v_owner_id,
-                '✅ **Договор полностью подписан** на объект "' || v_property_title || '"',
+                '✅ **Договор полностью подписан** ' || v_contract_number || ' на объект "' || v_property_title || '"',
                 FALSE, NOW());
+
+        -- Обновляем статус объекта на 'rented'
+        UPDATE properties SET status = 'rented' 
+        WHERE property_id = (SELECT property_id FROM applications WHERE application_id = NEW.application_id);
     END IF;
 
     RETURN NEW;
@@ -640,7 +696,7 @@ $$;
 ALTER FUNCTION public.notify_contract_signature() OWNER TO postgres;
 
 --
--- TOC entry 233 (class 1255 OID 98398)
+-- TOC entry 237 (class 1255 OID 98398)
 -- Name: notify_new_application(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -662,7 +718,7 @@ BEGIN
     FROM users
     WHERE user_id = NEW.tenant_id;
 
-    -- Вставляем уведомление собственнику
+    -- Уведомление собственнику о новой заявке
     INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
     VALUES (NULL, v_owner_id,
             '📋 **Новая заявка** от ' || v_tenant_name || ' на объект "' || v_property_title || '"',
@@ -676,7 +732,7 @@ $$;
 ALTER FUNCTION public.notify_new_application() OWNER TO postgres;
 
 --
--- TOC entry 251 (class 1255 OID 90243)
+-- TOC entry 249 (class 1255 OID 90243)
 -- Name: set_current_user_id(integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -692,7 +748,7 @@ $$;
 ALTER FUNCTION public.set_current_user_id(user_id integer) OWNER TO postgres;
 
 --
--- TOC entry 246 (class 1255 OID 82017)
+-- TOC entry 245 (class 1255 OID 82017)
 -- Name: update_contract_signing_status(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -766,7 +822,7 @@ CREATE SEQUENCE public.applications_application_id_seq
 ALTER SEQUENCE public.applications_application_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5049 (class 0 OID 0)
+-- TOC entry 5046 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: applications_application_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -809,7 +865,7 @@ CREATE SEQUENCE public.audit_logs_log_id_seq
 ALTER SEQUENCE public.audit_logs_log_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5050 (class 0 OID 0)
+-- TOC entry 5047 (class 0 OID 0)
 -- Dependencies: 231
 -- Name: audit_logs_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -855,7 +911,7 @@ CREATE SEQUENCE public.contracts_contract_id_seq
 ALTER SEQUENCE public.contracts_contract_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5051 (class 0 OID 0)
+-- TOC entry 5048 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: contracts_contract_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -897,7 +953,7 @@ CREATE SEQUENCE public.messages_message_id_seq
 ALTER SEQUENCE public.messages_message_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5052 (class 0 OID 0)
+-- TOC entry 5049 (class 0 OID 0)
 -- Dependencies: 229
 -- Name: messages_message_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -949,7 +1005,7 @@ CREATE SEQUENCE public.properties_property_id_seq
 ALTER SEQUENCE public.properties_property_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5053 (class 0 OID 0)
+-- TOC entry 5050 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: properties_property_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -990,7 +1046,7 @@ CREATE SEQUENCE public.property_photos_photo_id_seq
 ALTER SEQUENCE public.property_photos_photo_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5054 (class 0 OID 0)
+-- TOC entry 5051 (class 0 OID 0)
 -- Dependencies: 223
 -- Name: property_photos_photo_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1036,7 +1092,7 @@ CREATE SEQUENCE public.users_user_id_seq
 ALTER SEQUENCE public.users_user_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5055 (class 0 OID 0)
+-- TOC entry 5052 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_user_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1101,7 +1157,7 @@ ALTER TABLE ONLY public.users ALTER COLUMN user_id SET DEFAULT nextval('public.u
 
 
 --
--- TOC entry 5037 (class 0 OID 32838)
+-- TOC entry 5034 (class 0 OID 32838)
 -- Dependencies: 226
 -- Data for Name: applications; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1139,6 +1195,8 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 1	1	6	Интересует квартира, хотел бы посмотреть в выходные	2024-06-15	365	Извините но уже поздно	rejected	2026-02-13 21:58:34.485672	2026-03-09 19:58:31.090004
 127	129	6	Интересует таунхаус для постоянного проживания	2026-03-10	365	\N	rejected	2026-02-23 16:20:00	2026-03-09 20:06:14.10428
 309	146	9	Нужна дополнительная информация	2025-05-21	518	К сожалению, объект уже сдан	approved	2025-05-07 00:00:00	2025-05-12 00:00:00
+319	149	11	Нужна дополнительная информация	2025-07-02	270	Извините, уже поздно! Счастливого вам!	rejected	2025-06-18 00:00:00	2026-03-15 16:14:09.402629
+330	158	11	Отличный вариант, готов обсудить условия	2025-07-21	544	Уже поздно, извините!	rejected	2025-07-07 00:00:00	2026-03-15 16:18:42.245079
 310	131	11	Нужна дополнительная информация	2025-05-19	503	К сожалению, объект уже сдан	approved	2025-05-05 00:00:00	2025-05-10 00:00:00
 311	141	15	Отличный вариант, готов обсудить условия	2025-06-09	269	Добро пожаловать! Жду на подписание	approved	2025-05-26 00:00:00	2025-05-31 00:00:00
 312	6	13	Отличный вариант, готов обсудить условия	2025-07-06	402	\N	pending	2025-06-22 00:00:00	\N
@@ -1148,7 +1206,6 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 316	146	6	Нужна дополнительная информация	2025-06-25	268	Добро пожаловать! Жду на подписание	approved	2025-06-11 00:00:00	2025-06-12 00:00:00
 317	153	15	Интересует аренда на длительный срок	2025-06-16	294	К сожалению, объект уже сдан	approved	2025-06-02 00:00:00	2025-06-08 00:00:00
 318	139	9	Нужна дополнительная информация	2025-07-01	509	Добро пожаловать! Жду на подписание	approved	2025-06-17 00:00:00	2025-06-21 00:00:00
-319	149	11	Нужна дополнительная информация	2025-07-02	270	\N	pending	2025-06-18 00:00:00	\N
 320	4	13	Нужна дополнительная информация	2025-06-16	186	\N	pending	2025-06-02 00:00:00	\N
 321	156	6	Интересует аренда на длительный срок	2025-07-21	361	Добро пожаловать! Жду на подписание	approved	2025-07-07 00:00:00	2025-07-09 00:00:00
 322	6	6	Хочу посмотреть объект в ближайшее время	2025-07-18	390	\N	pending	2025-07-04 00:00:00	\N
@@ -1159,7 +1216,6 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 327	139	13	Хочу посмотреть объект в ближайшее время	2025-08-07	436	Можем встретиться для обсуждения	rejected	2025-07-24 00:00:00	2025-07-29 00:00:00
 328	128	9	Отличный вариант, готов обсудить условия	2025-07-29	416	Добро пожаловать! Жду на подписание	approved	2025-07-15 00:00:00	2025-07-18 00:00:00
 329	153	13	Отличный вариант, готов обсудить условия	2025-07-26	284	\N	pending	2025-07-12 00:00:00	\N
-330	158	11	Отличный вариант, готов обсудить условия	2025-07-21	544	\N	pending	2025-07-07 00:00:00	\N
 331	151	6	Хочу посмотреть объект в ближайшее время	2025-07-18	386	Можем встретиться для обсуждения	rejected	2025-07-04 00:00:00	2025-07-07 00:00:00
 332	141	6	Хочу посмотреть объект в ближайшее время	2025-08-24	399	Можем встретиться для обсуждения	approved	2025-08-10 00:00:00	2025-08-12 00:00:00
 333	150	17	Интересует аренда на длительный срок	2025-08-29	199	К сожалению, объект уже сдан	approved	2025-08-15 00:00:00	2025-08-16 00:00:00
@@ -1183,7 +1239,6 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 351	167	19	Отличный вариант, готов обсудить условия	2025-10-21	367	Можем встретиться для обсуждения	rejected	2025-10-07 00:00:00	2025-10-11 00:00:00
 151	3	11	Отличный вариант, готов обсудить условия	2025-02-05	634	Предлагаю встретиться в пятницу	approved	2025-01-29 00:00:00	2025-01-29 00:00:00
 352	163	9	Нужна дополнительная информация	2025-10-29	209	Добро пожаловать! Жду на подписание	rejected	2025-10-15 00:00:00	2025-10-16 00:00:00
-353	149	17	Интересует аренда на длительный срок	2025-10-18	260	\N	pending	2025-10-04 00:00:00	\N
 354	2	18	Хочу посмотреть объект в ближайшее время	2025-11-07	480	К сожалению, объект уже сдан	rejected	2025-10-24 00:00:00	2025-10-30 00:00:00
 355	129	19	Нужна дополнительная информация	2025-12-09	351	Можем встретиться для обсуждения	rejected	2025-11-25 00:00:00	2025-12-01 00:00:00
 356	130	16	Хочу посмотреть объект в ближайшее время	2025-11-29	407	Можем встретиться для обсуждения	approved	2025-11-15 00:00:00	2025-11-20 00:00:00
@@ -1206,6 +1261,7 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 175	165	7	Планирую отдых летом, интересует аренда на курортный сезон	2025-07-20	110	Объект свободен на эти даты, жду подтверждения	approved	2025-03-29 00:00:00	2025-03-20 00:00:00
 139	131	9	Желаю заселиться	2026-03-01	34	\N	cancelled	2026-02-26 17:26:41.519866	2026-02-26 13:45:00
 140	133	9	Мне нужно заселиться	2026-03-15	140	\N	pending	2026-03-09 09:24:57.84671	2026-03-09 13:45:00
+353	149	17	Интересует аренда на длительный срок	2026-03-21	180	По коммунальным причинам перенес уменьшил кол-во дней.	approved	2025-10-04 00:00:00	2026-03-15 21:04:53.018707
 141	129	9	Как можно скорее	2026-03-19	365	\N	approved	2026-03-09 19:17:20.68289	2026-03-10 09:17:20
 176	147	17	Планирую отдых летом, интересует аренда на курортный сезон	2025-08-24	100	Объект свободен на эти даты, жду подтверждения	approved	2025-03-30 00:00:00	2025-03-17 00:00:00
 361	140	16	Нужна дополнительная информация	2025-12-04	452	К сожалению, объект уже сдан	approved	2025-11-20 00:00:00	2025-11-22 00:00:00
@@ -1306,7 +1362,7 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 
 
 --
--- TOC entry 5043 (class 0 OID 32930)
+-- TOC entry 5040 (class 0 OID 32930)
 -- Dependencies: 232
 -- Data for Name: audit_logs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1422,11 +1478,66 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 110	\N	UPDATE	messages	253	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Договор отменён** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:34:30.943048", "message_id": 253, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:35:00.256632
 111	\N	UPDATE	messages	251	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Заявка одобрена** на объект \\"Таунхаус\\"", "is_read": false, "created_at": "2026-03-14T20:27:01.682142", "message_id": 251, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:35:01.312104
 112	\N	UPDATE	messages	252	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Заявка одобрена** на объект \\"Таунхаус\\"", "is_read": false, "created_at": "2026-03-14T20:27:01.682142", "message_id": 252, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:35:01.312104
+113	\N	DELETE	messages	245	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "✍️ **Арендатор подписал договор**: Боев Владислав Максимович подписал договор на объект \\"Квартира\\"", "is_read": false, "created_at": "2026-03-14T19:34:43.385256", "message_id": 245, "to_user_id": 5, "from_user_id": null}}	2026-03-15 15:00:29.663945
+114	\N	DELETE	messages	247	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "✅ **Заявка одобрена** на объект \\"Коттедж с бассейном\\"", "is_read": true, "created_at": "2026-03-14T19:35:16.672442", "message_id": 247, "to_user_id": 9, "from_user_id": null}}	2026-03-15 15:00:29.663945
+115	\N	DELETE	messages	250	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "✍️ **Собственник подписал договор**: Соловьёва Юлия Сергеевна подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": true, "created_at": "2026-03-14T20:00:50.450466", "message_id": 250, "to_user_id": 9, "from_user_id": null}}	2026-03-15 15:00:29.663945
+116	\N	DELETE	messages	252	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "✅ **Заявка одобрена** на объект \\"Таунхаус\\"", "is_read": true, "created_at": "2026-03-14T20:27:01.682142", "message_id": 252, "to_user_id": 9, "from_user_id": null}}	2026-03-15 15:00:29.663945
+117	\N	UPDATE	messages	254	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Договор отменён** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:34:30.943048", "message_id": 254, "to_user_id": 12, "from_user_id": null}}	2026-03-15 15:04:54.968618
+118	\N	INSERT	messages	256	{"table": "messages", "action": "INSERT", "new_data": {"content": "❌ **Заявка отклонена** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T16:14:09.400207", "message_id": 256, "to_user_id": 11, "from_user_id": null}}	2026-03-15 16:14:09.400207
+119	\N	UPDATE	applications	319	{"table": "applications", "changes": {"answer": {"new": "Извините, уже поздно! Счастливого вам!", "old": null}, "status": {"new": "rejected", "old": "pending"}, "responded_at": {"new": "2026-03-15T16:14:09.402629", "old": null}}, "old_data": {"answer": null, "status": "pending", "message": "Нужна дополнительная информация", "tenant_id": 11, "created_at": "2025-06-18T00:00:00", "property_id": 149, "desired_date": "2025-07-02", "responded_at": null, "duration_days": 270, "application_id": 319}}	2026-03-15 16:14:09.400207
+120	\N	INSERT	messages	257	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка rejected** на объект 'Коттедж с бассейном'. Ответ: Извините, уже поздно! Счастливого вам!", "is_read": false, "created_at": "2026-03-15T16:14:09.492351", "message_id": 257, "to_user_id": 11, "from_user_id": null}}	2026-03-15 16:14:09.488008
+121	\N	INSERT	messages	258	{"table": "messages", "action": "INSERT", "new_data": {"content": "❌ **Заявка отклонена** на объект \\"Коммерческое помещение\\"", "is_read": false, "created_at": "2026-03-15T16:18:42.242342", "message_id": 258, "to_user_id": 11, "from_user_id": null}}	2026-03-15 16:18:42.242342
+122	\N	UPDATE	applications	330	{"table": "applications", "changes": {"answer": {"new": "Уже поздно, извините!", "old": null}, "status": {"new": "rejected", "old": "pending"}, "responded_at": {"new": "2026-03-15T16:18:42.245079", "old": null}}, "old_data": {"answer": null, "status": "pending", "message": "Отличный вариант, готов обсудить условия", "tenant_id": 11, "created_at": "2025-07-07T00:00:00", "property_id": 158, "desired_date": "2025-07-21", "responded_at": null, "duration_days": 544, "application_id": 330}}	2026-03-15 16:18:42.242342
+123	\N	INSERT	messages	259	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка rejected** на объект 'Коммерческое помещение'. Ответ: Уже поздно, извините!", "is_read": false, "created_at": "2026-03-15T16:18:42.253063", "message_id": 259, "to_user_id": 11, "from_user_id": null}}	2026-03-15 16:18:42.25179
+124	\N	INSERT	messages	260	{"table": "messages", "action": "INSERT", "new_data": {"content": "ааа", "is_read": false, "created_at": "2026-03-15T15:17:08.888541", "message_id": 260, "to_user_id": 3, "from_user_id": 9}}	2026-03-15 18:17:08.886259
+125	\N	INSERT	users	21	{"table": "users", "action": "INSERT", "new_data": {"email": "taranenko@rentease.ru", "user_id": 21, "full_name": "Тараненко Иван Сергеевич", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-15T18:27:54.989358", "contact_info": {"inn": "2556647474", "passport": "5667778883"}, "password_hash": "533210cab25f6672bf323836b0c6bc8db5ead1fae818cea67865fe1f6daf4368"}}	2026-03-15 18:27:54.992849
+126	\N	UPDATE	users	21	{"table": "users", "changes": {"avatar_url": {"new": "/static/uploads/avatars/f730e34f54024682ac271e381da8a3e7.png", "old": null}}, "old_data": {"email": "taranenko@rentease.ru", "user_id": 21, "full_name": "Тараненко Иван Сергеевич", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-15T18:27:54.989358", "contact_info": {"inn": "2556647474", "passport": "5667778883"}, "password_hash": "533210cab25f6672bf323836b0c6bc8db5ead1fae818cea67865fe1f6daf4368"}}	2026-03-15 18:27:55.047231
+127	\N	UPDATE	users	1	{"table": "users", "changes": {"is_active": {"new": false, "old": true}}, "old_data": {"email": "admin@rentease.ru", "user_id": 1, "full_name": "Администратор Системы", "is_active": true, "user_type": "admin", "avatar_url": "/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg", "created_at": "2026-02-13T21:58:34.325669", "contact_info": {"phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}, "password_hash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"}}	2026-03-15 20:34:48.373555
+128	1	TOGGLE_BLOCK	user	1	{"changes": {"is_active": false}}	2026-03-15 17:34:48.425434
+129	\N	UPDATE	users	1	{"table": "users", "changes": {"is_active": {"new": true, "old": false}}, "old_data": {"email": "admin@rentease.ru", "user_id": 1, "full_name": "Администратор Системы", "is_active": false, "user_type": "admin", "avatar_url": "/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg", "created_at": "2026-02-13T21:58:34.325669", "contact_info": {"phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}, "password_hash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"}}	2026-03-15 20:34:51.17918
+130	1	TOGGLE_BLOCK	user	1	{"changes": {"is_active": true}}	2026-03-15 17:34:51.190107
+131	\N	UPDATE	users	12	{"table": "users", "changes": {"is_active": {"new": false, "old": true}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулёво", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 20:35:20.878305
+132	1	TOGGLE_BLOCK	user	12	{"changes": {"is_active": false}}	2026-03-15 17:35:20.88673
+133	\N	UPDATE	users	12	{"table": "users", "changes": {"is_active": {"new": true, "old": false}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": false, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулёво", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 20:35:24.036294
+134	1	TOGGLE_BLOCK	user	12	{"changes": {"is_active": true}}	2026-03-15 17:35:24.042493
+135	\N	INSERT	messages	261	{"table": "messages", "action": "INSERT", "new_data": {"content": "оло", "is_read": false, "created_at": "2026-03-15T17:46:44.202952", "message_id": 261, "to_user_id": 4, "from_user_id": 1}}	2026-03-15 20:46:44.200839
+136	\N	UPDATE	messages	261	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "оло", "is_read": false, "created_at": "2026-03-15T17:46:44.202952", "message_id": 261, "to_user_id": 4, "from_user_id": 1}}	2026-03-15 20:46:49.206285
+137	\N	UPDATE	messages	127	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "Хочу уточнить детали перед подписанием", "is_read": false, "created_at": "2026-03-02T14:52:24.819384", "message_id": 127, "to_user_id": 4, "from_user_id": 6}}	2026-03-15 20:50:04.988394
+138	\N	UPDATE	messages	220	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Системное сообщение** Скоро заканчивается срок аренды", "is_read": false, "created_at": "2025-11-03T13:37:21.858491", "message_id": 220, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:03:07.390662
+139	\N	UPDATE	messages	235	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Уведомление** Ваша заявка №1069 одобрена", "is_read": false, "created_at": "2025-01-05T19:11:16.268937", "message_id": 235, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:03:15.485251
+140	\N	INSERT	contracts	97	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-09-17", "created_at": "2026-03-15T21:04:53.015646", "start_date": "2026-03-21", "contract_id": 97, "owner_signed": false, "total_amount": 1500000.00, "tenant_signed": false, "application_id": 353, "signing_status": "draft"}}	2026-03-15 21:04:53.015646
+141	\N	INSERT	messages	262	{"table": "messages", "action": "INSERT", "new_data": {"content": "📄 **Договор создан** на объект \\"Коттедж с бассейном\\". Ожидается подписание.", "is_read": false, "created_at": "2026-03-15T21:04:53.015646", "message_id": 262, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:04:53.015646
+142	\N	INSERT	messages	263	{"table": "messages", "action": "INSERT", "new_data": {"content": "📄 **Договор создан** на объект \\"Коттедж с бассейном\\" с арендатором Феоктистов Глеб Юрьевич. Ожидается подписание.", "is_read": false, "created_at": "2026-03-15T21:04:53.015646", "message_id": 263, "to_user_id": 12, "from_user_id": null}}	2026-03-15 21:04:53.015646
+143	\N	INSERT	messages	264	{"table": "messages", "action": "INSERT", "new_data": {"content": "✅ **Заявка одобрена** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:04:53.015646", "message_id": 264, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:04:53.015646
+144	\N	UPDATE	applications	353	{"table": "applications", "changes": {"answer": {"new": "По коммунальным причинам перенес уменьшил кол-во дней.", "old": null}, "status": {"new": "approved", "old": "pending"}, "desired_date": {"new": "2026-03-21", "old": "2025-10-18"}, "responded_at": {"new": "2026-03-15T21:04:53.018707", "old": null}, "duration_days": {"new": 180, "old": 260}}, "old_data": {"answer": null, "status": "pending", "message": "Интересует аренда на длительный срок", "tenant_id": 17, "created_at": "2025-10-04T00:00:00", "property_id": 149, "desired_date": "2025-10-18", "responded_at": null, "duration_days": 260, "application_id": 353}}	2026-03-15 21:04:53.015646
+145	\N	INSERT	messages	265	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка approved** на объект 'Коттедж с бассейном'. Ответ: По коммунальным причинам перенес уменьшил кол-во дней.", "is_read": false, "created_at": "2026-03-15T21:04:53.044705", "message_id": 265, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:04:53.042128
+146	\N	DELETE	messages	265	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "**Заявка approved** на объект 'Коттедж с бассейном'. Ответ: По коммунальным причинам перенес уменьшил кол-во дней.", "is_read": false, "created_at": "2026-03-15T21:04:53.044705", "message_id": 265, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:07:39.24178
+147	\N	DELETE	messages	248	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "**Заявка approved** на объект 'Коттедж с бассейном'. ", "is_read": true, "created_at": "2026-03-14T19:35:16.768746", "message_id": 248, "to_user_id": 9, "from_user_id": null}}	2026-03-15 21:07:39.24178
+148	\N	INSERT	messages	266	{"table": "messages", "action": "INSERT", "new_data": {"content": "✍️ **Арендатор подписал договор** Д-97: Феоктистов Глеб Юрьевич подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:08:19.622137", "message_id": 266, "to_user_id": 12, "from_user_id": null}}	2026-03-15 21:08:19.622137
+149	\N	UPDATE	contracts	97	{"table": "contracts", "changes": {"tenant_signed": {"new": true, "old": false}, "signing_status": {"new": "pending", "old": "draft"}}, "old_data": {"end_date": "2026-09-17", "created_at": "2026-03-15T21:04:53.015646", "start_date": "2026-03-21", "contract_id": 97, "owner_signed": false, "total_amount": 1500000.00, "tenant_signed": false, "application_id": 353, "signing_status": "draft"}}	2026-03-15 21:08:19.622137
+150	\N	INSERT	messages	267	{"table": "messages", "action": "INSERT", "new_data": {"content": "кк", "is_read": false, "created_at": "2026-03-15T18:09:27.436444", "message_id": 267, "to_user_id": 17, "from_user_id": 12}}	2026-03-15 21:09:27.435704
+151	\N	UPDATE	messages	267	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "кк", "is_read": false, "created_at": "2026-03-15T18:09:27.436444", "message_id": 267, "to_user_id": 17, "from_user_id": 12}}	2026-03-15 21:15:36.616168
+152	\N	UPDATE	messages	263	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "📄 **Договор создан** на объект \\"Коттедж с бассейном\\" с арендатором Феоктистов Глеб Юрьевич. Ожидается подписание.", "is_read": false, "created_at": "2026-03-15T21:04:53.015646", "message_id": 263, "to_user_id": 12, "from_user_id": null}}	2026-03-15 21:16:03.356715
+153	\N	UPDATE	messages	266	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✍️ **Арендатор подписал договор** Д-97: Феоктистов Глеб Юрьевич подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:08:19.622137", "message_id": 266, "to_user_id": 12, "from_user_id": null}}	2026-03-15 21:16:05.005921
+154	\N	UPDATE	messages	262	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "📄 **Договор создан** на объект \\"Коттедж с бассейном\\". Ожидается подписание.", "is_read": false, "created_at": "2026-03-15T21:04:53.015646", "message_id": 262, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:16:06.184676
+155	\N	UPDATE	messages	264	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Заявка одобрена** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:04:53.015646", "message_id": 264, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:16:06.184676
+156	\N	INSERT	messages	268	{"table": "messages", "action": "INSERT", "new_data": {"content": "✍️ **Собственник подписал договор** Д-97: Соловьёва Юлия Сергеевна подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:17:17.719383", "message_id": 268, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:17:17.719383
+157	\N	INSERT	messages	269	{"table": "messages", "action": "INSERT", "new_data": {"content": "✅ **Договор полностью подписан** Д-97 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:17:17.719383", "message_id": 269, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:17:17.719383
+158	\N	INSERT	messages	270	{"table": "messages", "action": "INSERT", "new_data": {"content": "✅ **Договор полностью подписан** Д-97 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:17:17.719383", "message_id": 270, "to_user_id": 12, "from_user_id": null}}	2026-03-15 21:17:17.719383
+159	\N	UPDATE	properties	149	{"table": "properties", "changes": {"status": {"new": "rented", "old": "active"}}, "old_data": {"area": 200.00, "city": "Геленджик", "price": 250000.00, "rooms": 5, "title": "Коттедж с бассейном", "status": "active", "address": "с. Кабардинка, ул. Морская, д. 7", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Элитный коттедж с закрытой территорией и бассейном", "property_id": 149, "interval_pay": "month", "property_type": "house"}}	2026-03-15 21:17:17.719383
+160	\N	UPDATE	contracts	97	{"table": "contracts", "changes": {"owner_signed": {"new": true, "old": false}, "signing_status": {"new": "signed", "old": "pending"}}, "old_data": {"end_date": "2026-09-17", "created_at": "2026-03-15T21:04:53.015646", "start_date": "2026-03-21", "contract_id": 97, "owner_signed": false, "total_amount": 1500000.00, "tenant_signed": true, "application_id": 353, "signing_status": "pending"}}	2026-03-15 21:17:17.719383
+161	\N	UPDATE	messages	268	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✍️ **Собственник подписал договор** Д-97: Соловьёва Юлия Сергеевна подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:17:17.719383", "message_id": 268, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:17:34.356202
+162	\N	UPDATE	messages	269	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Договор полностью подписан** Д-97 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:17:17.719383", "message_id": 269, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:17:36.425139
+163	\N	UPDATE	messages	270	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Договор полностью подписан** Д-97 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:17:17.719383", "message_id": 270, "to_user_id": 12, "from_user_id": null}}	2026-03-15 21:52:58.242355
+164	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Донецк", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулёво", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулёво", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 21:59:42.174753
+165	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Донецк", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Донецк", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 21:59:59.047157
+166	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Куровское  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 22:03:56.870232
+167	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Куровское  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Куровское  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 22:04:04.034013
 \.
 
 
 --
--- TOC entry 5039 (class 0 OID 32868)
+-- TOC entry 5036 (class 0 OID 32868)
 -- Dependencies: 228
 -- Data for Name: contracts; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1510,11 +1621,12 @@ COPY public.contracts (contract_id, application_id, start_date, end_date, total_
 92	388	2026-03-18	2027-06-16	208000.00	pending	2026-03-14 00:03:50.015217	t	f
 96	141	2026-03-19	2027-03-19	845000.00	draft	2026-03-14 20:27:01.682142	f	f
 95	395	2026-05-09	2026-08-07	750000.00	cancelled	2026-03-14 19:35:16.672442	f	t
+97	353	2026-03-21	2026-09-17	1500000.00	signed	2026-03-15 21:04:53.015646	t	t
 \.
 
 
 --
--- TOC entry 5041 (class 0 OID 32907)
+-- TOC entry 5038 (class 0 OID 32907)
 -- Dependencies: 230
 -- Data for Name: messages; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1639,7 +1751,6 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 123	17	4	Добрый день! Интересует вопрос по аренде	t	2026-01-30 22:56:32.45819
 124	6	5	Хочу уточнить детали перед подписанием	f	2026-02-05 14:59:53.370891
 126	7	3	Добрый день! Интересует вопрос по аренде	t	2026-03-10 14:13:06.853469
-127	6	4	Хочу уточнить детали перед подписанием	f	2026-03-02 14:52:24.819384
 128	7	5	Когда можно заехать?	f	2026-03-01 07:34:01.268135
 129	11	3	Как происходит оплата коммунальных услуг?	t	2025-02-04 21:08:16.404291
 130	7	2	Когда нужно будет внести первый платеж?	t	2025-02-18 07:17:31.656187
@@ -1694,6 +1805,7 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 172	15	3	Привет! Как дела?	t	2025-06-27 08:15:45.859473
 125	6	3	Хочу уточнить детали перед подписанием	t	2026-02-06 20:07:05.096526
 179	7	1	Видел новый объект в нашем районе?	t	2025-04-30 15:59:41.65094
+127	6	4	Хочу уточнить детали перед подписанием	t	2026-03-02 14:52:24.819384
 183	15	11	Видел новый объект в нашем районе?	t	2025-09-19 22:52:40.965106
 184	9	6	Есть вопросы по документам, можешь помочь?	f	2025-10-30 20:21:20.489922
 185	3	7	Привет! Как дела?	f	2026-01-04 18:39:26.638369
@@ -1727,7 +1839,6 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 217	\N	18	**Внимание** Обновите данные в профиле	t	2025-08-15 12:33:52.67706
 218	\N	6	**Системное сообщение** Скоро заканчивается срок аренды	f	2026-01-14 20:49:06.858851
 219	\N	13	**Уведомление** Ваша заявка №1062 одобрена	t	2025-09-13 06:25:03.425665
-220	\N	17	**Системное сообщение** Скоро заканчивается срок аренды	f	2025-11-03 13:37:21.858491
 221	\N	16	**Системное сообщение** Скоро заканчивается срок аренды	t	2025-06-23 13:13:06.010214
 222	\N	19	**Напоминание** о предстоящем платеже по договору №1098	f	2025-09-11 18:15:19.33286
 223	\N	11	**Напоминание** о предстоящем платеже по договору №1035	t	2026-01-10 21:09:43.627285
@@ -1740,7 +1851,6 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 232	\N	9	**Внимание** Обновите данные в профиле	t	2025-12-28 06:37:48.760187
 233	\N	19	**Внимание** Обновите данные в профиле	f	2025-03-28 09:07:36.974217
 234	\N	19	**Напоминание** о предстоящем платеже по договору №1077	t	2025-07-27 15:49:17.064854
-235	\N	17	**Уведомление** Ваша заявка №1069 одобрена	f	2025-01-05 19:11:16.268937
 236	\N	19	**Системное сообщение** Скоро заканчивается срок аренды	f	2025-04-28 23:14:41.309387
 238	\N	7	**Внимание** Обновите данные в профиле	t	2025-08-21 06:19:39.612303
 239	\N	16	**Уведомление** Ваша заявка №1043 одобрена	f	2025-12-04 16:11:52.699589
@@ -1757,23 +1867,34 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 231	\N	9	**Внимание** Обновите данные в профиле	t	2026-02-25 01:44:37.017336
 224	\N	9	**Внимание** Обновите данные в профиле	t	2025-04-08 20:05:58.992198
 243	\N	12	📋 **Новая заявка** от Боев Владислав Максимович на объект "Коттедж с бассейном"	t	2026-03-14 19:32:58.068672
+220	\N	17	**Системное сообщение** Скоро заканчивается срок аренды	t	2025-11-03 13:37:21.858491
+235	\N	17	**Уведомление** Ваша заявка №1069 одобрена	t	2025-01-05 19:11:16.268937
 244	\N	5	✍️ **Арендатор подписал договор**: Боев Владислав Максимович подписал договор на объект "Квартира"	f	2026-03-14 19:34:43.385256
-245	\N	5	✍️ **Арендатор подписал договор**: Боев Владислав Максимович подписал договор на объект "Квартира"	f	2026-03-14 19:34:43.385256
-247	\N	9	✅ **Заявка одобрена** на объект "Коттедж с бассейном"	t	2026-03-14 19:35:16.672442
-248	\N	9	**Заявка approved** на объект 'Коттедж с бассейном'. 	t	2026-03-14 19:35:16.768746
 246	\N	9	✅ **Заявка одобрена** на объект "Коттедж с бассейном"	t	2026-03-14 19:35:16.672442
-250	\N	9	✍️ **Собственник подписал договор**: Соловьёва Юлия Сергеевна подписал договор на объект "Коттедж с бассейном"	t	2026-03-14 20:00:50.450466
 249	\N	9	✍️ **Собственник подписал договор**: Соловьёва Юлия Сергеевна подписал договор на объект "Коттедж с бассейном"	t	2026-03-14 20:00:50.450466
-254	\N	12	**Договор отменён** на объект "Коттедж с бассейном"	f	2026-03-14 20:34:30.943048
 255	\N	9	**Договор отменён** на объект 'Коттедж с бассейном'. Договор №95	t	2026-03-14 20:34:30.972685
 253	\N	9	**Договор отменён** на объект "Коттедж с бассейном"	t	2026-03-14 20:34:30.943048
 251	\N	9	✅ **Заявка одобрена** на объект "Таунхаус"	t	2026-03-14 20:27:01.682142
-252	\N	9	✅ **Заявка одобрена** на объект "Таунхаус"	t	2026-03-14 20:27:01.682142
+254	\N	12	**Договор отменён** на объект "Коттедж с бассейном"	t	2026-03-14 20:34:30.943048
+256	\N	11	❌ **Заявка отклонена** на объект "Коттедж с бассейном"	f	2026-03-15 16:14:09.400207
+257	\N	11	**Заявка rejected** на объект 'Коттедж с бассейном'. Ответ: Извините, уже поздно! Счастливого вам!	f	2026-03-15 16:14:09.492351
+258	\N	11	❌ **Заявка отклонена** на объект "Коммерческое помещение"	f	2026-03-15 16:18:42.242342
+259	\N	11	**Заявка rejected** на объект 'Коммерческое помещение'. Ответ: Уже поздно, извините!	f	2026-03-15 16:18:42.253063
+260	9	3	ааа	f	2026-03-15 15:17:08.888541
+261	1	4	оло	t	2026-03-15 17:46:44.202952
+267	12	17	кк	t	2026-03-15 18:09:27.436444
+263	\N	12	📄 **Договор создан** на объект "Коттедж с бассейном" с арендатором Феоктистов Глеб Юрьевич. Ожидается подписание.	t	2026-03-15 21:04:53.015646
+266	\N	12	✍️ **Арендатор подписал договор** Д-97: Феоктистов Глеб Юрьевич подписал договор на объект "Коттедж с бассейном"	t	2026-03-15 21:08:19.622137
+262	\N	17	📄 **Договор создан** на объект "Коттедж с бассейном". Ожидается подписание.	t	2026-03-15 21:04:53.015646
+264	\N	17	✅ **Заявка одобрена** на объект "Коттедж с бассейном"	t	2026-03-15 21:04:53.015646
+268	\N	17	✍️ **Собственник подписал договор** Д-97: Соловьёва Юлия Сергеевна подписал договор на объект "Коттедж с бассейном"	t	2026-03-15 21:17:17.719383
+269	\N	17	✅ **Договор полностью подписан** Д-97 на объект "Коттедж с бассейном"	t	2026-03-15 21:17:17.719383
+270	\N	12	✅ **Договор полностью подписан** Д-97 на объект "Коттедж с бассейном"	t	2026-03-15 21:17:17.719383
 \.
 
 
 --
--- TOC entry 5033 (class 0 OID 32789)
+-- TOC entry 5030 (class 0 OID 32789)
 -- Dependencies: 222
 -- Data for Name: properties; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1801,12 +1922,12 @@ COPY public.properties (property_id, owner_id, title, description, address, city
 144	4	Квартира в центре Сочи	5 минут до моря, новый ремонт, вся мебель и техника	ул. Орджоникидзе, д. 20	Сочи	apartment	62.00	2	75000.00	month	active	2026-03-10 20:27:37.442124
 145	5	Дом в Красной Поляне	Шале в горах, камин, отличный вид на горнолыжные трассы	Красная Поляна, ул. Горная, д. 5	Сочи	house	150.00	4	200000.00	month	active	2026-03-10 20:27:37.442124
 147	4	Квартира с видом на море	Центр Геленджика, вид на бухту, новая мебель	ул. Революционная, д. 45	Геленджик	apartment	68.00	2	65000.00	month	active	2026-03-10 20:27:37.442124
-149	12	Коттедж с бассейном	Элитный коттедж с закрытой территорией и бассейном	с. Кабардинка, ул. Морская, д. 7	Геленджик	house	200.00	5	250000.00	month	active	2026-03-10 20:27:37.442124
 150	4	Квартира в центре	Хорошая квартира в центре города, развитая инфраструктура	ул. Ленина, д. 85, кв. 34	Орехово-Зуево	apartment	54.00	2	28000.00	month	active	2026-03-10 20:27:37.442124
 151	5	Новостройка	Квартира в новом доме с отделкой	ул. Стаханова, д. 12, кв. 78	Орехово-Зуево	apartment	42.00	1	25000.00	month	active	2026-03-10 20:27:37.442124
 152	12	Дом с участком	Частный дом с большим участком	ул. Садовая, д. 25	Орехово-Зуево	house	95.00	3	45000.00	month	active	2026-03-10 20:27:37.442124
 173	2	ytry	hrhrhhrt	hthth	thth	apartment	0.00	0	0.00	month	draft	2026-03-13 18:22:17.07505
 129	2	Таунхаус	Двухуровневый таунхаус с террасой	ул. Спортивная, д. 10	Авсюнино	house	95.00	3	65000.00	month	rented	2026-02-18 15:50:00
+149	12	Коттедж с бассейном	Элитный коттедж с закрытой территорией и бассейном	с. Кабардинка, ул. Морская, д. 7	Геленджик	house	200.00	5	250000.00	month	rented	2026-03-10 20:27:37.442124
 153	4	Квартира улучшенной планировки	Просторная квартира в кирпичном доме	ул. Вокзальная, д. 8, кв. 15	Куровское	apartment	58.00	2	22000.00	month	active	2026-03-10 20:27:37.442124
 154	5	Студия	Маленькая уютная студия	ул. Советская, д. 45	Куровское	apartment	28.00	1	15000.00	month	active	2026-03-10 20:27:37.442124
 155	12	Дом в тихом районе	Дом с небольшим участком	ул. Заречная, д. 7	Куровское	house	70.00	2	35000.00	month	active	2026-03-10 20:27:37.442124
@@ -1826,7 +1947,7 @@ COPY public.properties (property_id, owner_id, title, description, address, city
 
 
 --
--- TOC entry 5035 (class 0 OID 32819)
+-- TOC entry 5032 (class 0 OID 32819)
 -- Dependencies: 224
 -- Data for Name: property_photos; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1855,8 +1976,6 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 34	164	/static/uploads/properties/164/ce95ae6747504292973c6ef778ae0a29.jpg	t	1
 35	149	/static/uploads/properties/149/600034e7c99f415aabd3c1eb84fe77d0.jpg	t	1
 36	149	/static/uploads/properties/149/71280af538184d64bc1af727dcb30e25.jfif	f	2
-37	152	/static/uploads/properties/152/c9b546353a75416bb4c376e3ad343d2f.jpg	t	1
-38	152	/static/uploads/properties/152/2c9c0a095ac34a728e8a07119894a7e9.jpg	f	2
 39	146	/static/uploads/properties/146/982b82b82d8b4dc8bdec29ad7b10397b.jpg	t	1
 40	161	/static/uploads/properties/161/3d8184bf18dd48e69453ad04ff3cba2f.jpg	t	1
 41	140	/static/uploads/properties/140/a4d10838570148a99f3c94fc2d71bb3d.jpg	t	1
@@ -1872,6 +1991,8 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 1	1	/static/uploads/properties/1/photo1.png	f	3
 2	1	/static/uploads/properties/1/photo2.png	t	1
 51	1	/static/uploads/properties/1/92a812ce3e75436f9aef4a06de2602c5.jpg	f	2
+37	152	/static/uploads/properties/152/c9b546353a75416bb4c376e3ad343d2f.jpg	t	1
+38	152	/static/uploads/properties/152/2c9c0a095ac34a728e8a07119894a7e9.jpg	f	2
 69	173	/static/uploads/properties/173/d136589710b048c39854ab8ef32a2142.png	f	2
 70	173	/static/uploads/properties/173/7622d730209b4157a3add6d5449c1d34.png	f	3
 23	129	/static/uploads/properties/129/87f76a43730e4419b0e5aaf492809a0a.jpg	f	2
@@ -1880,35 +2001,36 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 
 
 --
--- TOC entry 5031 (class 0 OID 32770)
+-- TOC entry 5028 (class 0 OID 32770)
 -- Dependencies: 220
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.users (user_id, email, password_hash, avatar_url, full_name, user_type, contact_info, is_active, created_at) FROM stdin;
+1	admin@rentease.ru	240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9	/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg	Администратор Системы	admin	{"phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}	t	2026-02-13 21:58:34.325669
+12	qmett1@gmail.com	bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e	/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg	Соловьёва Юлия Сергеевна	agent	{"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}	t	2026-03-10 20:02:42.602234
 11	myname@mail.ru	51bb9ba1a4744cf288c7ae72b5360e505ab9406e33b0e0871b5e969bc25b4fc5	/static/uploads/avatars/e4cb200e7e9e421c929c984cd2752e99.jpg	myname	tenant	{"phone": "+79256789011", "birth_date": "2000-01-02"}	t	2026-02-24 20:55:16.895943
 9	vladislav.boev02@mail.ru	952957cd67e20c467107f126a4c760937c516fe5d373eae39b6ea39bc16ae273	/static/uploads/avatars/1f7bf80f63bf4694bb1f80d1e5faaaca.jpg	Боев Владислав Максимович	tenant	{"inn": "4245343436", "city": "Орехово-Зуево", "phone": "+79964959391", "passport": "1234567890", "birth_date": "2007-01-02"}	t	2026-02-23 13:16:20.738342
+17	feoktistov.gleb@mail.ru	405ffaf7e22ebe8ba27999b01b3cf095e870255abdd3d64b5387f0f649c4d15a	\N	Феоктистов Глеб Юрьевич	tenant	{"city": "Москва", "phone": "+7 (903) 345-67-89"}	t	2026-03-10 20:22:23.818207
 4	owner.elena@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	\N	Елена Смирнова	owner	{"phone": "+7 (999) 456-78-90"}	t	2026-02-13 21:58:34.368669
 7	tenant.maria@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Мария Васильева	tenant	{"phone": "+7 (999) 789-01-23"}	t	2026-02-13 21:58:34.368669
-12	qmett1@gmail.com	bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e	/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg	Соловьёва Юлия Сергеевна	agent	{"inn": "4324435667", "city": "Ликино-Дулёво", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}	t	2026-03-10 20:02:42.602234
 13	romanchuvaga@mail.ru	22187723de93e99653b064fd991a2b8e35179394044dc819bc1664196495a946	/static/uploads/avatars/e67a261db88e461ea08e0cce179dd922.jpg	Чувага Роман Думитрувич	tenant	{"inn": "4245343436", "city": "Давыдово", "phone": "+79673257035", "passport": "3354680123", "birth_date": "2007-08-11"}	t	2026-03-10 20:08:58.847439
 2	agent.anna@rentease.ru	f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647	\N	Анна Петрова	agent	{"phone": "+7 (969) 234-56-78", "birth_date": "2001-01-02"}	t	2026-02-13 21:58:34.368669
 16	mazanov.ilya@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Мазанов Илья Алексеевич	tenant	{"city": "Москва", "phone": "+7 (925) 234-56-78"}	t	2026-03-10 20:22:23.818207
 3	agent.ivan@rentease.ru	f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647	\N	Иван Сидоров	agent	{"city": "Орехово-Зуево", "phone": "+7 (999) 345-67-89", "passport": "1234567890"}	t	2026-02-13 21:58:34.368669
 5	owner.dmitry@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	/static/uploads/avatars/d3881d4a1a76457eaf2280bd44657341.jpg	Дмитрий Иванов	owner	{"phone": "+7 (999) 567-89-01"}	t	2026-02-13 21:58:34.368669
-17	feoktistov.gleb@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Феоктистов Глеб Юрьевич	tenant	{"city": "Москва", "phone": "+7 (903) 345-67-89"}	t	2026-03-10 20:22:23.818207
-1	admin@rentease.ru	240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9	/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg	Администратор Системы	admin	{"phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}	t	2026-02-13 21:58:34.325669
 18	trunin.danila@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Трунин Данила Сергеевич	tenant	{"city": "Москва", "phone": "+7 (915) 456-78-90"}	t	2026-03-10 20:22:23.818207
 19	tkachenko.dmitry@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Ткаченко Дмитрий Евгеньевич	tenant	{"city": "Москва", "phone": "+7 (926) 567-89-01"}	t	2026-03-10 20:22:23.818207
 15	kruchkova.oksana@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Крючкова Оксана Вячеславовна	tenant	{"city": "Москва", "phone": "+7 (916) 123-45-67"}	t	2026-03-10 20:22:23.818207
 14	aquanomore@gmail.com	4d49ca0443be87f6eff65f63508ff8f27954eaa051df0fe1baa318179439b60c	/static/uploads/avatars/cc5b1d5043b042538ddb8ad6ae566afb.jpg	Марков Иван Александрович	owner	{"inn": "2556647474", "city": "Авсюнино", "phone": "+79267890023", "passport": "7818478395", "birth_date": "2007-05-17"}	f	2026-03-10 20:14:15.429596
 6	tenant.alex@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Тестовый пользователь	tenant	{"phone": "+7 (999) 678-90-12"}	t	2026-02-13 21:58:34.368669
 20	drozhzhina.sofia@rentease.ru	f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647	\N	Дрожжина София Юрьевна	agent	{"city": "Москва", "phone": "+7 (968) 678-90-12"}	t	2026-03-10 20:22:23.818207
+21	taranenko@rentease.ru	3147bfca52087a3ec7fddaf5c41b61505257ae66a4df61ad6c40fdb424c622ea	/static/uploads/avatars/f730e34f54024682ac271e381da8a3e7.png	Тараненко Иван Сергеевич	tenant	{"inn": "2556647474", "passport": "5667778883"}	t	2026-03-15 18:27:54.989358
 \.
 
 
 --
--- TOC entry 5056 (class 0 OID 0)
+-- TOC entry 5053 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: applications_application_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -1917,34 +2039,34 @@ SELECT pg_catalog.setval('public.applications_application_id_seq', 395, true);
 
 
 --
--- TOC entry 5057 (class 0 OID 0)
+-- TOC entry 5054 (class 0 OID 0)
 -- Dependencies: 231
 -- Name: audit_logs_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 112, true);
+SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 167, true);
 
 
 --
--- TOC entry 5058 (class 0 OID 0)
+-- TOC entry 5055 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: contracts_contract_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.contracts_contract_id_seq', 96, true);
+SELECT pg_catalog.setval('public.contracts_contract_id_seq', 97, true);
 
 
 --
--- TOC entry 5059 (class 0 OID 0)
+-- TOC entry 5056 (class 0 OID 0)
 -- Dependencies: 229
 -- Name: messages_message_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.messages_message_id_seq', 255, true);
+SELECT pg_catalog.setval('public.messages_message_id_seq', 270, true);
 
 
 --
--- TOC entry 5060 (class 0 OID 0)
+-- TOC entry 5057 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: properties_property_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -1953,7 +2075,7 @@ SELECT pg_catalog.setval('public.properties_property_id_seq', 173, true);
 
 
 --
--- TOC entry 5061 (class 0 OID 0)
+-- TOC entry 5058 (class 0 OID 0)
 -- Dependencies: 223
 -- Name: property_photos_photo_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -1962,12 +2084,12 @@ SELECT pg_catalog.setval('public.property_photos_photo_id_seq', 71, true);
 
 
 --
--- TOC entry 5062 (class 0 OID 0)
+-- TOC entry 5059 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_user_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.users_user_id_seq', 20, true);
+SELECT pg_catalog.setval('public.users_user_id_seq', 21, true);
 
 
 --
@@ -2116,31 +2238,15 @@ CREATE INDEX idx_messages_is_read ON public.messages USING btree (is_read);
 
 
 --
--- TOC entry 4866 (class 2620 OID 82022)
--- Name: applications trg_application_approved; Type: TRIGGER; Schema: public; Owner: postgres
+-- TOC entry 4866 (class 2620 OID 98406)
+-- Name: applications trg_application_status_change; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
-CREATE TRIGGER trg_application_approved AFTER UPDATE OF status ON public.applications FOR EACH ROW WHEN (((new.status)::text = 'approved'::text)) EXECUTE FUNCTION public.create_contract_on_approval();
-
-
---
--- TOC entry 4867 (class 2620 OID 90208)
--- Name: applications trg_application_notify; Type: TRIGGER; Schema: public; Owner: postgres
---
-
-CREATE TRIGGER trg_application_notify AFTER UPDATE OF status ON public.applications FOR EACH ROW WHEN (((old.status)::text IS DISTINCT FROM (new.status)::text)) EXECUTE FUNCTION public.notify_application_status_change();
+CREATE TRIGGER trg_application_status_change AFTER UPDATE OF status ON public.applications FOR EACH ROW WHEN (((old.status)::text IS DISTINCT FROM (new.status)::text)) EXECUTE FUNCTION public.notify_application_status_change();
 
 
 --
--- TOC entry 4868 (class 2620 OID 98400)
--- Name: applications trg_application_status_notify; Type: TRIGGER; Schema: public; Owner: postgres
---
-
-CREATE TRIGGER trg_application_status_notify AFTER UPDATE OF status ON public.applications FOR EACH ROW EXECUTE FUNCTION public.notify_application_status_change();
-
-
---
--- TOC entry 4869 (class 2620 OID 90267)
+-- TOC entry 4867 (class 2620 OID 90267)
 -- Name: applications trg_applications_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2148,7 +2254,7 @@ CREATE TRIGGER trg_applications_audit_delete BEFORE DELETE ON public.application
 
 
 --
--- TOC entry 4870 (class 2620 OID 90265)
+-- TOC entry 4868 (class 2620 OID 90265)
 -- Name: applications trg_applications_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2156,7 +2262,7 @@ CREATE TRIGGER trg_applications_audit_insert AFTER INSERT ON public.applications
 
 
 --
--- TOC entry 4871 (class 2620 OID 90266)
+-- TOC entry 4869 (class 2620 OID 90266)
 -- Name: applications trg_applications_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2164,7 +2270,7 @@ CREATE TRIGGER trg_applications_audit_update AFTER UPDATE ON public.applications
 
 
 --
--- TOC entry 4873 (class 2620 OID 90212)
+-- TOC entry 4871 (class 2620 OID 98408)
 -- Name: contracts trg_contract_cancel; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2172,23 +2278,15 @@ CREATE TRIGGER trg_contract_cancel AFTER UPDATE OF signing_status ON public.cont
 
 
 --
--- TOC entry 4874 (class 2620 OID 90210)
+-- TOC entry 4872 (class 2620 OID 98407)
 -- Name: contracts trg_contract_signature; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
-CREATE TRIGGER trg_contract_signature AFTER UPDATE OF tenant_signed, owner_signed ON public.contracts FOR EACH ROW EXECUTE FUNCTION public.notify_contract_signature();
+CREATE TRIGGER trg_contract_signature AFTER UPDATE OF tenant_signed, owner_signed, signing_status ON public.contracts FOR EACH ROW EXECUTE FUNCTION public.notify_contract_signature();
 
 
 --
--- TOC entry 4875 (class 2620 OID 98401)
--- Name: contracts trg_contract_signature_notify; Type: TRIGGER; Schema: public; Owner: postgres
---
-
-CREATE TRIGGER trg_contract_signature_notify AFTER UPDATE OF tenant_signed, owner_signed, signing_status ON public.contracts FOR EACH ROW EXECUTE FUNCTION public.notify_contract_signature();
-
-
---
--- TOC entry 4876 (class 2620 OID 90273)
+-- TOC entry 4873 (class 2620 OID 90273)
 -- Name: contracts trg_contracts_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2196,7 +2294,7 @@ CREATE TRIGGER trg_contracts_audit_delete BEFORE DELETE ON public.contracts FOR 
 
 
 --
--- TOC entry 4877 (class 2620 OID 90271)
+-- TOC entry 4874 (class 2620 OID 90271)
 -- Name: contracts trg_contracts_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2204,7 +2302,7 @@ CREATE TRIGGER trg_contracts_audit_insert AFTER INSERT ON public.contracts FOR E
 
 
 --
--- TOC entry 4878 (class 2620 OID 90272)
+-- TOC entry 4875 (class 2620 OID 90272)
 -- Name: contracts trg_contracts_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2212,7 +2310,7 @@ CREATE TRIGGER trg_contracts_audit_update AFTER UPDATE ON public.contracts FOR E
 
 
 --
--- TOC entry 4880 (class 2620 OID 90279)
+-- TOC entry 4877 (class 2620 OID 90279)
 -- Name: messages trg_messages_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2220,7 +2318,7 @@ CREATE TRIGGER trg_messages_audit_delete BEFORE DELETE ON public.messages FOR EA
 
 
 --
--- TOC entry 4881 (class 2620 OID 90277)
+-- TOC entry 4878 (class 2620 OID 90277)
 -- Name: messages trg_messages_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2228,7 +2326,7 @@ CREATE TRIGGER trg_messages_audit_insert AFTER INSERT ON public.messages FOR EAC
 
 
 --
--- TOC entry 4882 (class 2620 OID 90278)
+-- TOC entry 4879 (class 2620 OID 90278)
 -- Name: messages trg_messages_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2236,7 +2334,7 @@ CREATE TRIGGER trg_messages_audit_update AFTER UPDATE ON public.messages FOR EAC
 
 
 --
--- TOC entry 4872 (class 2620 OID 98399)
+-- TOC entry 4870 (class 2620 OID 98405)
 -- Name: applications trg_new_application_notify; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2268,7 +2366,7 @@ CREATE TRIGGER trg_properties_audit_update AFTER UPDATE ON public.properties FOR
 
 
 --
--- TOC entry 4879 (class 2620 OID 82021)
+-- TOC entry 4876 (class 2620 OID 82021)
 -- Name: contracts trg_update_contract_status; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2371,11 +2469,11 @@ ALTER TABLE ONLY public.property_photos
     ADD CONSTRAINT property_photos_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(property_id) ON DELETE CASCADE;
 
 
--- Completed on 2026-03-14 20:37:06
+-- Completed on 2026-03-15 22:15:28
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict KXCbDutkrQDa8japcufURkxv8FPisfE8GJnxSsr2tSNqN29Cl0sPAQGkUKAg7rG
+\unrestrict JXZ7QSFCu8N3sLbzH1nu2kq6ygnHedQIWHISQZ1JM8DhWy3VAFiKz4j5wJodi1U
 

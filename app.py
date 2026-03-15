@@ -43,7 +43,7 @@ import shutil
 import io
 import tempfile
 from apscheduler.schedulers.background import BackgroundScheduler
-
+from smtp import send_registration_code, send_recovery_code
 from database import SessionLocal, User, Property, PropertyPhoto, Application, Contract, Message, AuditLog
 from schemas import (
     UserRegisterStep1, UserRegisterStep2, UserRegisterStep3,
@@ -530,7 +530,12 @@ async def recovery_request(
 
     # Генерируем код
     code = ''.join(random.choices(string.digits, k=8))
-
+    # Отправляем код
+    try:
+        send_recovery_code(email, code)
+        print(f"🔐 Код восстановления для {email}: {code}")
+    except Exception as e:
+        print(f"❌ Ошибка отправки email: {e}")
     # Сохраняем код восстановления
     if not hasattr(app.state, "recovery_codes"):
         app.state.recovery_codes = {}
@@ -641,7 +646,12 @@ async def register_step1(
 
     # Генерируем код подтверждения
     code = ''.join(random.choices(string.digits, k=8))
-    print(f"📧 Код подтверждения для {email}: {code}")
+    # Отправляем код на email
+    try:
+        send_registration_code(email, code)
+        print(f"📧 Код подтверждения отправлен на {email}: {code}")
+    except Exception as e:
+        print(f"❌ Ошибка отправки email: {e}")
 
     # Сохраняем во временное хранилище
     if not hasattr(app.state, "temp_users"):
@@ -2176,6 +2186,41 @@ async def mark_all_notifications_read(
     db.commit()
     return {"success": True}
 
+
+@app.get("/api/notifications/unread-count")
+async def get_unread_notifications_count(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Количество непрочитанных системных уведомлений (from_user_id IS NULL)"""
+    if not current_user:
+        return {"count": 0}
+
+    count = db.query(Message).filter(
+        Message.to_user_id == current_user.user_id,
+        Message.from_user_id.is_(None),
+        Message.is_read == False
+    ).count()
+
+    return {"count": count}
+
+
+@app.get("/api/messages/unread-count")
+async def get_unread_messages_count(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Количество непрочитанных личных сообщений (from_user_id IS NOT NULL)"""
+    if not current_user:
+        return {"count": 0}
+
+    count = db.query(Message).filter(
+        Message.to_user_id == current_user.user_id,
+        Message.from_user_id.is_not(None),
+        Message.is_read == False
+    ).count()
+
+    return {"count": count}
 # ==================== УПРАВЛЕНИЕ ДОГОВОРАМИ ====================
 
 @app.post("/api/applications/{app_id}/create-contract")

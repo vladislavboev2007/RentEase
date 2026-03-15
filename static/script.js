@@ -1111,7 +1111,7 @@ async function cancelContract() {
 async function loadAgentStats() {
     const period = document.getElementById('statsPeriod').value;
 
-    // Преобразуем месяцы в дни (приблизительно)
+    // Преобразуем месяцы в дни для круговой диаграммы
     let days = 90; // по умолчанию 3 месяца
     if (period === '6') days = 180;
     if (period === '12') days = 365;
@@ -1129,13 +1129,13 @@ async function loadAgentStats() {
         const perfData = await perfRes.json();
         console.log('Performance data:', perfData);
 
-        // Загружаем статусы с параметром days
+        // Загружаем статусы
         const statusRes = await fetch(`/api/agent/rejection-reasons?days=${days}`, { credentials: 'same-origin' });
         if (!statusRes.ok) throw new Error('Ошибка загрузки статусов');
         const statusData = await statusRes.json();
         console.log('Status data for', days, 'days:', statusData);
 
-        // Обновляем KPI с округлением до 2 знаков
+        // Обновляем KPI
         document.getElementById('statsTotalProfit').textContent = perfData.total_profit
             ? Number(perfData.total_profit).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽'
             : '0 ₽';
@@ -1165,12 +1165,11 @@ async function loadAgentStats() {
                 window.dealsChart.destroy();
             }
 
-            // Проверяем наличие данных
             if (!monthlyData || monthlyData.length === 0) {
                 document.getElementById('dealsChartContainer').innerHTML =
                     '<p style="text-align: center; color: #6c757d; padding: 20px;">Нет данных за выбранный период</p>';
             } else {
-                // Сортируем данные по месяцам
+                // Сортируем данные по месяцам (от старых к новым)
                 const sortedMonthlyData = [...monthlyData].sort((a, b) => {
                     if (a.month < b.month) return -1;
                     if (a.month > b.month) return 1;
@@ -1240,14 +1239,13 @@ async function loadAgentStats() {
                 window.pieChart.destroy();
             }
 
-            // Проверяем наличие данных
             if (!statusData || statusData.length === 0) {
                 document.getElementById('pieChartContainer').innerHTML =
                     '<p style="text-align: center; color: #6c757d; padding: 20px;">Нет данных за выбранный период</p>';
                 return;
             }
 
-            // Фильтруем только нужные статусы для круговой диаграммы
+            // Фильтруем только нужные статусы
             const filteredData = statusData.filter(item =>
                 item.status === 'approved' || item.status === 'rejected'
             );
@@ -3035,6 +3033,7 @@ async function loadDialogsList() {
                         <div class="dialog-avatar" style="width: 50px; height: 50px; border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #007bff, #0056b3); display: flex; align-items: center; justify-content: center;">
                             ${avatarHtml}
                         </div>
+
                         <span class="online-dot" data-user-id="${dialog.user_id}"
                               style="position: absolute; bottom: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%; background: #6c757d; border: 2px solid white;"></span>
                     </div>
@@ -3655,45 +3654,38 @@ async function updateBadgesFromServer() {
 function handleNewMessage(data) {
     console.log('📨 Новое сообщение:', data);
 
+    // Проверяем, открыто ли сейчас окно уведомлений
+    const notificationsDropdown = document.getElementById('notificationsDropdown');
+    const isNotificationsOpen = notificationsDropdown?.classList.contains('show');
+
     if (data.from_user_id === 0) { // системное уведомление
-        // Проверяем, не дубликат ли это
-        const existingNotifications = document.querySelectorAll('.notification-item');
-        let isDuplicate = false;
+        // Мгновенно обновляем бейдж
+        updateNotificationBadges();
 
-        // Простая проверка на дубликат (по содержимому за последние 2 секунды)
-        existingNotifications.forEach(item => {
-            const content = item.querySelector('.notification-content')?.textContent;
-            if (content && data.message.content.includes(content)) {
-                const timeEl = item.querySelector('[style*="font-size: 11px"]');
-                if (timeEl) {
-                    const timeText = timeEl.textContent;
-                    const now = new Date();
-                    const timeMatch = timeText.match(/(\d{2})\.(\d{2}), (\d{2}):(\d{2})/);
-                    if (timeMatch) {
-                        const [_, day, month, hour, minute] = timeMatch;
-                        const itemDate = new Date();
-                        itemDate.setMonth(parseInt(month) - 1);
-                        itemDate.setDate(parseInt(day));
-                        itemDate.setHours(parseInt(hour), parseInt(minute), 0);
-
-                        // Если уведомление создано менее 2 секунд назад - считаем дубликатом
-                        if (Math.abs(now - itemDate) < 2000) {
-                            isDuplicate = true;
-                        }
-                    }
-                }
-            }
-        });
-
-        if (!isDuplicate) {
-            // Показываем уведомление в интерфейсе
+        // Если окно уведомлений открыто, показываем новое уведомление
+        if (isNotificationsOpen) {
+            // Добавляем уведомление в список без перезагрузки
+            addNotificationToList(data.message);
+        } else {
+            // Если окно закрыто, просто обновляем бейдж (уже сделано)
+            // и показываем всплывающее уведомление
             showNotification('🔔 Новое уведомление', 'info');
+        }
+    } else {
+        // Личное сообщение
+        updateNotificationBadges(); // Обновляем бейдж сообщений
 
-            // Перезагружаем уведомления
-            setTimeout(() => {
-                loadNotifications();
-                updateBadgesFromServer();
-            }, 500);
+        // Если чат с этим пользователем открыт, добавляем сообщение
+        if (currentChatUserId === data.from_user_id) {
+            appendMessageToChat(data.message);
+        } else {
+            // Показываем уведомление о новом сообщении
+            showNotification('💬 Новое сообщение', 'info');
+
+            // Обновляем список диалогов если он открыт
+            if (document.getElementById('dialogsListModal').style.display === 'flex') {
+                loadDialogsList();
+            }
         }
     }
 }
@@ -4433,10 +4425,12 @@ function toggleNotifications() {
     const messagesDropdown = document.getElementById('messagesDropdown');
 
     if (messagesDropdown) messagesDropdown.classList.remove('show');
-    dropdown.classList.toggle('show');
 
     if (dropdown.classList.contains('show')) {
-        loadNotifications();
+        dropdown.classList.remove('show');
+    } else {
+        dropdown.classList.add('show');
+        loadNotifications(); // Загружаем список при открытии
     }
 }
 
@@ -4577,6 +4571,43 @@ function updateNotificationsBadge(notifications) {
         badge.style.display = 'none';
     }
 }
+// Обновление счетчиков уведомлений и сообщений
+async function updateNotificationBadges() {
+    if (!window.currentUser?.id) return;
+
+    try {
+        // Получаем количество непрочитанных системных уведомлений
+        const notifResponse = await fetch('/api/notifications/unread-count', { credentials: 'same-origin' });
+        if (notifResponse.ok) {
+            const notifData = await notifResponse.json();
+            updateBadge('notificationsBadge', notifData.count);
+        }
+
+        // Получаем количество непрочитанных личных сообщений
+        const msgResponse = await fetch('/api/messages/unread-count', { credentials: 'same-origin' });
+        if (msgResponse.ok) {
+            const msgData = await msgResponse.json();
+            updateBadge('messagesBadge', msgData.count);
+        }
+    } catch (error) {
+        console.error('Ошибка обновления бейджей:', error);
+    }
+}
+
+// Обновление конкретного бейджа
+function updateBadge(badgeId, count) {
+    const badge = document.getElementById(badgeId);
+    if (!badge) return;
+
+    if (count > 0) {
+        badge.textContent = count > 99 ? '99+' : count;
+        badge.style.display = 'flex';
+        badge.classList.add('pulse');
+    } else {
+        badge.style.display = 'none';
+        badge.classList.remove('pulse');
+    }
+}
 
 // Загрузить последние сообщения для быстрого доступа
 async function loadRecentMessages() {
@@ -4622,6 +4653,109 @@ async function loadRecentMessages() {
 
     } catch (error) {
         console.error('Ошибка загрузки сообщений:', error);
+    }
+}
+
+// Добавление нового уведомления в список
+function addNotificationToList(notification) {
+    const container = document.getElementById('notificationsList');
+    if (!container) return;
+
+    // Проверяем, есть ли уже такое уведомление (за последние 2 секунды)
+    const existingItems = container.querySelectorAll('.notification-item');
+    for (let item of existingItems) {
+        const text = item.querySelector('.notification-text')?.textContent || '';
+        if (text.includes(notification.content.substring(0, 20))) {
+            return; // Дубликат, не добавляем
+        }
+    }
+
+    const date = new Date(notification.created_at);
+    const timeStr = date.toLocaleString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit'
+    }).replace(',', '');
+
+    // Определяем иконку
+    let icon = '📋';
+    let bgColor = '#f8f9fa';
+
+    if (notification.content.includes('одобрена')) {
+        icon = '✅';
+        bgColor = '#d4edda';
+    } else if (notification.content.includes('отклонена')) {
+        icon = '❌';
+        bgColor = '#f8d7da';
+    } else if (notification.content.includes('подписал')) {
+        icon = '✍️';
+        bgColor = '#cce5ff';
+    } else if (notification.content.includes('Новая заявка')) {
+        icon = '🏠';
+        bgColor = '#fff3cd';
+    } else if (notification.content.includes('Договор отменён')) {
+        icon = '🚫';
+        bgColor = '#f8d7da';
+    } else if (notification.content.includes('Договор создан')) {
+        icon = '📄';
+        bgColor = '#d4edda';
+    }
+
+    // Извлекаем заголовок
+    let title = '';
+    let description = notification.content;
+    const titleMatch = notification.content.match(/\*\*(.*?)\*\*/);
+    if (titleMatch) {
+        title = titleMatch[1];
+        description = notification.content.replace(titleMatch[0], '').trim();
+    }
+
+    const newItem = document.createElement('div');
+    newItem.className = `notification-item unread`;
+    newItem.setAttribute('onclick', `markNotificationRead(${notification.id})`);
+    newItem.style.backgroundColor = `${bgColor}20`;
+    newItem.style.borderLeft = `3px solid ${bgColor.replace('#', '')}`;
+    newItem.style.animation = 'fadeIn 0.3s';
+
+    newItem.innerHTML = `
+        <div class="notification-header">
+            <span class="notification-icon">${icon}</span>
+            <span class="notification-time">${timeStr}</span>
+        </div>
+        ${title ? `<div class="notification-title"><strong>${title}</strong></div>` : ''}
+        ${description ? `<div class="notification-description">${description}</div>` : ''}
+        <span class="unread-dot"></span>
+    `;
+
+    // Добавляем в начало списка
+    container.insertBefore(newItem, container.firstChild);
+
+    // Если список длинный, удаляем последний элемент
+    if (container.children.length > 50) {
+        container.removeChild(container.lastChild);
+    }
+}
+
+// Запустить периодическое обновление бейджей
+function startBadgeRefresh() {
+    if (window.badgeRefreshInterval) {
+        clearInterval(window.badgeRefreshInterval);
+    }
+
+    // Обновляем каждые 10 секунд как запасной вариант
+    window.badgeRefreshInterval = setInterval(() => {
+        if (window.currentUser?.id) {
+            updateNotificationBadges();
+        }
+    }, 10000);
+}
+
+// Остановить обновление
+function stopBadgeRefresh() {
+    if (window.badgeRefreshInterval) {
+        clearInterval(window.badgeRefreshInterval);
+        window.badgeRefreshInterval = null;
     }
 }
 // ==================== ФУНКЦИИ ДЛЯ РУКОВОДСТВА ====================
@@ -5293,6 +5427,30 @@ window.addEventListener('click', function(event) {
         messagesDropdown?.classList.remove('show');
     }
 });
+
+
+// Автодополнение городов с вежливой паузой через API hh.ru
+const cityInput = document.getElementById('city');
+const cityDatalist = document.getElementById('citySuggestions');
+
+if (cityInput && cityDatalist) {
+    cityInput.addEventListener('input', function() {
+        const query = this.value;
+
+        // Используем функцию из hh_api.js
+        HH_API.searchCities(query, (cities) => {
+            // Очищаем старые подсказки
+            cityDatalist.innerHTML = '';
+
+            // Добавляем новые подсказки
+            cities.forEach(city => {
+                const option = document.createElement('option');
+                option.value = city;
+                cityDatalist.appendChild(option);
+            });
+        });
+    });
+}
 
 // Закрытие по ESC
 document.addEventListener('keydown', function(event) {

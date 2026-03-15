@@ -12,8 +12,8 @@ SMTP_PORT = 587  # Для TLS
 SMTP_PORT_SSL = 465  # Для SSL
 
 # Данные для авторизации (замените на свои)
-SMTP_USER = "ваш-логин@yandex.ru"  # Ваш email на Яндексе
-SMTP_PASSWORD = "ваш-пароль-приложения"  # Пароль приложения (не от аккаунта!)
+SMTP_USER = "boeff.vladislav2017@yandex.ru"  # Ваш email на Яндексе
+SMTP_PASSWORD = "pqmzqqziaocazoaa"  # Пароль приложения (не от аккаунта!)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -267,7 +267,7 @@ if __name__ == "__main__":
     import re
 
     # Замените на свои данные
-    test_email = "test@example.com"
+    test_email = "vladislav.boev02@mail.ru"
     test_code = "12345678"
 
     # Отправка тестового письма

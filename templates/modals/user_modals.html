@@ -103,4 +103,34 @@
             </div>
         </form>
     </div>
+<script>
+    // Инициализация поиска городов для поля профиля
+    (function() {
+        const profileCityInput = document.getElementById('profileCity');
+        // Создадим отдельный datalist для профиля, чтобы не пересекался с главным поиском
+        let profileDatalist = document.getElementById('profileCitySuggestions');
+
+        if (!profileDatalist && profileCityInput) {
+            profileDatalist = document.createElement('datalist');
+            profileDatalist.id = 'profileCitySuggestions';
+            document.body.appendChild(profileDatalist);
+            profileCityInput.setAttribute('list', 'profileCitySuggestions');
+        }
+
+        if (profileCityInput && profileDatalist) {
+            profileCityInput.addEventListener('input', function() {
+                const query = this.value;
+
+                HH_API.searchCities(query, (cities) => {
+                    profileDatalist.innerHTML = '';
+                    cities.forEach(city => {
+                        const option = document.createElement('option');
+                        option.value = city;
+                        profileDatalist.appendChild(option);
+                    });
+                });
+            });
+        }
+    })();
+</script>
 </div>

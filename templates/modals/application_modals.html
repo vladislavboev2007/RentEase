@@ -337,24 +337,29 @@
 <!-- МОДАЛЬНОЕ ОКНО: СТАТИСТИКА АГЕНТА -->
 <div id="agentStatsModal" class="modal">
     <div class="modal-content" style="max-width: 900px;">
-        <button class="close" onclick="closeModal('agentStatsModal')">×</button>
-        <h2>Статистика работы агента</h2>
+    <button class="close" onclick="closeModal('agentStatsModal')">×</button>
 
+    <!-- Заголовок с кнопкой справа -->
+    <div class="stats-header">
+        <h2 style="margin: 0;">Статистика работы агента</h2>
 
+        <div class="stats-controls">
+            <!-- Фильтр по периоду -->
+            <div class="period-selector">
+                <label for="statsPeriod">Период:</label>
+                <select id="statsPeriod" onchange="loadAgentStats()">
+                    <option value="3">Последние 3 месяца</option>
+                    <option value="6" selected>Последние 6 месяцев</option>
+                    <option value="12">Последний год</option>
+                </select>
+            </div>
 
-        <!-- Фильтр по периоду -->
-        <div style="display: flex; gap: 15px; margin-bottom: 25px; align-items: center;">
-            <label style="font-weight: 500;">Период:</label>
-            <select id="statsPeriod" onchange="loadAgentStats()" style="padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
-                <option value="3">Последние 3 месяца</option>
-                <option value="6" selected>Последние 6 месяцев</option>
-                <option value="12">Последний год</option>
-            </select>
-            <button class="btn-success" onclick="exportAgentStats()"
-                    style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+            <!-- Кнопка Excel справа -->
+            <button class="btn-excel" onclick="exportAgentStats()">
                 📊 Сохранить в Excel
             </button>
         </div>
+    </div>
 
 
         <!-- Блок с ключевыми показателями -->

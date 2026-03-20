@@ -8,9 +8,9 @@
     <link rel="icon" href="data:,">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
-    <script src="/static/script.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="/static/hh_api.js" defer></script>
+    <script src="/static/script.js" defer></script>
 </head>
 <body>
 
@@ -295,7 +295,7 @@
                     <img src="{{ property.main_photo_url }}"
                          alt="{{ property.title }}"
                          onerror="this.src='/resources/placeholder-image.png'">
-                    <div class="property-status">{{ property.status }}</div>
+<!--                    <div class="property-status">{{ property.status }}</div>-->
                 </div>
                 <div class="property-info">
                     <h3>{{ property.title }}</h3>
@@ -362,25 +362,31 @@
 </div>
 
 <!-- ПОПАП ВЫБОРА ГОРОДА -->
-<div id="cityPopup" class="popup">
+<div id="cityPopup" class="popup city-popup">
     <div class="popup-content">
-        <span class="close-popup" onclick="hideCityPopup()">×</span>
+        <button class="close-popup" onclick="hideCityPopup()">×</button>
         <h2>Выберите город</h2>
-        <div class="popular-cities">
-            <button class="city-btn">Москва</button>
-            <button class="city-btn">Санкт-Петербург</button>
-            <button class="city-btn">Новосибирск</button>
-            <button class="city-btn">Екатеринбург</button>
-            <button class="city-btn">Казань</button>
-            <button class="city-btn">Нижний Новгород</button>
-            <button class="city-btn">Челябинск</button>
-            <button class="city-btn">Самара</button>
-            <button class="city-btn">Омск</button>
-            <button class="city-btn">Ростов-на-Дону</button>
+
+        <!-- Поиск с иконкой -->
+        <div class="city-search-container">
+            <input type="text"
+                   class="city-search-input"
+                   id="citySearch"
+                   placeholder="Поиск города или населённого пункта..."
+                   autocomplete="off">
+            <img src="/resources/pin.png" class="city-search-icon" alt="🔍">
         </div>
-        <div class="city-search">
-            <input type="text" id="citySearch" placeholder="Поиск города...">
-            <button type="button" onclick="searchCity()">Найти</button>
+
+        <!-- Популярные города (будут загружаться динамически) -->
+        <div class="popular-cities-section" id="popularCitiesSection">
+            <div class="popular-cities-title">Популярные города</div>
+            <div class="popular-cities-grid" id="popularCitiesGrid"></div>
+        </div>
+
+        <!-- Результаты поиска -->
+        <div class="city-results-container" id="cityResultsContainer">
+            <!-- Результаты будут добавляться сюда -->
+            <div class="city-loading">Загрузка справочника городов...</div>
         </div>
     </div>
 </div>
@@ -487,7 +493,24 @@
             <!-- Заголовок и статус -->
             <div class="property-modal-header">
                 <h2 id="modalPropertyTitle">Название объекта</h2>
-                <span id="modalPropertyStatus" class="property-status-badge">Активно</span>
+
+                <!-- Кнопки в шапке -->
+                <div class="modal-header-actions">
+                    <!-- Кнопка жалобы (для всех) -->
+                    <button class="report-btn" onclick="reportProperty(currentPropertyId)" title="Пожаловаться">
+                        🏴
+                    </button>
+
+                    <!-- Кнопки администратора (скрыты по умолчанию) -->
+                    <div id="adminHeaderActions" style="display: none;">
+                        <button class="admin-header-btn admin-edit-btn" onclick="editProperty(currentPropertyId)" title="Изменить">
+                            ✎
+                        </button>
+                        <button class="admin-header-btn admin-delete-btn" onclick="adminDeleteProperty(currentPropertyId)" title="Удалить">
+                            🗑
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Галерея изображений -->

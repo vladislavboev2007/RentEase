@@ -122,6 +122,28 @@ def get_db():
         db.close()
 
 
+def get_gender_ending(full_name: str) -> str:
+    """
+    Определяет окончание для склонения (именуемый/ая)
+    """
+    if not full_name:
+        return "ый"  # мужской род по умолчанию
+
+    parts = full_name.split()
+
+    # Проверяем отчество
+    if len(parts) >= 3:
+        patronymic = parts[2]
+        if patronymic.endswith('вна') or patronymic.endswith('чна'):
+            return "ая"
+
+    # Проверяем имя
+    if len(parts) >= 2:
+        name = parts[1] if len(parts) > 1 else parts[0]
+        if name.endswith('а') or name.endswith('я'):
+            return "ая"
+
+    return "ый"
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -3316,8 +3338,8 @@ async def generate_act_document(
         "start_month": months[contract.start_date.month - 1] if contract.start_date else "_____",
         "start_year": contract.start_date.strftime("%Y") if contract.start_date else "___",
         "purpose": "проживания" if property.property_type in ['apartment', 'house'] else "коммерческой деятельности",
-        "tenant_signed": contract.tenant_signed,
-        "owner_signed": contract.owner_signed
+        "tenant_signed": contract.tenant_signed,  # добавляем
+        "owner_signed": contract.owner_signed  # добавляем
     }
 
     tenant_contact = tenant.contact_info if tenant else {}
@@ -3350,11 +3372,12 @@ async def generate_act_document(
     except Exception as e:
         raise HTTPException(500, f"Ошибка генерации акта: {str(e)}")
 
+
 @app.get("/api/agent/export-stats")
 async def export_agent_stats(
-    months: int = 6,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+        months: int = 6,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
 ):
     """Экспорт статистики агента в Excel"""
     if not current_user or current_user.user_type != 'agent':
@@ -3367,19 +3390,38 @@ async def export_agent_stats(
             {"aid": current_user.user_id, "months": months}
         ).fetchall()
 
+        print(f"Monthly data type: {type(monthly)}")
+        if monthly:
+            print(f"First monthly row type: {type(monthly[0])}")
+            print(f"First monthly row: {monthly[0]}")
+
         perf = db.execute(
             text("SELECT * FROM get_agent_performance_stats(:aid, :months)"),
             {"aid": current_user.user_id, "months": months}
         ).first()
+
+        print(f"Performance data type: {type(perf)}")
+        if perf:
+            print(f"Performance data: {perf}")
 
         status = db.execute(
             text("SELECT * FROM get_agent_application_status_stats(:aid, 90)"),
             {"aid": current_user.user_id}
         ).fetchall()
 
+        print(f"Status data type: {type(status)}")
+        if status:
+            print(f"First status row type: {type(status[0])}")
+
         # Используем функцию из reports.py
         from reports import generate_agent_stats_excel
-        file_path = generate_agent_stats_excel(current_user.user_id, months, monthly, perf, status)
+        file_path = generate_agent_stats_excel(
+            current_user.user_id,
+            months,
+            monthly,
+            perf,
+            status
+        )
 
         return FileResponse(
             path=file_path,
@@ -3389,6 +3431,8 @@ async def export_agent_stats(
 
     except Exception as e:
         print(f"Ошибка экспорта: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Ошибка экспорта: {str(e)}")
 
 # ==================== ЗАПУСК ====================

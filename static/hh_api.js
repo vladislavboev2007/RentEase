@@ -129,13 +129,40 @@ const HH_API = {
                     const results = allCities.filter(city =>
                         city.toLowerCase().includes(trimmedQuery)
                     );
-                    // Возвращаем только первые 10 результатов, чтобы не перегружать интерфейс
-                    callback(results.slice(0, 10));
+                    // Возвращаем только первые 15 результатов, чтобы не перегружать интерфейс
+                    callback(results.slice(0, 15));
                 })
                 .catch(error => {
                     console.error('Ошибка при поиске городов:', error);
                     callback([]);
                 });
         }, 300);
+    },
+
+    /**
+     * Возвращает список популярных городов
+     * @param {number} limit - Максимальное количество городов
+     * @param {function} callback - Функция, которая получит список городов
+     */
+    getPopularCities: function(limit = 10, callback) {
+        const popularFallback = [
+            "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург",
+            "Казань", "Нижний Новгород", "Челябинск", "Самара",
+            "Омск", "Ростов-на-Дону", "Уфа", "Красноярск"
+        ];
+
+        this.loadCities()
+            .then(allCities => {
+                // Берём первые N городов из всего списка
+                const popular = allCities.slice(0, limit);
+                callback(popular);
+            })
+            .catch(() => {
+                callback(popularFallback.slice(0, limit));
+            });
     }
 };
+
+// Делаем объект доступным глобально
+window.HH_API = HH_API;
+console.log('✅ HH_API загружен');

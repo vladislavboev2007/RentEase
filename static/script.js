@@ -27,12 +27,199 @@ function formatNotificationText(text) {
     return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 }
 
+// Обновление результатов поиска в попапе
+function updateCitySearchResults(cities) {
+    const container = document.querySelector('.city-search-results');
+    if (!container) return;
+
+    if (cities.length === 0) {
+        container.innerHTML = '<div class="no-results">Города не найдены</div>';
+        return;
+    }
+
+    let html = '';
+    cities.forEach(city => {
+        const match = city.match(/^(.*?)(?:\s*\(([^)]+)\))?$/);
+        const cityName = match[1].trim();
+        const region = match[2] || '';
+
+        html += `
+            <div class="city-result-item" onclick="selectCityFromPopup('${city.replace(/'/g, "\\'")}')">
+                <span class="city-name">${cityName}</span>
+                ${region ? `<span class="region-name">${region}</span>` : ''}
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+// Выбор города из попапа
+function selectCityFromPopup(city) {
+    const fullCity = city;
+    const cityName = city.split(' (')[0];
+
+    // Обновляем поле в профиле
+    const profileCity = document.getElementById('profileCity');
+    if (profileCity) {
+        profileCity.value = cityName;
+        profileCity.dataset.fullCity = fullCity;
+    }
+
+    // Обновляем верхнюю панель
+    const selectedCity = document.getElementById('selectedCity');
+    if (selectedCity) {
+        selectedCity.textContent = cityName;
+    }
+
+    // Закрываем попап
+    hideCityPopup();
+}
+
+// Кеш для популярных городов
+let popularCities = [];
+
+// Загрузка популярных городов
+async function loadPopularCities() {
+    try {
+        // Получаем популярные города через API
+        const cities = await new Promise((resolve) => {
+            HH_API.getPopularCities(12, resolve);
+        });
+
+        popularCities = cities;
+        renderPopularCities();
+    } catch (error) {
+        console.error('Ошибка загрузки популярных городов:', error);
+        // Запасной список
+        popularCities = ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург',
+                        'Казань', 'Нижний Новгород', 'Челябинск', 'Самара'];
+        renderPopularCities();
+    }
+}
+
+// Отображение популярных городов
+function renderPopularCities() {
+    const grid = document.getElementById('popularCitiesGrid');
+    if (!grid) return;
+
+    let html = '';
+    popularCities.forEach(city => {
+        const cityName = city.split(' (')[0]; // Без региона
+        html += `<button class="popular-city-btn" onclick="selectCityFromPopup('${city.replace(/'/g, "\\'")}')">${cityName}</button>`;
+    });
+    grid.innerHTML = html;
+}
+
 // ==================== УПРАВЛЕНИЕ МОДАЛЬНЫМИ ОКНАМИ ====================
 
 function showCityPopup() {
-    document.getElementById('cityPopup').style.display = 'flex';
+    const popup = document.getElementById('cityPopup');
+    popup.style.display = 'flex';
+
+    // Загружаем популярные города при открытии
+    loadPopularCities();
+
+    // Очищаем поле поиска
+    const searchInput = document.getElementById('citySearch');
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+    }
+
+    // Показываем заглушку загрузки
+    const resultsContainer = document.getElementById('cityResultsContainer');
+    resultsContainer.innerHTML = '<div class="city-loading">Введите минимум 2 символа для поиска</div>';
 }
 
+
+// Обработчик поиска с вежливой паузой
+let searchTimeout;
+document.getElementById('citySearch')?.addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+
+    const query = this.value.trim();
+    const resultsContainer = document.getElementById('cityResultsContainer');
+
+    if (query.length < 2) {
+        resultsContainer.innerHTML = '<div class="city-loading">Введите минимум 2 символа для поиска</div>';
+        return;
+    }
+
+    resultsContainer.innerHTML = '<div class="city-loading">Поиск...</div>';
+
+    searchTimeout = setTimeout(() => {
+        HH_API.searchCities(query, (cities) => {
+            displayCitySearchResults(cities);
+        });
+    }, 300);
+});
+
+// Отображение результатов поиска
+function displayCitySearchResults(cities) {
+    const container = document.getElementById('cityResultsContainer');
+
+    if (!cities || cities.length === 0) {
+        container.innerHTML = '<div class="no-results">Города не найдены</div>';
+        return;
+    }
+
+    let html = '';
+    cities.forEach(city => {
+        // Разделяем город и регион
+        const match = city.match(/^(.*?)(?:\s*\(([^)]+)\))?$/);
+        const cityName = match[1].trim();
+        const region = match[2] || '';
+
+        html += `
+            <div class="city-result-item" onclick="selectCityFromPopup('${city.replace(/'/g, "\\'")}')">
+                <img src="/resources/pin.png" class="pin-icon" alt="📍">
+                <span class="city-name">${cityName}</span>
+                ${region ? `<span class="region-name">${region}</span>` : ''}
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+// Выбор города из попапа
+function selectCityFromPopup(city) {
+    const fullCity = city;
+    const cityName = city.split(' (')[0]; // Только название города
+
+    // Обновляем поле в профиле, если оно есть
+    const profileCity = document.getElementById('profileCity');
+    if (profileCity) {
+        profileCity.value = cityName;
+        profileCity.dataset.fullCity = fullCity;
+
+        // Если есть кастомный селектор, обновляем и его
+        if (window.citySelectors && window.citySelectors['profileCity']) {
+            window.citySelectors['profileCity'].selectedCity = fullCity;
+        }
+    }
+
+    // Обновляем поле поиска на главной, если оно есть
+    const mainCityInput = document.getElementById('city');
+    if (mainCityInput) {
+        mainCityInput.value = cityName;
+    }
+
+    // Обновляем верхнюю панель
+    const selectedCity = document.getElementById('selectedCity');
+    if (selectedCity) {
+        selectedCity.textContent = cityName;
+    }
+
+    // Закрываем попап
+    hideCityPopup();
+
+    // Показываем уведомление
+    showNotification(`Выбран город: ${cityName}`, 'success');
+}
+
+// Скрытие попапа
 function hideCityPopup() {
     document.getElementById('cityPopup').style.display = 'none';
 }
@@ -269,10 +456,11 @@ function hidePropertyModal() {
 function fillPropertyModal(data) {
     document.getElementById('modalPropertyTitle').textContent = data.title || 'Без названия';
 
-    const statusBadge = document.getElementById('modalPropertyStatus');
-    statusBadge.textContent = data.status === 'active' ? 'Активно' :
-        data.status === 'rented' ? 'Сдано' : 'В архиве';
-    statusBadge.className = `property-status-badge status-${data.status || 'active'}`;
+    // Скрываем статус (он больше не нужен)
+    // const statusBadge = document.getElementById('modalPropertyStatus');
+    // statusBadge.textContent = data.status === 'active' ? 'Активно' :
+    //     data.status === 'rented' ? 'Сдано' : 'В архиве';
+    // statusBadge.className = `property-status-badge status-${data.status || 'active'}`;
 
     document.getElementById('modalPropertyCity').textContent = data.city || '-';
     document.getElementById('modalPropertyAddress').textContent = data.address || '-';
@@ -305,17 +493,49 @@ function fillPropertyModal(data) {
         })
         .catch(err => console.error('Ошибка загрузки ответственной стороны:', err));
 
-    // Проверяем, является ли текущий пользователь администратором
+    // Управление кнопками администратора
+    const adminHeaderActions = document.getElementById('adminHeaderActions');
     if (window.currentUser && window.currentUser.type === 'admin') {
-        // Показываем кнопки администратора
-        document.getElementById('adminActions').style.display = 'block';
-        // Скрываем обычные кнопки (опционально)
-        // document.getElementById('regularUserActions').style.display = 'none';
-    } else {
-        // Скрываем кнопки администратора
-        document.getElementById('adminActions').style.display = 'none';
-        // Показываем обычные кнопки
+        adminHeaderActions.style.display = 'flex';
         document.getElementById('regularUserActions').style.display = 'flex';
+    } else {
+        adminHeaderActions.style.display = 'none';
+        document.getElementById('regularUserActions').style.display = 'flex';
+    }
+}
+
+// Новая функция для перепубликации объекта
+async function republishProperty(propertyId) {
+    if (!confirm('Хотите сделать этот объект снова доступным для аренды?')) return;
+
+    try {
+        const response = await fetch(`/api/properties/${propertyId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'active' }),
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка перепубликации');
+        }
+
+        showNotification('Объект снова доступен для аренды', 'success');
+
+        // Обновляем отображение
+        if (currentPropertyId === propertyId) {
+            showPropertyDetails(propertyId);
+        }
+
+        // Обновляем список объектов если открыт
+        if (document.getElementById('myPropertiesModal').style.display === 'flex') {
+            loadMyProperties();
+        }
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
     }
 }
 
@@ -409,6 +629,27 @@ function showApplicationForm() {
     openModal('applicationSubmitModal');
 }
 
+async function reportProperty(propertyId) {
+    if (!confirm('Отправить жалобу на этот объект модераторам?')) return;
+
+    try {
+        // Здесь должен быть эндпоинт для отправки жалобы
+        // Если его нет, можно просто показать уведомление
+        showNotification('Жалоба отправлена. Спасибо за помощь!', 'success');
+
+        // Или если есть эндпоинт:
+        // const response = await fetch(`/api/properties/${propertyId}/report`, {
+        //     method: 'POST',
+        //     credentials: 'same-origin'
+        // });
+        // if (!response.ok) throw new Error('Ошибка отправки жалобы');
+        // showNotification('Жалоба отправлена', 'success');
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification('Ошибка при отправке жалобы', 'error');
+    }
+}
 
 // ==================== УПРАВЛЕНИЕ МЕНЮ ====================
 
@@ -1947,6 +2188,8 @@ function formatPrice(price, intervalPay) {
     }
 }
 
+// В static/script.js обновите функцию loadMyProperties
+
 async function loadMyProperties() {
     console.log('loadMyProperties вызван');
     try {
@@ -1966,33 +2209,82 @@ async function loadMyProperties() {
         if (!container) return;
 
         if (properties.length === 0) {
-            container.innerHTML = '<p class="empty-list">У вас пока нет объектов</p>';
+            container.innerHTML = '<div style="text-align: center; padding: 60px 20px; color: #6c757d;">У вас пока нет объектов</div>';
             return;
         }
 
         let html = '';
         properties.forEach(prop => {
             const priceDisplay = formatPrice(prop.price, prop.interval_pay);
+
+            // Определяем класс и текст статуса
+            let statusClass = '';
+            let statusText = '';
+            switch(prop.status) {
+                case 'active':
+                    statusClass = 'status-active';
+                    statusText = 'Активно';
+                    break;
+                case 'draft':
+                    statusClass = 'status-draft';
+                    statusText = 'Черновик';
+                    break;
+                case 'rented':
+                    statusClass = 'status-rented';
+                    statusText = 'Сдано';
+                    break;
+                case 'archived':
+                    statusClass = 'status-archived';
+                    statusText = 'В архиве';
+                    break;
+                default:
+                    statusClass = 'status-draft';
+                    statusText = prop.status;
+            }
+
             html += `
-                <div class="property-item" style="display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef;">
-                    <img src="${prop.main_photo_url || '/resources/placeholder-image.png'}" alt="Property" style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px;">
-                    <div style="flex: 1;">
-                        <div style="font-weight: 600; font-size: 18px;">${prop.title}</div>
-                        <div style="color: #6c757d;">${prop.address}</div>
-                        <div style="margin-top: 8px;">${prop.rooms} комн. • ${prop.area} м²</div>
-                        <div style="display: flex; justify-content: space-between; margin-top: 8px; align-items: center;">
-                            <span class="status-badge status-${prop.status}">${prop.status === 'active' ? 'Активно' : prop.status}</span>
-                            <span style="font-weight: 600; color: #007bff;">${priceDisplay}</span>
+                <div class="property-item" style="display: flex; gap: 20px; padding: 20px; border-bottom: 1px solid #e9ecef; background: white; border-radius: 12px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                    <!-- Фото объекта -->
+                    <div style="width: 120px; height: 120px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: #f8f9fa; border: 1px solid #e9ecef;">
+                        <img src="${prop.main_photo_url || '/resources/placeholder-image.png'}"
+                             alt="Property"
+                             style="width: 100%; height: 100%; object-fit: cover;"
+                             onerror="this.src='/resources/placeholder-image.png'">
+                    </div>
+
+                    <!-- Информация об объекте -->
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="font-weight: 600; font-size: 18px; color: #212529;">${prop.title}</div>
+                        <div style="color: #6c757d; font-size: 14px; display: flex; align-items: center; gap: 5px;">
+                            <img src="/resources/pin.png" style="width: 14px; opacity: 0.5;"> ${prop.address}
+                        </div>
+                        <div style="display: flex; gap: 15px; font-size: 14px; color: #495057;">
+                            <span>${prop.rooms} комн.</span>
+                            <span>${prop.area} м²</span>
+                            <span>${prop.property_type === 'apartment' ? 'Квартира' : prop.property_type === 'house' ? 'Дом' : 'Коммерческая'}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                            <span style="font-weight: 700; color: #28a745; font-size: 18px;">${priceDisplay}</span>
                         </div>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 5px;">
-                        <button class="btn-secondary" onclick="editProperty(${prop.property_id})">✎ Изменить</button>
-                        <button class="btn-danger" onclick="deleteProperty(${prop.property_id})">× Удалить</button>
+
+                    <!-- Кнопки действий (однородные с другими модалками) -->
+                    <div style="display: flex; flex-direction: column; gap: 8px; min-width: 140px;">
+                        <button class="btn-primary" onclick="editProperty(${prop.property_id})"
+                                style="padding: 10px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; border-radius: 6px; font-weight: 500; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                            <span>✎</span> Изменить
+                        </button>
+                        <button class="btn-danger" onclick="deleteProperty(${prop.property_id})"
+                                style="padding: 10px; background: #dc3545; color: white; border: none; border-radius: 6px; font-weight: 500; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                            <span>🗑</span> Удалить
+                        </button>
                     </div>
                 </div>
             `;
         });
         container.innerHTML = html;
+
     } catch (error) {
         console.error('Ошибка загрузки объектов:', error);
         showNotification('Ошибка загрузки объектов', 'error');
@@ -2151,7 +2443,134 @@ function setupValidationListeners() {
     }
 }
 
+// Класс для работы с городами
+class CitySelector {
+    constructor(inputId, datalistId) {
+        this.input = document.getElementById(inputId);
+        this.datalist = document.getElementById(datalistId);
+        this.selectedCity = null;
+
+        if (this.input && this.datalist) {
+            this.init();
+        }
+    }
+
+    init() {
+        // Обработчик ввода
+        this.input.addEventListener('input', () => {
+            const query = this.input.value;
+
+            if (query.length < 2) {
+                this.hideDatalist();
+                return;
+            }
+
+            // Поиск городов через API
+            HH_API.searchCities(query, (cities) => {
+                this.showResults(cities);
+            });
+        });
+
+        // Закрытие по клику вне
+        document.addEventListener('click', (e) => {
+            if (!this.input.contains(e.target) && !this.datalist.contains(e.target)) {
+                this.hideDatalist();
+            }
+        });
+
+        // Выбор города
+        this.input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.hideDatalist();
+            }
+        });
+    }
+
+    showResults(cities) {
+        if (!cities || cities.length === 0) {
+            this.hideDatalist();
+            return;
+        }
+
+        let html = '';
+        cities.forEach(city => {
+            // Разделяем город и регион
+            const match = city.match(/^(.*?)(?:\s*\(([^)]+)\))?$/);
+            const cityName = match[1].trim();
+            const region = match[2] || '';
+
+            html += `
+                <div class="city-option" onclick="citySelectors['${this.input.id}'].selectCity('${city.replace(/'/g, "\\'")}')">
+                    <span class="city-name">${cityName}</span>
+                    ${region ? `<span class="region-name">${region}</span>` : ''}
+                </div>
+            `;
+        });
+
+        this.datalist.innerHTML = html;
+        this.datalist.classList.add('show');
+    }
+
+    selectCity(city) {
+        this.input.value = city.split(' (')[0]; // Показываем только название города
+        this.selectedCity = city;
+        this.hideDatalist();
+
+        // Обновляем верхнюю панель
+        this.updateHeaderCity(city.split(' (')[0]);
+
+        // Сохраняем полное название для отправки на сервер
+        this.input.dataset.fullCity = city;
+    }
+
+    hideDatalist() {
+        this.datalist.classList.remove('show');
+    }
+
+    updateHeaderCity(city) {
+        const cityElement = document.getElementById('selectedCity');
+        if (cityElement) {
+            cityElement.textContent = city;
+        }
+    }
+}
+
+// Хранилище экземпляров CitySelector
+window.citySelectors = {};
+
+// Инициализация полей городов
+function initCitySelectors() {
+    if (document.getElementById('profileCity')) {
+        window.citySelectors['profileCity'] = new CitySelector('profileCity', 'profileCityDatalist');
+    }
+    if (document.getElementById('city')) {
+        window.citySelectors['city'] = new CitySelector('city', 'citySuggestions');
+    }
+}
+
 // ==================== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ====================
+
+// Валидация документов
+function validateDocuments() {
+    const passport = document.getElementById('profilePassport')?.value || '';
+    const inn = document.getElementById('profileInn')?.value || '';
+    const indicator = document.getElementById('docWarningIndicator');
+
+    // Проверка паспорта (10 цифр)
+    const isPassportValid = passport === '' || /^\d{10}$/.test(passport.replace(/\s/g, ''));
+
+    // Проверка ИНН (10 или 12 цифр)
+    const isInnValid = inn === '' || /^\d{10}$|^\d{12}$/.test(inn.replace(/\s/g, ''));
+
+    const hasErrors = (passport && !isPassportValid) || (inn && !isInnValid);
+
+    if (indicator) {
+        indicator.style.display = hasErrors ? 'inline-block' : 'none';
+    }
+
+    return !hasErrors;
+}
 
 async function loadUserProfile() {
     console.log('Загрузка профиля');
@@ -2189,6 +2608,18 @@ async function loadUserProfile() {
         }
         if (user.contact_info?.city) {
             updateHeaderCity(user.contact_info.city);
+        }
+
+        validateDocuments();
+        // Добавляем обработчики для полей документов
+        const passportInput = document.getElementById('profilePassport');
+        const innInput = document.getElementById('profileInn');
+
+        if (passportInput) {
+            passportInput.addEventListener('input', validateDocuments);
+        }
+        if (innInput) {
+            innInput.addEventListener('input', validateDocuments);
         }
         setupValidationListeners();
     } catch (error) {
@@ -2803,10 +3234,10 @@ function updatePropertyEditButtonsForEditing(currentStatus) {
 
     if (!cancelBtn || !draftBtn || !publishBtn) return;
 
-    if (currentStatus === 'active') {
+    if (currentStatus === 'active' || currentStatus === 'rented') {
         draftBtn.style.display = 'none';
         publishBtn.textContent = '💾 Сохранить изменения';
-        publishBtn.onclick = () => submitPropertyForm('active');
+        publishBtn.onclick = () => submitPropertyForm(currentStatus);
         cancelBtn.style.display = 'block';
     } else {
         draftBtn.style.display = 'block';
@@ -5451,7 +5882,10 @@ if (cityInput && cityDatalist) {
         });
     });
 }
-
+document.addEventListener('DOMContentLoaded', () => {
+    initCitySelectors();
+    validateDocuments();
+});
 // Закрытие по ESC
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {

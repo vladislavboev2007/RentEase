@@ -83,30 +83,25 @@
 
 <!-- МОДАЛЬНОЕ ОКНО: МОИ ОБЪЕКТЫ -->
 <div id="myPropertiesModal" class="modal">
-    <div class="modal-content" style="max-width: 700px;">
-        <button class="close" onclick="closeModal('myPropertiesModal')">×</button>
-        <h2>Мои объекты</h2>
-
-        <div class="properties-list" id="myPropertiesList">
-            <div class="property-card" style="display: flex; gap: 15px; padding: 15px; border-bottom: 1px solid #e9ecef;">
-                <img src="/resources/house1.png" alt="Property" style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; font-size: 18px;">ЖК Городской парк</div>
-                    <div style="color: #6c757d;">ул. Тверская, д. 10</div>
-                    <div style="margin-top: 8px;">2 комн. • 55 м²</div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                        <span class="status-badge status-active" style="padding: 4px 12px; border-radius: 20px; background: #d4edda; color: #155724;">Активно</span>
-                        <span style="font-weight: 600; color: #007bff;">45 000 ₽/мес</span>
-                    </div>
-                </div>
-                <div style="display: flex; flex-direction: column; gap: 5px;">
-                    <button class="btn-secondary" style="padding: 8px 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" onclick="editProperty(1)">✎ Изменить</button>
-                    <button class="btn-danger" style="padding: 8px 15px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="deleteProperty(1)">× Удалить</button>
-                </div>
-            </div>
+    <div class="modal-content" style="max-width: 800px; padding: 0;">
+        <!-- Шапка модалки -->
+        <div style="padding: 25px 30px; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0; font-size: 24px;">Мои объекты</h2>
+            <button class="close" onclick="closeModal('myPropertiesModal')" style="position: static;">×</button>
         </div>
 
-        <button class="btn-primary" style="width: 100%; margin-top: 20px; padding: 12px; background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%); color: white; border: none; border-radius: 6px; cursor: pointer;" onclick="showAddPropertyModal()">+ Добавить объект</button>
+        <!-- Кнопка добавления объекта -->
+        <div style="padding: 20px 30px; background: #f8f9fa; border-bottom: 1px solid #e9ecef;">
+            <button class="btn-success" onclick="showAddPropertyModal()"
+                    style="width: 100%; padding: 14px; background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%); color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <span style="font-size: 20px;">+</span> Добавить новый объект
+            </button>
+        </div>
+
+        <!-- Список объектов -->
+        <div class="properties-list" id="myPropertiesList" style="max-height: 500px; overflow-y: auto; padding: 20px 30px;">
+            <!-- Элементы загружаются динамически -->
+        </div>
     </div>
 </div>
 

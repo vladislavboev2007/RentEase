@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict JXZ7QSFCu8N3sLbzH1nu2kq6ygnHedQIWHISQZ1JM8DhWy3VAFiKz4j5wJodi1U
+\restrict 2iVaRFkezdG8hoyltgnZJebE9EhcjVhbz9UV13SyGUW5dJ8A6DtXkR0cPIqDezX
 
 -- Dumped from database version 18.1
 -- Dumped by pg_dump version 18.1
 
--- Started on 2026-03-15 22:15:28
+-- Started on 2026-03-20 21:30:14
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -20,6 +20,25 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- TOC entry 4 (class 2615 OID 2200)
+-- Name: public; Type: SCHEMA; Schema: -; Owner: pg_database_owner
+--
+
+CREATE SCHEMA public;
+
+
+ALTER SCHEMA public OWNER TO pg_database_owner;
+
+--
+-- TOC entry 5046 (class 0 OID 0)
+-- Dependencies: 4
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: pg_database_owner
+--
+
+COMMENT ON SCHEMA public IS 'standard public schema';
+
 
 --
 -- TOC entry 252 (class 1255 OID 90264)
@@ -822,7 +841,7 @@ CREATE SEQUENCE public.applications_application_id_seq
 ALTER SEQUENCE public.applications_application_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5046 (class 0 OID 0)
+-- TOC entry 5047 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: applications_application_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -865,7 +884,7 @@ CREATE SEQUENCE public.audit_logs_log_id_seq
 ALTER SEQUENCE public.audit_logs_log_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5047 (class 0 OID 0)
+-- TOC entry 5048 (class 0 OID 0)
 -- Dependencies: 231
 -- Name: audit_logs_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -911,7 +930,7 @@ CREATE SEQUENCE public.contracts_contract_id_seq
 ALTER SEQUENCE public.contracts_contract_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5048 (class 0 OID 0)
+-- TOC entry 5049 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: contracts_contract_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -953,7 +972,7 @@ CREATE SEQUENCE public.messages_message_id_seq
 ALTER SEQUENCE public.messages_message_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5049 (class 0 OID 0)
+-- TOC entry 5050 (class 0 OID 0)
 -- Dependencies: 229
 -- Name: messages_message_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1005,7 +1024,7 @@ CREATE SEQUENCE public.properties_property_id_seq
 ALTER SEQUENCE public.properties_property_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5050 (class 0 OID 0)
+-- TOC entry 5051 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: properties_property_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1046,7 +1065,7 @@ CREATE SEQUENCE public.property_photos_photo_id_seq
 ALTER SEQUENCE public.property_photos_photo_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5051 (class 0 OID 0)
+-- TOC entry 5052 (class 0 OID 0)
 -- Dependencies: 223
 -- Name: property_photos_photo_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1092,7 +1111,7 @@ CREATE SEQUENCE public.users_user_id_seq
 ALTER SEQUENCE public.users_user_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5052 (class 0 OID 0)
+-- TOC entry 5053 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_user_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1533,6 +1552,10 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 165	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Донецк", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Донецк", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 21:59:59.047157
 166	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Куровское  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 22:03:56.870232
 167	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Куровское  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Куровское  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 22:04:04.034013
+168	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-16 21:05:10.506891
+169	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-16 22:48:40.156279
+170	\N	UPDATE	users	1	{"table": "users", "changes": {"contact_info": {"new": {"city": "Орехово-Зуево", "phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}, "old": {"phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}}}, "old_data": {"email": "admin@rentease.ru", "user_id": 1, "full_name": "Администратор Системы", "is_active": true, "user_type": "admin", "avatar_url": "/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg", "created_at": "2026-02-13T21:58:34.325669", "contact_info": {"phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}, "password_hash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"}}	2026-03-19 20:11:55.807593
+171	\N	UPDATE	users	1	{"table": "users", "changes": {"contact_info": {"new": {"inn": "2556647474", "city": "Орехово-Зуево", "phone": "+7 (999) 123-45-67", "passport": "1234567890", "birth_date": "2000-01-02"}, "old": {"city": "Орехово-Зуево", "phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}}}, "old_data": {"email": "admin@rentease.ru", "user_id": 1, "full_name": "Администратор Системы", "is_active": true, "user_type": "admin", "avatar_url": "/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg", "created_at": "2026-02-13T21:58:34.325669", "contact_info": {"city": "Орехово-Зуево", "phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}, "password_hash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"}}	2026-03-19 20:12:04.376367
 \.
 
 
@@ -1979,11 +2002,6 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 39	146	/static/uploads/properties/146/982b82b82d8b4dc8bdec29ad7b10397b.jpg	t	1
 40	161	/static/uploads/properties/161/3d8184bf18dd48e69453ad04ff3cba2f.jpg	t	1
 41	140	/static/uploads/properties/140/a4d10838570148a99f3c94fc2d71bb3d.jpg	t	1
-42	143	/static/uploads/properties/143/ff65695953eb4d4fa4e8394082979f71.jpg	t	1
-43	143	/static/uploads/properties/143/ad2dee14b1f54012ae2448afadc9c0eb.jpg	f	2
-44	143	/static/uploads/properties/143/9cd9341368f54e4bbb1849c56d92755f.jpg	f	3
-45	143	/static/uploads/properties/143/964826345cc54d09b9e8261ee6e5d331.jpg	f	4
-46	143	/static/uploads/properties/143/cc6c2e24ea9e410aa56a4e8843c18dfd.jpg	f	5
 47	155	/static/uploads/properties/155/90d90eccae1f4d0397cb53edf18cb960.jpg	t	1
 48	155	/static/uploads/properties/155/4e1a78a2eb28489598cbacc1440e136d.jpg	f	2
 49	155	/static/uploads/properties/155/a647f67f1f6a4155b6b4e84c9d2a5aca.jpg	f	3
@@ -1997,6 +2015,10 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 70	173	/static/uploads/properties/173/7622d730209b4157a3add6d5449c1d34.png	f	3
 23	129	/static/uploads/properties/129/87f76a43730e4419b0e5aaf492809a0a.jpg	f	2
 50	129	/static/uploads/properties/129/5d7d8f6c24394bcc9a3e3ff3131bc52e.jpg	f	3
+42	143	/static/uploads/properties/143/ff65695953eb4d4fa4e8394082979f71.jpg	f	4
+43	143	/static/uploads/properties/143/ad2dee14b1f54012ae2448afadc9c0eb.jpg	f	3
+44	143	/static/uploads/properties/143/9cd9341368f54e4bbb1849c56d92755f.jpg	f	2
+46	143	/static/uploads/properties/143/cc6c2e24ea9e410aa56a4e8843c18dfd.jpg	t	1
 \.
 
 
@@ -2007,13 +2029,13 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 --
 
 COPY public.users (user_id, email, password_hash, avatar_url, full_name, user_type, contact_info, is_active, created_at) FROM stdin;
-1	admin@rentease.ru	240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9	/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg	Администратор Системы	admin	{"phone": "+7 (999) 123-45-67", "birth_date": "2000-01-02"}	t	2026-02-13 21:58:34.325669
-12	qmett1@gmail.com	bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e	/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg	Соловьёва Юлия Сергеевна	agent	{"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}	t	2026-03-10 20:02:42.602234
 11	myname@mail.ru	51bb9ba1a4744cf288c7ae72b5360e505ab9406e33b0e0871b5e969bc25b4fc5	/static/uploads/avatars/e4cb200e7e9e421c929c984cd2752e99.jpg	myname	tenant	{"phone": "+79256789011", "birth_date": "2000-01-02"}	t	2026-02-24 20:55:16.895943
 9	vladislav.boev02@mail.ru	952957cd67e20c467107f126a4c760937c516fe5d373eae39b6ea39bc16ae273	/static/uploads/avatars/1f7bf80f63bf4694bb1f80d1e5faaaca.jpg	Боев Владислав Максимович	tenant	{"inn": "4245343436", "city": "Орехово-Зуево", "phone": "+79964959391", "passport": "1234567890", "birth_date": "2007-01-02"}	t	2026-02-23 13:16:20.738342
 17	feoktistov.gleb@mail.ru	405ffaf7e22ebe8ba27999b01b3cf095e870255abdd3d64b5387f0f649c4d15a	\N	Феоктистов Глеб Юрьевич	tenant	{"city": "Москва", "phone": "+7 (903) 345-67-89"}	t	2026-03-10 20:22:23.818207
 4	owner.elena@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	\N	Елена Смирнова	owner	{"phone": "+7 (999) 456-78-90"}	t	2026-02-13 21:58:34.368669
+12	qmett1@gmail.com	bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e	/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg	Соловьёва Юлия Сергеевна	agent	{"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}	t	2026-03-10 20:02:42.602234
 7	tenant.maria@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Мария Васильева	tenant	{"phone": "+7 (999) 789-01-23"}	t	2026-02-13 21:58:34.368669
+1	admin@rentease.ru	240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9	/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg	Администратор Системы	admin	{"inn": "2556647474", "city": "Орехово-Зуево", "phone": "+7 (999) 123-45-67", "passport": "1234567890", "birth_date": "2000-01-02"}	t	2026-02-13 21:58:34.325669
 13	romanchuvaga@mail.ru	22187723de93e99653b064fd991a2b8e35179394044dc819bc1664196495a946	/static/uploads/avatars/e67a261db88e461ea08e0cce179dd922.jpg	Чувага Роман Думитрувич	tenant	{"inn": "4245343436", "city": "Давыдово", "phone": "+79673257035", "passport": "3354680123", "birth_date": "2007-08-11"}	t	2026-03-10 20:08:58.847439
 2	agent.anna@rentease.ru	f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647	\N	Анна Петрова	agent	{"phone": "+7 (969) 234-56-78", "birth_date": "2001-01-02"}	t	2026-02-13 21:58:34.368669
 16	mazanov.ilya@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Мазанов Илья Алексеевич	tenant	{"city": "Москва", "phone": "+7 (925) 234-56-78"}	t	2026-03-10 20:22:23.818207
@@ -2030,7 +2052,7 @@ COPY public.users (user_id, email, password_hash, avatar_url, full_name, user_ty
 
 
 --
--- TOC entry 5053 (class 0 OID 0)
+-- TOC entry 5054 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: applications_application_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -2039,16 +2061,16 @@ SELECT pg_catalog.setval('public.applications_application_id_seq', 395, true);
 
 
 --
--- TOC entry 5054 (class 0 OID 0)
+-- TOC entry 5055 (class 0 OID 0)
 -- Dependencies: 231
 -- Name: audit_logs_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 167, true);
+SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 171, true);
 
 
 --
--- TOC entry 5055 (class 0 OID 0)
+-- TOC entry 5056 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: contracts_contract_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -2057,7 +2079,7 @@ SELECT pg_catalog.setval('public.contracts_contract_id_seq', 97, true);
 
 
 --
--- TOC entry 5056 (class 0 OID 0)
+-- TOC entry 5057 (class 0 OID 0)
 -- Dependencies: 229
 -- Name: messages_message_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -2066,7 +2088,7 @@ SELECT pg_catalog.setval('public.messages_message_id_seq', 270, true);
 
 
 --
--- TOC entry 5057 (class 0 OID 0)
+-- TOC entry 5058 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: properties_property_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -2075,7 +2097,7 @@ SELECT pg_catalog.setval('public.properties_property_id_seq', 173, true);
 
 
 --
--- TOC entry 5058 (class 0 OID 0)
+-- TOC entry 5059 (class 0 OID 0)
 -- Dependencies: 223
 -- Name: property_photos_photo_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -2084,7 +2106,7 @@ SELECT pg_catalog.setval('public.property_photos_photo_id_seq', 71, true);
 
 
 --
--- TOC entry 5059 (class 0 OID 0)
+-- TOC entry 5060 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_user_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
@@ -2469,11 +2491,11 @@ ALTER TABLE ONLY public.property_photos
     ADD CONSTRAINT property_photos_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(property_id) ON DELETE CASCADE;
 
 
--- Completed on 2026-03-15 22:15:28
+-- Completed on 2026-03-20 21:30:16
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict JXZ7QSFCu8N3sLbzH1nu2kq6ygnHedQIWHISQZ1JM8DhWy3VAFiKz4j5wJodi1U
+\unrestrict 2iVaRFkezdG8hoyltgnZJebE9EhcjVhbz9UV13SyGUW5dJ8A6DtXkR0cPIqDezX
 

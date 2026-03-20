@@ -24,14 +24,6 @@
              <a href="/recovery">Забыли пароль?</a>
             </div>
         </form>
-
-        <div class="social-login" style="text-align: center; margin-top: 20px;">
-            <p style="color: #666; font-size: 14px;">Или войдите с помощью</p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-                <button type="button" style="background: #4267B2; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">Facebook</button>
-                <button type="button" style="background: #DB4437; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">Google</button>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -69,9 +61,11 @@
             <!-- Город -->
             <div class="form-group">
                 <label style="display: block; margin-bottom: 5px; font-weight: 500;">Город</label>
-                <div style="display: flex; gap: 10px;">
-                    <input type="text" id="profileCity" placeholder="Ваш город" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-                    <button type="button" class="btn-secondary" onclick="synchronizeCity()" style="white-space: nowrap;">🔄 Синхр.</button>
+                <div class="city-field-container">
+                    <input type="text" id="profileCity" placeholder="Ваш город"
+                           autocomplete="off" class="city-input">
+                    <img src="/resources/pin.png" class="city-pin-icon" alt="📍">
+                    <div class="city-datalist" id="profileCityDatalist"></div>
                 </div>
                 <small style="color: #6c757d;">Город будет отображаться в верхней панели</small>
             </div>
@@ -83,12 +77,18 @@
             </div>
 
             <!-- Документы -->
-            <details style="margin-top: 15px;">
-                <summary style="font-weight: 500; cursor: pointer; color: #007bff; padding: 5px 0;">Документы ▼</summary>
+            <details id="documentsSection" style="margin-top: 15px;">
+                <summary class="documents-header">
+                    <span>📄 Документы</span>
+                    <span class="doc-validation-indicator" id="docWarningIndicator" style="display: none;">
+                        <span class="warning-dot">!</span>
+                        <span class="warning-tooltip">Необходимо заполнить документы</span>
+                    </span>
+                </summary>
                 <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
                     <div class="form-group">
                         <label style="display: block; margin-bottom: 5px; font-weight: 500;">Серия и номер паспорта</label>
-                        <input type="text" id="profilePassport" placeholder="01 20 394949" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" name="passport">
+                        <input type="text" id="profilePassport" placeholder="0000 000000" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" name="passport">
                     </div>
                     <div class="form-group">
                         <label style="display: block; margin-bottom: 5px; font-weight: 500;">ИНН</label>

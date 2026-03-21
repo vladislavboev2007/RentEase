@@ -3,6 +3,7 @@ import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Optional
+import uuid
 from datetime import datetime
 import asyncio
 
@@ -62,31 +63,35 @@ class YandexMailSender:
                    text_content: str = None,
                    from_name: str = "RentEase") -> bool:
         """
-        Отправка одного письма
-
-        :param to_email: Email получателя
-        :param subject: Тема письма
-        :param html_content: HTML-содержимое (опционально)
-        :param text_content: Текстовое содержимое (опционально)
-        :param from_name: Имя отправителя
-        :return: True если успешно, иначе False
+        Отправка одного письма с улучшенной защитой от спама
         """
+        import re
+        from email.utils import formataddr
+        import time
+
         try:
             # Создаем сообщение
             msg = MIMEMultipart('alternative')
-            msg['From'] = f"{from_name} <{self.username}>"
+
+            # Форматируем отправителя
+            sender_email = self.username
+            msg['From'] = formataddr((from_name, sender_email))
             msg['To'] = to_email
             msg['Subject'] = subject
             msg['Date'] = datetime.now().strftime('%a, %d %b %Y %H:%M:%S %z')
 
+            # Добавляем заголовки для предотвращения спама
+            msg['X-Mailer'] = 'RentEase/1.0'
+            msg['X-Priority'] = '3'
+            msg['Message-ID'] = f"<{uuid.uuid4().hex}@rentease.ru>"
+
             # Добавляем текстовую версию (обязательно)
             if text_content:
                 msg.attach(MIMEText(text_content, 'plain', 'utf-8'))
-            else:
-                # Если нет текстовой версии, создаем простую из HTML
-                plain_text = html_content.replace('<br>', '\n').replace('</p>', '\n').replace('<strong>', '').replace(
-                    '</strong>', '')
-                plain_text = re.sub(r'<[^>]+>', '', plain_text) if 're' in globals() else plain_text
+            elif html_content:
+                # Очищаем HTML для текстовой версии
+                plain_text = re.sub(r'<[^>]+>', ' ', html_content)
+                plain_text = re.sub(r'\s+', ' ', plain_text)
                 msg.attach(MIMEText(plain_text, 'plain', 'utf-8'))
 
             # Добавляем HTML-версию
@@ -97,6 +102,9 @@ class YandexMailSender:
             if not self.server:
                 if not self.connect():
                     return False
+
+            # Добавляем небольшую задержку для имитации человеческой отправки
+            time.sleep(0.5)
 
             self.server.send_message(msg)
             logger.info(f"✅ Письмо отправлено на {to_email}")
@@ -260,6 +268,137 @@ def send_registration_code(email: str, code: str) -> bool:
     sender = YandexMailSender()
     return sender.send_code(email, code, "registration")
 
+
+def send_block_notification(email: str, full_name: str, is_blocked: bool, reason: str = None,
+                            duration: str = None) -> bool:
+    """
+    Отправка уведомления о блокировке/разблокировке пользователя
+    """
+    from email.utils import formataddr
+    import time
+
+    sender = YandexMailSender()
+
+    # Убираем подозрительные слова и форматируем
+    if is_blocked:
+        subject = "Уведомление о блокировке аккаунта в RentEase"
+        title = "Уведомление о блокировке"
+
+        # Форматируем причину блокировки
+        reasons_map = {
+            "fraud": "нарушение правил платформы",
+            "spam": "нарушение правил платформы",
+            "fake_property": "нарушение правил платформы",
+            "harassment": "нарушение правил платформы",
+            "documents": "нарушение правил платформы",
+            "multiple_accounts": "нарушение правил платформы",
+            "other": "нарушение правил платформы"
+        }
+        reason_text = reasons_map.get(reason, "нарушение правил платформы")
+
+        duration_text = ""
+        if duration:
+            if duration == "7":
+                duration_text = "7 дней"
+            elif duration == "30":
+                duration_text = "30 дней"
+            elif duration == "permanent":
+                duration_text = "навсегда"
+
+        # Более безопасное письмо (меньше спам-триггеров)
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: #e74c3c; color: white; padding: 15px; text-align: center; border-radius: 8px 8px 0 0; }}
+                .content {{ background: #f9f9f9; padding: 25px; border: 1px solid #ddd; border-radius: 0 0 8px 8px; }}
+                .footer {{ margin-top: 20px; font-size: 11px; color: #777; text-align: center; border-top: 1px solid #ddd; padding-top: 15px; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h2 style="margin:0;">RentEase</h2>
+            </div>
+            <div class="content">
+                <p>Здравствуйте, {full_name}.</p>
+                <p>Ваш аккаунт на платформе RentEase временно заблокирован.</p>
+                <p>Причина: {reason_text}</p>
+                {f'<p>Срок блокировки: {duration_text}</p>' if duration_text else ''}
+                <p>Если вы считаете это ошибкой, напишите нам на support@rentease.ru.</p>
+                <p>С уважением,<br>Команда RentEase</p>
+            </div>
+            <div class="footer">
+                <p>Это автоматическое сообщение. Пожалуйста, не отвечайте на него.</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        text_content = f"""
+RentEase
+
+Здравствуйте, {full_name}.
+
+Ваш аккаунт на платформе RentEase временно заблокирован.
+
+Причина: {reason_text}
+{f'Срок блокировки: {duration_text}' if duration_text else ''}
+
+Если вы считаете это ошибкой, напишите нам на support@rentease.ru.
+
+С уважением,
+Команда RentEase
+        """
+    else:
+        subject = "Уведомление о разблокировке аккаунта в RentEase"
+        title = "Уведомление о разблокировке"
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: #2ecc71; color: white; padding: 15px; text-align: center; border-radius: 8px 8px 0 0; }}
+                .content {{ background: #f9f9f9; padding: 25px; border: 1px solid #ddd; border-radius: 0 0 8px 8px; }}
+                .footer {{ margin-top: 20px; font-size: 11px; color: #777; text-align: center; border-top: 1px solid #ddd; padding-top: 15px; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h2 style="margin:0;">RentEase</h2>
+            </div>
+            <div class="content">
+                <p>Здравствуйте, {full_name}.</p>
+                <p>Ваш аккаунт на платформе RentEase был разблокирован.</p>
+                <p>Вы снова можете пользоваться всеми функциями сервиса.</p>
+                <p>С уважением,<br>Команда RentEase</p>
+            </div>
+            <div class="footer">
+                <p>Это автоматическое сообщение. Пожалуйста, не отвечайте на него.</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        text_content = f"""
+RentEase
+
+Здравствуйте, {full_name}.
+
+Ваш аккаунт на платформе RentEase был разблокирован.
+
+Вы снова можете пользоваться всеми функциями сервиса.
+
+С уважением,
+Команда RentEase
+        """
+
+    return sender.send_email(email, subject, html_content, text_content)
 
 # Пример использования
 if __name__ == "__main__":

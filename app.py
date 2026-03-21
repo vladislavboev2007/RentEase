@@ -1020,10 +1020,13 @@ async def get_user_by_id(
 @app.patch("/api/admin/users/{user_id}/toggle-block")
 async def toggle_user_block(
         user_id: int,
+        block_reason: str = Body(None, embed=True),
+        block_duration: str = Body(None, embed=True),
+        block_comment: str = Body(None, embed=True),
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """Блокировка/разблокировка пользователя"""
+    """Блокировка/разблокировка пользователя с отправкой уведомления"""
     if not current_user or current_user.user_type != 'admin':
         raise HTTPException(status_code=403, detail="Только для администраторов")
 
@@ -1031,15 +1034,63 @@ async def toggle_user_block(
     if not user:
         raise HTTPException(404, "Пользователь не найден")
 
+    # Определяем действие
+    is_blocking = user.is_active  # если активен, то будем блокировать
+    action = "Блокировка" if is_blocking else "Разблокировка"
+
+    # Сохраняем старый статус
+    old_status = user.is_active
+
+    # Меняем статус
     user.is_active = not user.is_active
+    db.commit()
+
+    # Сохраняем информацию о блокировке в contact_info
+    if user.contact_info is None:
+        user.contact_info = {}
+
+    if is_blocking:
+        # Блокируем - сохраняем причину
+        user.contact_info['block_reason'] = block_reason
+        user.contact_info['block_duration'] = block_duration
+        user.contact_info['block_comment'] = block_comment
+        user.contact_info['blocked_by'] = current_user.user_id
+        user.contact_info['blocked_at'] = datetime.now().isoformat()
+    else:
+        # Разблокируем - удаляем информацию о блокировке
+        user.contact_info.pop('block_reason', None)
+        user.contact_info.pop('block_duration', None)
+        user.contact_info.pop('block_comment', None)
+        user.contact_info.pop('blocked_by', None)
+        user.contact_info.pop('blocked_at', None)
+
     db.commit()
 
     # Логируем действие
     log_action(db, current_user.user_id, 'TOGGLE_BLOCK', 'user', user_id,
-               {'is_active': user.is_active}, request=None)
+               {'old_status': old_status, 'new_status': user.is_active, 'reason': block_reason}, None)
+
+    # Отправляем email уведомление (только если email существует)
+    if user.email and '@' in user.email:
+        try:
+            from smtp import send_block_notification
+            result = send_block_notification(
+                email=user.email,
+                full_name=user.full_name or user.email.split('@')[0],
+                is_blocked=is_blocking,
+                reason=block_reason,
+                duration=block_duration
+            )
+            if result:
+                print(f"📧 Уведомление отправлено на {user.email}")
+            else:
+                print(f"⚠️ Не удалось отправить уведомление на {user.email}")
+        except Exception as e:
+            print(f"❌ Ошибка отправки email: {e}")
+    else:
+        print(f"⚠️ Пропуск отправки email: некорректный адрес {user.email}")
 
     return {"success": True, "is_active": user.is_active}
-
 
 @app.get("/api/admin/properties")
 async def get_all_properties(
@@ -1195,6 +1246,40 @@ async def get_admin_stats(
         "users_by_type": [{"type": ut[0], "count": ut[1]} for ut in users_by_type]
     }
 
+
+@app.post("/api/user/become-owner")
+async def become_owner(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Преобразование арендатора в собственника"""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+
+    # Только арендатор может стать собственником
+    if current_user.user_type != 'tenant':
+        raise HTTPException(status_code=403, detail="Только арендаторы могут стать собственниками")
+
+    # Проверяем наличие паспорта и ИНН
+    contact_info = current_user.contact_info or {}
+    passport = contact_info.get('passport', '').strip()
+    inn = contact_info.get('inn', '').strip()
+
+    if not passport or len(passport) < 10:
+        raise HTTPException(status_code=400, detail="Необходимо заполнить паспортные данные")
+
+    if not inn or len(inn) < 10:
+        raise HTTPException(status_code=400, detail="Необходимо заполнить ИНН")
+
+    # Меняем тип пользователя
+    current_user.user_type = 'owner'
+    db.commit()
+
+    # Логируем действие
+    log_action(db, current_user.user_id, 'BECOME_OWNER', 'users', current_user.user_id,
+               {'old_type': 'tenant', 'new_type': 'owner'}, None)
+
+    return {"success": True, "message": "Вы стали собственником"}
 
 
 # ==================== ПОИСК И ФИЛЬТРАЦИЯ ====================
@@ -2225,6 +2310,7 @@ async def get_unread_notifications_count(
     ).count()
 
     return {"count": count}
+
 
 
 @app.get("/api/messages/unread-count")

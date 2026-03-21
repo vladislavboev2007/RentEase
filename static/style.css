@@ -3859,3 +3859,35 @@ details > summary::marker {
     position: absolute;
     z-index: -1;
 }
+
+/* Кнопка "Стать собственником" */
+.become-owner-btn-container {
+    margin-right: 15px;
+}
+
+.become-owner-btn {
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+    color: white;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+    box-shadow: 0 2px 5px rgba(40, 167, 69, 0.3);
+}
+
+.become-owner-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+    background: linear-gradient(135deg, #218838 0%, #166b2c 100%);
+}
+
+@media (max-width: 768px) {
+    .become-owner-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+}

@@ -94,3 +94,49 @@
     </div>
 </div>
 
+<!-- МОДАЛЬНОЕ ОКНО: БЛОКИРОВКА ПОЛЬЗОВАТЕЛЯ -->
+<div id="blockUserModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <button class="close" onclick="closeModal('blockUserModal')">×</button>
+        <h2>Блокировка пользователя</h2>
+
+        <div id="blockUserInfo" style="margin-bottom: 20px;">
+            <p><strong>Пользователь:</strong> <span id="blockUserName"></span></p>
+            <p><strong>Email:</strong> <span id="blockUserEmail"></span></p>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label>Причина блокировки *</label>
+            <select id="blockReason" class="form-control" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                <option value="fraud">Мошеннические действия</option>
+                <option value="spam">Рассылк� спама</option>
+                <option value="fake_property">Размещение фальшивых объектов</option>
+                <option value="harassment">Оскорбления и домогательства</option>
+                <option value="documents">Подделка документов</option>
+                <option value="multiple_accounts">Создание нескольких аккаунтов</option>
+                <option value="other">Другое нарушение</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label>Срок блокировки</label>
+            <select id="blockDuration" class="form-control" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                <option value="7">7 дней</option>
+                <option value="30">30 дней</option>
+                <option value="permanent">Навсегда</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label>Комментарий для пользователя (будет отправлен на email)</label>
+            <textarea id="blockComment" rows="3" class="form-control"
+                      style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; resize: vertical;"
+                      placeholder="Поясните причину блокировки..."></textarea>
+        </div>
+
+        <div class="modal-actions" style="display: flex; gap: 12px; margin-top: 20px;">
+            <button class="btn-secondary" onclick="closeModal('blockUserModal')" style="flex: 1; padding: 12px;">Отмена</button>
+            <button class="btn-danger" onclick="confirmBlockUser()" style="flex: 1; padding: 12px;">Заблокировать</button>
+        </div>
+    </div>
+</div>

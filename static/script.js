@@ -250,17 +250,140 @@ function searchCity() {
     }
 }
 
-function resetFilters() {
-    document.getElementById('search').value = '';
-    document.getElementById('city').value = '';
-    document.getElementById('property_type').value = 'all';
-    document.getElementById('rooms').value = 'all';
-    document.querySelector('input[name="min_price"]').value = '';
-    document.querySelector('input[name="max_price"]').value = '';
-    document.querySelector('input[name="min_area"]').value = '';
-    document.querySelector('input[name="max_area"]').value = '';
-    document.getElementById('searchForm').submit();
+// Получить текущие параметры фильтрации из URL
+function getFilterParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return {
+        search: urlParams.get('search') || '',
+        city: urlParams.get('city') || '',
+        property_type: urlParams.get('property_type') || 'all',
+        rooms: urlParams.get('rooms') || 'all',
+        min_price: urlParams.get('min_price') || '',
+        max_price: urlParams.get('max_price') || '',
+        min_area: urlParams.get('min_area') || '',
+        max_area: urlParams.get('max_area') || '',
+        sort_by: urlParams.get('sort_by') || 'newest',
+        page: urlParams.get('page') || 1
+    };
 }
+
+// Обновить URL с параметрами фильтрации
+function updateUrlWithFilters() {
+    const params = getFilterParams();
+    const form = document.getElementById('searchForm');
+
+    // Обновляем значения полей формы из URL
+    document.getElementById('search').value = params.search;
+    document.getElementById('city').value = params.city;
+    document.getElementById('property_type').value = params.property_type;
+    document.getElementById('rooms').value = params.rooms;
+    document.querySelector('input[name="min_price"]').value = params.min_price;
+    document.querySelector('input[name="max_price"]').value = params.max_price;
+    document.querySelector('input[name="min_area"]').value = params.min_area;
+    document.querySelector('input[name="max_area"]').value = params.max_area;
+    document.getElementById('sortByHidden').value = params.sort_by;
+
+    // Устанавливаем выбранную сортировку в select
+    const sortSelect = document.getElementById('sortBy');
+    if (sortSelect) {
+        sortSelect.value = params.sort_by;
+    }
+}
+
+// Функция изменения сортировки
+function changeSort(sortBy) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('sort_by', sortBy);
+    url.searchParams.set('page', 1); // Сброс на первую страницу
+    window.location.href = url.toString();
+}
+
+// Функция изменения страницы
+function changePage(newPage) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', newPage);
+    window.location.href = url.toString();
+}
+
+// Функция сброса фильтров
+function resetFilters() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('search');
+    url.searchParams.delete('city');
+    url.searchParams.delete('property_type');
+    url.searchParams.delete('rooms');
+    url.searchParams.delete('min_price');
+    url.searchParams.delete('max_price');
+    url.searchParams.delete('min_area');
+    url.searchParams.delete('max_area');
+    url.searchParams.delete('sort_by');
+    url.searchParams.set('page', 1);
+    window.location.href = url.toString();
+}
+
+// Функция отправки формы поиска
+function submitSearch() {
+    const form = document.getElementById('searchForm');
+    const formData = new FormData(form);
+    const url = new URL(window.location.origin + '/search');
+
+    // Добавляем все параметры формы
+    for (let [key, value] of formData.entries()) {
+        if (value && value !== 'all') {
+            url.searchParams.set(key, value);
+        }
+    }
+
+    // Устанавливаем сортировку
+    const sortSelect = document.getElementById('sortBy');
+    if (sortSelect && sortSelect.value !== 'newest') {
+        url.searchParams.set('sort_by', sortSelect.value);
+    }
+
+    url.searchParams.set('page', 1);
+    window.location.href = url.toString();
+}
+
+// Обновить значения фильтров при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    // Восстанавливаем параметры фильтрации из URL
+    const params = getFilterParams();
+
+    // Заполняем поля формы
+    const searchInput = document.getElementById('search');
+    const cityInput = document.getElementById('city');
+    const typeSelect = document.getElementById('property_type');
+    const roomsSelect = document.getElementById('rooms');
+    const minPriceInput = document.querySelector('input[name="min_price"]');
+    const maxPriceInput = document.querySelector('input[name="max_price"]');
+    const minAreaInput = document.querySelector('input[name="min_area"]');
+    const maxAreaInput = document.querySelector('input[name="max_area"]');
+    const sortSelect = document.getElementById('sortBy');
+
+    if (searchInput) searchInput.value = params.search;
+    if (cityInput) cityInput.value = params.city;
+    if (typeSelect) typeSelect.value = params.property_type;
+    if (roomsSelect) roomsSelect.value = params.rooms;
+    if (minPriceInput) minPriceInput.value = params.min_price;
+    if (maxPriceInput) maxPriceInput.value = params.max_price;
+    if (minAreaInput) minAreaInput.value = params.min_area;
+    if (maxAreaInput) maxAreaInput.value = params.max_area;
+    if (sortSelect) sortSelect.value = params.sort_by;
+
+    // Применяем сортировку к карточкам
+    if (params.sort_by !== 'newest') {
+        changeSort(params.sort_by);
+    }
+
+    // Обработчик отправки формы
+    const searchForm = document.getElementById('searchForm');
+    if (searchForm) {
+        searchForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            submitSearch();
+        });
+    }
+});
 
 // ==================== СОРТИРОВКА И ОТОБРАЖЕНИЕ ====================
 
@@ -698,6 +821,7 @@ function logout() {
             showNotification('Ошибка при выходе из аккаунта', 'error');
         });
 }
+
 
 // ==================== УВЕДОМЛЕНИЯ ====================
 
@@ -5400,11 +5524,14 @@ async function loadAdminUsers(page = 1) {
                                 <button class="btn-info" onclick="showAdminUserDetail(${user.id})" style="padding: 5px 10px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
                                     👁️ Детали
                                 </button>
-                                <button class="${user.is_active ? 'btn-warning' : 'btn-success'}"
-                                        onclick="toggleUserBlock(${user.id}, ${user.is_active})"
-                                        style="padding: 5px 10px; background: ${user.is_active ? '#ffc107' : '#28a745'}; color: ${user.is_active ? '#212529' : 'white'}; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                                    ${user.is_active ? '🔒 Блокировать' : '🔓 Разблокировать'}
-                                </button>
+                                ${user.is_active ?
+                                    `<button class="btn-warning" onclick="showBlockUserModal(${user.id}, '${(user.full_name || user.email).replace(/'/g, "\\'")}', '${user.email}')" style="padding: 5px 10px; background: #ffc107; color: #212529; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                        🔒 Блокировать
+                                    </button>` :
+                                    `<button class="btn-success" onclick="confirmUnblockUser(${user.id})" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                        🔓 Разблокировать
+                                    </button>`
+                                }
                             </div>
                         </td>
                     </tr>
@@ -5580,18 +5707,31 @@ async function showAdminUserDetail(userId) {
         `;
 
         // Обновляем кнопку блокировки
-        const blockBtn = document.getElementById('adminUserDetailBlockBtn');
+        // В static/script.js, в функции showAdminUserDetail
+
+    // Обновляем кнопку блокировки
+    const blockBtn = document.getElementById('adminUserDetailBlockBtn');
+    if (blockBtn) {
         if (isActive) {
             blockBtn.textContent = '🔒 Заблокировать';
             blockBtn.className = 'btn-warning';
             blockBtn.style.background = '#ffc107';
             blockBtn.style.color = '#212529';
+            // При блокировке открываем модалку с причиной
+            blockBtn.onclick = function() {
+                showBlockUserModal(userId, user.full_name, user.email);
+            };
         } else {
             blockBtn.textContent = '🔓 Разблокировать';
             blockBtn.className = 'btn-success';
             blockBtn.style.background = '#28a745';
             blockBtn.style.color = 'white';
+            // При разблокировке сразу вызываем функцию без модалки
+            blockBtn.onclick = function() {
+                confirmUnblockUser(userId);
+            };
         }
+    }
 
         // Сохраняем ID и статус в атрибуты кнопки
         blockBtn.setAttribute('data-user-id', userId);
@@ -5646,6 +5786,40 @@ async function toggleUserBlock(userId, isActive) {
                 blockBtn.setAttribute('data-is-active', 'false');
             }
         }
+
+        // Обновляем список пользователей
+        loadAdminUsers(adminUsersCurrentPage);
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+// Функция для разблокировки пользователя (без модального окна)
+async function confirmUnblockUser(userId) {
+    if (!confirm('Вы уверены, что хотите разблокировать этого пользователя?')) return;
+
+    try {
+        const response = await fetch(`/api/admin/users/${userId}/toggle-block`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                block_reason: null,
+                block_duration: null,
+                block_comment: null
+            }),
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка разблокировки');
+        }
+
+        const data = await response.json();
+        showNotification('Пользователь разблокирован', 'success');
+        closeModal('adminUserDetailModal');
 
         // Обновляем список пользователей
         loadAdminUsers(adminUsersCurrentPage);
@@ -5784,6 +5958,91 @@ async function adminDeleteProperty(propertyId) {
     }
 }
 
+// Переменная для хранения ID пользователя для блокировки
+let currentBlockUserId = null;
+let currentBlockUserName = '';
+let currentBlockUserEmail = '';
+
+// Показать модалку блокировки
+function showBlockUserModal(userId, userName, userEmail) {
+    currentBlockUserId = userId;
+    currentBlockUserName = userName;
+    currentBlockUserEmail = userEmail;
+
+    document.getElementById('blockUserName').textContent = userName;
+    document.getElementById('blockUserEmail').textContent = userEmail;
+
+    // Сбрасываем значения
+    document.getElementById('blockReason').value = 'fraud';
+    document.getElementById('blockDuration').value = '7';
+    document.getElementById('blockComment').value = '';
+
+    openModal('blockUserModal');
+}
+
+// Подтверждение блокировки
+async function confirmBlockUser() {
+    const reason = document.getElementById('blockReason').value;
+    const duration = document.getElementById('blockDuration').value;
+    const comment = document.getElementById('blockComment').value;
+
+    if (!reason) {
+        showNotification('Выберите причину блокировки', 'warning');
+        return;
+    }
+
+    let reasonText = '';
+    const reasonsMap = {
+        'fraud': 'мошеннические действия',
+        'spam': 'рассылка спама',
+        'fake_property': 'размещение фальшивых объектов',
+        'harassment': 'оскорбления и домогательства',
+        'documents': 'подделка документов',
+        'multiple_accounts': 'создание нескольких аккаунтов',
+        'other': 'другое нарушение'
+    };
+    reasonText = reasonsMap[reason] || reason;
+
+    let confirmMessage = `Вы действительно хотите заблокировать пользователя?\n\n`;
+    confirmMessage += `Пользователь: ${currentBlockUserName}\n`;
+    confirmMessage += `Email: ${currentBlockUserEmail}\n`;
+    confirmMessage += `Причина: ${reasonText}\n`;
+    confirmMessage += `Срок: ${duration === '7' ? '7 дней' : duration === '30' ? '30 дней' : 'Навсегда'}\n`;
+    if (comment) confirmMessage += `Комментарий: ${comment}\n`;
+
+    if (!confirm(confirmMessage)) return;
+
+    try {
+        const response = await fetch(`/api/admin/users/${currentBlockUserId}/toggle-block`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                block_reason: reason,
+                block_duration: duration,
+                block_comment: comment
+            }),
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка блокировки');
+        }
+
+        const data = await response.json();
+        showNotification(`Пользователь ${data.is_active ? 'разблокирован' : 'заблокирован'}`, 'success');
+        closeModal('blockUserModal');
+        closeModal('adminUserDetailModal');
+
+        // Обновляем список пользователей
+        loadAdminUsers(adminUsersCurrentPage);
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
 // Вспомогательные функции
 function getPropertyTypeName(type) {
     const types = {
@@ -5822,7 +6081,161 @@ function showAdminProperties() {
     window.location.href = '/admin/properties'; // или своя логика
 }
 
+// Проверка документов для становления собственником
+async function checkOwnerDocuments() {
+    try {
+        const response = await fetch('/api/user/profile', { credentials: 'same-origin' });
+        if (!response.ok) return { passport: false, inn: false };
 
+        const user = await response.json();
+        const contactInfo = user.contact_info || {};
+
+        const passport = contactInfo.passport && contactInfo.passport.trim().length >= 10;
+        const inn = contactInfo.inn && contactInfo.inn.trim().length >= 10;
+
+        return { passport, inn };
+    } catch (error) {
+        console.error('Ошибка проверки документов:', error);
+        return { passport: false, inn: false };
+    }
+}
+
+// Открыть модальное окно становления собственником
+async function openBecomeOwnerModal() {
+    // Проверяем документы
+    const docs = await checkOwnerDocuments();
+
+    // Обновляем статус документов в модалке
+    const passportStatus = document.getElementById('docPassportStatus');
+    const innStatus = document.getElementById('docInnStatus');
+    const confirmBtn = document.getElementById('confirmBecomeOwnerBtn');
+
+    if (passportStatus) {
+        if (docs.passport) {
+            passportStatus.innerHTML = '✓ Заполнен';
+            passportStatus.style.color = '#28a745';
+        } else {
+            passportStatus.innerHTML = '✗ Не заполнен';
+            passportStatus.style.color = '#dc3545';
+        }
+    }
+
+    if (innStatus) {
+        if (docs.inn) {
+            innStatus.innerHTML = '✓ Заполнен';
+            innStatus.style.color = '#28a745';
+        } else {
+            innStatus.innerHTML = '✗ Не заполнен';
+            innStatus.style.color = '#dc3545';
+        }
+    }
+
+    // Если документы заполнены, показываем предупреждение, что можно стать собственником
+    const docsCheck = document.getElementById('ownerDocumentsCheck');
+    if (docs.passport && docs.inn) {
+        docsCheck.innerHTML = `
+            <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <p style="margin: 0; color: #155724;">
+                    ✅ Паспортные данные и ИНН заполнены. Вы можете стать собственником.
+                </p>
+            </div>
+            <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                <div style="flex: 1;">
+                    <div style="font-size: 13px; color: #6c757d; margin-bottom: 5px;">📄 Паспорт</div>
+                    <div style="font-weight: 500; color: #28a745;">✓ Заполнен</div>
+                </div>
+                <div style="flex: 1;">
+                    <div style="font-size: 13px; color: #6c757d; margin-bottom: 5px;">🔢 ИНН</div>
+                    <div style="font-weight: 500; color: #28a745;">✓ Заполнен</div>
+                </div>
+            </div>
+        `;
+        confirmBtn.disabled = false;
+    } else {
+        docsCheck.innerHTML = `
+            <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <p style="margin: 0; color: #856404;">
+                    ⚠️ Для становления собственником необходимо заполнить паспортные данные и ИНН в профиле.
+                </p>
+            </div>
+            <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                <div style="flex: 1;">
+                    <div style="font-size: 13px; color: #6c757d; margin-bottom: 5px;">📄 Паспорт</div>
+                    <div style="font-weight: 500; color: ${docs.passport ? '#28a745' : '#dc3545'};">${docs.passport ? '✓ Заполнен' : '✗ Не заполнен'}</div>
+                </div>
+                <div style="flex: 1;">
+                    <div style="font-size: 13px; color: #6c757d; margin-bottom: 5px;">🔢 ИНН</div>
+                    <div style="font-weight: 500; color: ${docs.inn ? '#28a745' : '#dc3545'};">${docs.inn ? '✓ Заполнен' : '✗ Не заполнен'}</div>
+                </div>
+            </div>
+        `;
+        confirmBtn.disabled = true;
+    }
+
+    // Добавляем обработчик изменения чекбокса
+    const agreementCheckbox = document.getElementById('ownerAgreement');
+    if (agreementCheckbox) {
+        agreementCheckbox.checked = false;
+        agreementCheckbox.onchange = function() {
+            confirmBtn.disabled = !(docs.passport && docs.inn && this.checked);
+        };
+    }
+
+    openModal('becomeOwnerModal');
+}
+
+// Подтверждение становления собственником
+async function confirmBecomeOwner() {
+    const agreementCheckbox = document.getElementById('ownerAgreement');
+    if (!agreementCheckbox.checked) {
+        showNotification('Необходимо согласиться с положением', 'warning');
+        return;
+    }
+
+    // Проверяем документы ещё раз
+    const docs = await checkOwnerDocuments();
+    if (!docs.passport || !docs.inn) {
+        showNotification('Необходимо заполнить паспортные данные и ИНН в профиле', 'error');
+        closeModal('becomeOwnerModal');
+        showProfileModal();
+        return;
+    }
+
+    if (!confirm('Вы действительно хотите стать собственником? Это действие нельзя отменить.')) return;
+
+    try {
+        showNotification('Обработка запроса...', 'info');
+
+        const response = await fetch('/api/user/become-owner', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification('Поздравляем! Теперь вы являетесь собственником!', 'success');
+            closeModal('becomeOwnerModal');
+
+            // Обновляем информацию о пользователе
+            if (window.currentUser) {
+                window.currentUser.type = 'owner';
+            }
+
+            // Перезагружаем страницу для обновления интерфейса
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            showNotification(data.message || 'Ошибка при смене роли', 'error');
+        }
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification('Ошибка при смене роли', 'error');
+    }
+}
 
 // Закрытие по клику на фон
 window.addEventListener('click', function(event) {

@@ -8,7 +8,6 @@
             <!-- Элементы будут загружаться динамически -->
         </div>
 
-        <button class="btn-secondary" onclick="closeModal('myContractsModal')" style="width: 100%; margin-top: 20px; padding: 12px;">Закрыть</button>
     </div>
 </div>
 
@@ -97,14 +96,14 @@
         </div>
 
         <!-- Кнопки действий -->
-        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
-            <button class="btn-danger" id="cancelContractBtn" onclick="cancelContract()" style="flex: 1; padding: 12px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; display: none;">🗑 Отменить договор</button>
-            <button class="btn-secondary" id="downloadContractBtn" onclick="downloadContract()" style="flex: 1; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; display: none;">📄 Скачать договор</button>
-            <button class="btn-secondary" id="downloadActBtn" onclick="downloadAct()" style="flex: 1; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; display: none;">📄 Скачать акт</button>
+        <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px;">
+            <button class="btn-danger" id="cancelContractBtn" onclick="cancelContract()" style="flex: 1; padding: 12px; height: 48px; display: none; background-color: red; color: white;">🗑 Отменить договор</button>
+            <button class="btn-secondary" id="downloadContractBtn" onclick="downloadContract()" style="flex: 1; padding: 12px; height: 48px; display: none;">📄 Скачать договор</button>
+            <button class="btn-secondary" id="downloadActBtn" onclick="downloadAct()" style="flex: 1; padding: 12px; height: 48px; display: none;">📄 Скачать акт</button>
         </div>
 
         <!-- Кнопка подписания -->
-        <button class="btn-primary" id="contractSignButton" onclick="signContract()" style="width: 100%; padding: 14px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; display: none;">
+        <button class="btn-primary" id="contractSignButton" onclick="signContract()" style="width: 100%; padding: 14px; height: 52px; display: none;">
             ✍️ Поставить подпись
         </button>
     </div>
@@ -120,6 +119,5 @@
             <!-- Элементы будут загружаться динамически -->
         </div>
 
-        <button class="btn-secondary" onclick="closeModal('incomingContractsModal')" style="width: 100%; margin-top: 20px; padding: 12px;">Закрыть</button>
     </div>
 </div>

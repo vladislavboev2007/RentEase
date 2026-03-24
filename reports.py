@@ -204,13 +204,13 @@ def generate_contract_docx(contract_data: dict, property_data: dict, tenant_data
     doc.add_paragraph()
 
     # ========== ГОРОД И ДАТА ==========
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p.add_run(
-        f'г. {property_data.get("city", "Москва")}     «{contract_data.get("day", "___")}» {contract_data.get("month", "_____")} {contract_data.get("year", "___")} г.'
-    ).font.size = Pt(14)
+    #p = doc.add_paragraph()
+    #p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    #p.add_run(
+    #    f'г. {property_data.get("city", "Москва")}     «{contract_data.get("day", "___")}» {contract_data.get("month", "_____")} {contract_data.get("year", "___")} г.'
+    #).font.size = Pt(14)
 
-    doc.add_paragraph()
+    #doc.add_paragraph()
 
     # ========== ПРЕАМБУЛА С ПРАВИЛЬНЫМ СКЛОНЕНИЕМ ==========
     p = doc.add_paragraph()
@@ -252,7 +252,7 @@ def generate_contract_docx(contract_data: dict, property_data: dict, tenant_data
         f'1.1. Арендодатель обязуется передать Арендатору во временное владение и пользование '
         f'{property_type}, расположенную по адресу: {property_data.get("address", "_______________")}, '
         f'г. {property_data.get("city", "_______________")} (далее – «Помещение»), для использования в целях, '
-        f'указанных в п. 1.2 настоящего Договора.'
+        f'указанных в п. 1.2 настоящего Договора от «{contract_data.get("day", "___")}» {contract_data.get("month", "_____")} {contract_data.get("year", "___")} г.'
     ).font.size = Pt(14)
 
     p = doc.add_paragraph()
@@ -265,8 +265,8 @@ def generate_contract_docx(contract_data: dict, property_data: dict, tenant_data
     p.paragraph_format.first_line_indent = Cm(1.25)
     p.add_run(
         f'1.3. Характеристики Помещения:\n'
-        f'   - общая площадь: {property_data.get("area", "___")} кв. м;\n'
-        f'   - количество комнат: {property_data.get("rooms", "___")}.'
+        f'           - общая площадь: {property_data.get("area", "___")} кв. м;\n'
+        f'           - количество комнат: {property_data.get("rooms", "___")}.'
     ).font.size = Pt(14)
 
     doc.add_paragraph()
@@ -334,13 +334,13 @@ def generate_contract_docx(contract_data: dict, property_data: dict, tenant_data
     doc.add_paragraph()
 
     # ========== ДАТА ДОГОВОРА В КОНЦЕ ==========
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p.add_run(
-        f'г. {property_data.get("city", "Москва")} «{contract_data.get("day", "___")}» {contract_data.get("month", "_____")} {contract_data.get("year", "___")} г.'
-    ).font.size = Pt(14)
+    #p = doc.add_paragraph()
+    #p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    #p.add_run(
+    #    f'г. {property_data.get("city", "Москва")} «{contract_data.get("day", "___")}» {contract_data.get("month", "_____")} {contract_data.get("year", "___")} г.'
+    #).font.size = Pt(14)
 
-    doc.add_paragraph()
+    #doc.add_paragraph()
 
     # ========== ПОДПИСИ СТОРОН С УЧЕТОМ ПОДПИСАНИЯ ==========
     doc.add_heading('ПОДПИСИ СТОРОН', level=2).alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -723,17 +723,17 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
     c.drawCentredString(width / 2, height - 60, "приема-передачи нежилого помещения")
 
     # Адрес
-    c.setFont(bold_font, 12)
-    c.drawString(50, height - 90, "г. " + property_data.get("city", "Москва"))
+    #c.setFont(bold_font, 12)
+    #c.drawString(50, height - 90, "г. " + property_data.get("city", "Москва"))
 
-    address = property_data.get("address", "_______________")
+    #address = property_data.get("address", "_______________")
     c.setFont(regular_font, 12)
-    c.drawString(50, height - 110, address)
+    #c.drawString(50, height - 110, address)
 
     # Дата
-    date_text = f'«{contract_data.get("day", "___")}» {contract_data.get("month", "_____")} {contract_data.get("year", "___")} г.'
-    c.setFont(regular_font, 12)
-    c.drawString(50, height - 130, date_text)
+    #date_text = f'«{contract_data.get("day", "___")}» {contract_data.get("month", "_____")} {contract_data.get("year", "___")} г.'
+    #c.setFont(regular_font, 12)
+    #c.drawString(50, height - 130, date_text)
 
     # Основной текст
     y = height - 170
@@ -779,15 +779,15 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
     # Состояние помещения
     y -= 15
     state_text = ('Техническое состояние нежилого помещения удовлетворительное и позволяет использовать его '
-                  'в целях, предусмотренных п. 1.1 указанного Договора аренды.')
+                  f'в целях, предусмотренных п. 1.1 указанного Договора аренды')
 
     y = draw_wrapped_text(state_text, 50, y, width - 100, regular_font, 12) - 10
 
     # Дата договора в конце
     y -= 20
     c.setFont(regular_font, 12)
-    c.drawString(50, y,
-                 f'г. {property_data.get("city", "Москва")} «{contract_data.get("day", "___")}» {contract_data.get("month", "_____")} {contract_data.get("year", "___")} г.')
+    #c.drawString(50, y,
+                # f'г. {property_data.get("city", "Москва")} «{contract_data.get("day", "___")}» {contract_data.get("month", "_____")} {contract_data.get("year", "___")} г.')
 
     # Подписи
     y -= 50
@@ -823,7 +823,7 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
                     img_buffer.seek(0)
 
                     # Рисуем изображение с прозрачностью
-                    canvas.drawImage(ImageReader(img_buffer), x, y - height, width=width, height=height,
+                    canvas.drawImage(ImageReader(img_buffer), x, y - height + 20, width=width, height=height,
                                      preserveAspectRatio=True, mask='auto')
                     return True
                 except Exception as e:

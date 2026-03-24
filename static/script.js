@@ -290,34 +290,53 @@ function updateUrlWithFilters() {
     }
 }
 
-// Функция изменения сортировки
+// Функция изменения сортировки (с сохранением всех фильтров)
 function changeSort(sortBy) {
     const url = new URL(window.location.href);
+    const params = getFilterParams();
+
+    // Сохраняем все существующие параметры
+    if (params.search) url.searchParams.set('search', params.search);
+    if (params.city) url.searchParams.set('city', params.city);
+    if (params.property_type && params.property_type !== 'all') url.searchParams.set('property_type', params.property_type);
+    if (params.rooms && params.rooms !== 'all') url.searchParams.set('rooms', params.rooms);
+    if (params.min_price) url.searchParams.set('min_price', params.min_price);
+    if (params.max_price) url.searchParams.set('max_price', params.max_price);
+    if (params.min_area) url.searchParams.set('min_area', params.min_area);
+    if (params.max_area) url.searchParams.set('max_area', params.max_area);
+
+    // Устанавливаем новую сортировку
     url.searchParams.set('sort_by', sortBy);
     url.searchParams.set('page', 1); // Сброс на первую страницу
+
     window.location.href = url.toString();
 }
 
-// Функция изменения страницы
+// Функция изменения страницы (с сохранением всех параметров)
 function changePage(newPage) {
     const url = new URL(window.location.href);
+    const params = getFilterParams();
+
+    // Сохраняем все существующие параметры
+    if (params.search) url.searchParams.set('search', params.search);
+    if (params.city) url.searchParams.set('city', params.city);
+    if (params.property_type && params.property_type !== 'all') url.searchParams.set('property_type', params.property_type);
+    if (params.rooms && params.rooms !== 'all') url.searchParams.set('rooms', params.rooms);
+    if (params.min_price) url.searchParams.set('min_price', params.min_price);
+    if (params.max_price) url.searchParams.set('max_price', params.max_price);
+    if (params.min_area) url.searchParams.set('min_area', params.min_area);
+    if (params.max_area) url.searchParams.set('max_area', params.max_area);
+    if (params.sort_by) url.searchParams.set('sort_by', params.sort_by);
+
+    // Устанавливаем новую страницу
     url.searchParams.set('page', newPage);
+
     window.location.href = url.toString();
 }
 
-// Функция сброса фильтров
+// Функция сброса фильтров (очищает все параметры)
 function resetFilters() {
-    const url = new URL(window.location.href);
-    url.searchParams.delete('search');
-    url.searchParams.delete('city');
-    url.searchParams.delete('property_type');
-    url.searchParams.delete('rooms');
-    url.searchParams.delete('min_price');
-    url.searchParams.delete('max_price');
-    url.searchParams.delete('min_area');
-    url.searchParams.delete('max_area');
-    url.searchParams.delete('sort_by');
-    url.searchParams.set('page', 1);
+    const url = new URL(window.location.origin + window.location.pathname);
     window.location.href = url.toString();
 }
 
@@ -329,12 +348,12 @@ function submitSearch() {
 
     // Добавляем все параметры формы
     for (let [key, value] of formData.entries()) {
-        if (value && value !== 'all') {
+        if (value && value !== 'all' && value !== '') {
             url.searchParams.set(key, value);
         }
     }
 
-    // Устанавливаем сортировку
+    // Добавляем сортировку из select
     const sortSelect = document.getElementById('sortBy');
     if (sortSelect && sortSelect.value !== 'newest') {
         url.searchParams.set('sort_by', sortSelect.value);
@@ -344,12 +363,11 @@ function submitSearch() {
     window.location.href = url.toString();
 }
 
-// Обновить значения фильтров при загрузке страницы
+// Восстановление параметров при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
-    // Восстанавливаем параметры фильтрации из URL
     const params = getFilterParams();
 
-    // Заполняем поля формы
+    // Восстанавливаем значения полей формы
     const searchInput = document.getElementById('search');
     const cityInput = document.getElementById('city');
     const typeSelect = document.getElementById('property_type');
@@ -370,7 +388,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (maxAreaInput) maxAreaInput.value = params.max_area;
     if (sortSelect) sortSelect.value = params.sort_by;
 
-    // Применяем сортировку к карточкам
+    // Применяем сортировку к карточкам на странице (если нужно)
     if (params.sort_by !== 'newest') {
         changeSort(params.sort_by);
     }
@@ -4192,6 +4210,118 @@ function handleWebSocketMessage(data) {
     }
 }
 
+// Глобальная переменная для отслеживания последнего количества уведомлений
+let lastUnreadCount = 0;
+
+// Обновление бейджа с миганием
+function updateBadge(badgeId, count, shouldFlash = false) {
+    const badge = document.getElementById(badgeId);
+    if (!badge) return;
+
+    if (count > 0) {
+        badge.textContent = count > 99 ? '99+' : count;
+        badge.style.display = 'flex';
+
+        // Мигание при появлении новых уведомлений
+        if (shouldFlash && count > lastUnreadCount) {
+            badge.classList.add('blink');
+            setTimeout(() => badge.classList.remove('blink'), 3000);
+        }
+    } else {
+        badge.style.display = 'none';
+    }
+
+    // Обновляем последнее значение для этого бейджа
+    if (badgeId === 'notificationsBadge') {
+        lastUnreadCount = count;
+    }
+}
+
+async function updateBadges() {
+    const notificationsBadge = document.getElementById('notificationsBadge');
+    const messagesBadge = document.getElementById('messagesBadge');
+
+    try {
+        // Получаем количество непрочитанных СИСТЕМНЫХ уведомлений (from_user_id IS NULL)
+        const notifResponse = await fetch('/api/notifications/unread-count', { credentials: 'same-origin' });
+        if (notifResponse.ok) {
+            const notifData = await notifResponse.json();
+            if (notificationsBadge) {
+                if (notifData.count > 0) {
+                    notificationsBadge.textContent = notifData.count > 99 ? '99+' : notifData.count;
+                    notificationsBadge.style.display = 'flex';
+                } else {
+                    notificationsBadge.style.display = 'none';
+                }
+            }
+        }
+
+        // Получаем количество непрочитанных ЛИЧНЫХ сообщений (from_user_id IS NOT NULL)
+        const msgResponse = await fetch('/api/messages/unread-count', { credentials: 'same-origin' });
+        if (msgResponse.ok) {
+            const msgData = await msgResponse.json();
+            if (messagesBadge) {
+                if (msgData.count > 0) {
+                    messagesBadge.textContent = msgData.count > 99 ? '99+' : msgData.count;
+                    messagesBadge.style.display = 'flex';
+                } else {
+                    messagesBadge.style.display = 'none';
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка обновления бейджей:', error);
+    }
+}
+
+
+async function updateBadgesWithFlash() {
+    const messagesBadge = document.getElementById('messagesBadge');
+
+    try {
+        const msgResponse = await fetch('/api/messages/unread-count', { credentials: 'same-origin' });
+        if (msgResponse.ok) {
+            const msgData = await msgResponse.json();
+            const currentCount = msgData.count;
+
+            if (messagesBadge) {
+                if (currentCount > 0) {
+                    messagesBadge.textContent = currentCount > 99 ? '99+' : currentCount;
+                    messagesBadge.style.display = 'flex';
+
+                    // Мигание при появлении нового сообщения
+                    if (currentCount > lastUnreadCount) {
+                        messagesBadge.classList.add('blink');
+                        setTimeout(() => messagesBadge.classList.remove('blink'), 3000);
+                    }
+                } else {
+                    messagesBadge.style.display = 'none';
+                }
+            }
+
+            lastUnreadCount = currentCount;
+        }
+
+        // Обновляем уведомления без мигания
+        const notifResponse = await fetch('/api/notifications/unread-count', { credentials: 'same-origin' });
+        if (notifResponse.ok) {
+            const notifData = await notifResponse.json();
+            const notifBadge = document.getElementById('notificationsBadge');
+            if (notifBadge) {
+                if (notifData.count > 0) {
+                    notifBadge.textContent = notifData.count > 99 ? '99+' : notifData.count;
+                    notifBadge.style.display = 'flex';
+                } else {
+                    notifBadge.style.display = 'none';
+                }
+            }
+        }
+
+    } catch (error) {
+        console.error('Ошибка обновления бейджей:', error);
+    }
+}
+
 // Обновление бейджей через REST API
 async function updateBadgesFromServer() {
     try {
@@ -4206,41 +4336,39 @@ async function updateBadgesFromServer() {
 }
 
 // Обработка нового сообщения через WebSocket
-function handleNewMessage(data) {
+async function handleNewMessage(data) {
     console.log('📨 Новое сообщение:', data);
 
-    // Проверяем, открыто ли сейчас окно уведомлений
-    const notificationsDropdown = document.getElementById('notificationsDropdown');
-    const isNotificationsOpen = notificationsDropdown?.classList.contains('show');
-
     if (data.from_user_id === 0) { // системное уведомление
-        // Мгновенно обновляем бейдж
-        updateNotificationBadges();
+        // Обновляем бейдж уведомлений (без мигания)
+        await updateBadges();
 
-        // Если окно уведомлений открыто, показываем новое уведомление
-        if (isNotificationsOpen) {
-            // Добавляем уведомление в список без перезагрузки
-            addNotificationToList(data.message);
-        } else {
-            // Если окно закрыто, просто обновляем бейдж (уже сделано)
-            // и показываем всплывающее уведомление
-            showNotification('🔔 Новое уведомление', 'info');
+        // Если окно уведомлений открыто, перезагружаем список
+        const notificationsDropdown = document.getElementById('notificationsDropdown');
+        if (notificationsDropdown && notificationsDropdown.classList.contains('show')) {
+            loadSystemNotifications();
         }
-    } else {
-        // Личное сообщение
-        updateNotificationBadges(); // Обновляем бейдж сообщений
+
+    } else { // личное сообщение
+        // Обновляем бейдж сообщений С МИГАНИЕМ
+        await updateBadgesWithFlash();
 
         // Если чат с этим пользователем открыт, добавляем сообщение
         if (currentChatUserId === data.from_user_id) {
             appendMessageToChat(data.message);
         } else {
-            // Показываем уведомление о новом сообщении
             showNotification('💬 Новое сообщение', 'info');
 
-            // Обновляем список диалогов если он открыт
+            // Если окно диалогов открыто, обновляем список
             if (document.getElementById('dialogsListModal').style.display === 'flex') {
                 loadDialogsList();
             }
+        }
+
+        // Если окно сообщений открыто, обновляем список
+        const messagesDropdown = document.getElementById('messagesDropdown');
+        if (messagesDropdown && messagesDropdown.classList.contains('show')) {
+            loadRecentMessages();
         }
     }
 }
@@ -4985,7 +5113,7 @@ function toggleNotifications() {
         dropdown.classList.remove('show');
     } else {
         dropdown.classList.add('show');
-        loadNotifications(); // Загружаем список при открытии
+        loadSystemNotifications(); // Загружаем только системные уведомления
     }
 }
 
@@ -4995,10 +5123,26 @@ function toggleMessages() {
     const notificationsDropdown = document.getElementById('notificationsDropdown');
 
     if (notificationsDropdown) notificationsDropdown.classList.remove('show');
-    dropdown.classList.toggle('show');
 
     if (dropdown.classList.contains('show')) {
-        loadRecentMessages();
+        dropdown.classList.remove('show');
+    } else {
+        dropdown.classList.add('show');
+        loadRecentMessages(); // Загружаем последние личные сообщения
+    }
+}
+
+// Переключение ответов FAQ
+function toggleFaqAnswer(element) {
+    const answer = element.nextElementSibling;
+    const arrow = element.querySelector('span');
+
+    if (answer.style.display === 'none' || !answer.style.display) {
+        answer.style.display = 'block';
+        if (arrow) arrow.innerHTML = '▲';
+    } else {
+        answer.style.display = 'none';
+        if (arrow) arrow.innerHTML = '▼';
     }
 }
 
@@ -5149,29 +5293,118 @@ async function updateNotificationBadges() {
     }
 }
 
-// Обновление конкретного бейджа
-function updateBadge(badgeId, count) {
-    const badge = document.getElementById(badgeId);
-    if (!badge) return;
 
-    if (count > 0) {
-        badge.textContent = count > 99 ? '99+' : count;
-        badge.style.display = 'flex';
-        badge.classList.add('pulse');
-    } else {
-        badge.style.display = 'none';
-        badge.classList.remove('pulse');
+
+// Получение количества НЕПРОЧИТАННЫХ СИСТЕМНЫХ УВЕДОМЛЕНИЙ (from_user_id IS NULL)
+async function getSystemNotificationsCount() {
+    try {
+        const response = await fetch('/api/notifications/unread-count', { credentials: 'same-origin' });
+        if (response.ok) {
+            const data = await response.json();
+            return data.count;
+        }
+        return 0;
+    } catch (error) {
+        console.error('Ошибка получения количества уведомлений:', error);
+        return 0;
     }
 }
 
-// Загрузить последние сообщения для быстрого доступа
+
+// Получение количества непрочитанных ЛИЧНЫХ СООБЩЕНИЙ (from_user_id IS NOT NULL)
+async function getUnreadMessagesCount() {
+    try {
+        const response = await fetch('/api/messages/unread-count', { credentials: 'same-origin' });
+        if (response.ok) {
+            const data = await response.json();
+            return data.count;
+        }
+        return 0;
+    } catch (error) {
+        console.error('Ошибка получения количества сообщений:', error);
+        return 0;
+    }
+}
+
+// Загрузка только системных уведомлений (from_user_id IS NULL)
+async function loadSystemNotifications() {
+    try {
+        const response = await fetch('/api/notifications', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('Ошибка загрузки уведомлений');
+
+        const notifications = await response.json();
+        console.log('Системные уведомления:', notifications);
+
+        const container = document.getElementById('notificationsList');
+        if (!container) return;
+
+        if (notifications.length === 0) {
+            container.innerHTML = '<div class="notification-item">Нет новых уведомлений</div>';
+            updateBadge('notificationsBadge', 0);
+            return;
+        }
+
+        const unreadCount = notifications.filter(n => !n.is_read).length;
+        updateBadge('notificationsBadge', unreadCount, true);
+
+        let html = '';
+        notifications.forEach(n => {
+            const date = new Date(n.created_at);
+            const timeStr = date.toLocaleString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit',
+                day: '2-digit',
+                month: '2-digit'
+            }).replace(',', '');
+
+            // Определяем иконку
+            let icon = '📋';
+            if (n.content.includes('одобрена')) icon = '✅';
+            else if (n.content.includes('отклонена')) icon = '❌';
+            else if (n.content.includes('подписал')) icon = '✍️';
+            else if (n.content.includes('Новая заявка')) icon = '🏠';
+            else if (n.content.includes('Договор отменён')) icon = '🚫';
+
+            // Извлекаем заголовок (то, что в **)
+            let title = '';
+            let description = n.content;
+            const titleMatch = n.content.match(/\*\*(.*?)\*\*/);
+            if (titleMatch) {
+                title = titleMatch[1];
+                description = n.content.replace(titleMatch[0], '').trim();
+            }
+
+            html += `
+                <div class="notification-item ${n.is_read ? '' : 'unread'}" onclick="markNotificationRead(${n.id})">
+                    <div class="notification-header">
+                        <span class="notification-icon">${icon}</span>
+                        ${title ? `<div class="notification-title"><strong>${title}</strong></div>` : ''}
+                        <span class="notification-time">${timeStr}</span>
+                    </div>
+
+                    ${description ? `<div class="notification-description">${description}</div>` : ''}
+                    ${n.is_read ? '' : '<span class="unread-dot"></span>'}
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+
+    } catch (error) {
+        console.error('Ошибка загрузки уведомлений:', error);
+    }
+}
+
+// Загрузка последних сообщений (личные)
 async function loadRecentMessages() {
     try {
         const response = await fetch('/api/my/dialogs', { credentials: 'same-origin' });
         if (!response.ok) throw new Error('Ошибка загрузки');
 
         const dialogs = await response.json();
-        console.log('Последние сообщения:', dialogs);
+
+        // Считаем только непрочитанные ЛИЧНЫЕ сообщения
+        const unreadMessagesCount = dialogs.reduce((sum, d) => sum + (d.unread || 0), 0);
+        updateBadge('messagesBadge', unreadMessagesCount, true);
 
         const container = document.getElementById('messagesDropdownList');
         if (!container) return;
@@ -5181,20 +5414,16 @@ async function loadRecentMessages() {
             return;
         }
 
-        // Берем первые 5 диалогов
         const recentDialogs = dialogs.slice(0, 5);
-
         let html = '';
         recentDialogs.forEach(dialog => {
-            const time = dialog.last_time ? new Date(dialog.last_time).toLocaleString('ru-RU', {
+            const time = dialog.last_time ? new Date(dialog.last_time).toLocaleTimeString('ru-RU', {
                 hour: '2-digit',
                 minute: '2-digit'
             }) : '';
 
-            const unreadClass = dialog.unread > 0 ? 'unread' : '';
-
             html += `
-                <div class="message-item ${unreadClass}" onclick="openChat(${dialog.user_id}); toggleMessages()">
+                <div class="message-item ${dialog.unread > 0 ? 'unread' : ''}" onclick="openChat(${dialog.user_id}); toggleMessages()">
                     <div class="message-sender">${dialog.user_name}</div>
                     <div class="message-preview">${dialog.last_message || '...'}</div>
                     <div class="message-time">${time}</div>
@@ -5202,9 +5431,6 @@ async function loadRecentMessages() {
             `;
         });
         container.innerHTML = html;
-
-        // Обновляем счетчики
-        updateBadges(dialogs);
 
     } catch (error) {
         console.error('Ошибка загрузки сообщений:', error);
@@ -5275,10 +5501,11 @@ function addNotificationToList(notification) {
 
     newItem.innerHTML = `
         <div class="notification-header">
-            <span class="notification-icon">${icon}</span>
+            <span class="notification-icon">${icon}${title ? `<div class="notification-title"><strong>${title}</strong></div>` : ''}</span>
+
             <span class="notification-time">${timeStr}</span>
         </div>
-        ${title ? `<div class="notification-title"><strong>${title}</strong></div>` : ''}
+
         ${description ? `<div class="notification-description">${description}</div>` : ''}
         <span class="unread-dot"></span>
     `;
@@ -5318,34 +5545,48 @@ function stopBadgeRefresh() {
 function switchGuideTab(tabName) {
     console.log('Переключение вкладки руководства на:', tabName);
 
-    // Скрыть все вкладки
-    document.querySelectorAll('.guide-tab-content').forEach(tab => {
-        tab.style.display = 'none';
-    });
+    // Получаем все вкладки и контент
+    const tabs = document.querySelectorAll('.tab-btn');
+    const contents = document.querySelectorAll('.guide-tab-content');
 
-    // Показать выбранную вкладку
-    const selectedTab = document.getElementById('guideTab-' + tabName);
-    if (selectedTab) {
-        selectedTab.style.display = 'block';
+    // Анимация исчезновения
+    const currentContent = document.querySelector('.guide-tab-content[style*="display: block"]');
+    if (currentContent) {
+        currentContent.style.animation = 'fadeOut 0.2s ease-out';
+        setTimeout(() => {
+            currentContent.style.display = 'none';
+        }, 150);
     }
 
-    // Обновить стили кнопок
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+    // Показываем новую вкладку с анимацией
+    setTimeout(() => {
+        const selectedTab = document.getElementById('guideTab-' + tabName);
+        if (selectedTab) {
+            selectedTab.style.display = 'block';
+            selectedTab.style.animation = 'fadeIn 0.3s ease-out';
+        }
+    }, 150);
+
+    // Обновляем стили кнопок
+    tabs.forEach(btn => {
         btn.classList.remove('active');
-        btn.style.borderBottom = 'none';
-        btn.style.color = '#6c757d';
-        btn.style.fontWeight = '500';
     });
 
-    // Активировать текущую кнопку
+    // Активируем текущую кнопку
     const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
     if (activeBtn) {
         activeBtn.classList.add('active');
-        activeBtn.style.borderBottom = '3px solid #007bff';
-        activeBtn.style.color = '#007bff';
-        activeBtn.style.fontWeight = '600';
     }
 }
+
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes fadeOut {
+        from { opacity: 1; transform: translateX(0); }
+        to { opacity: 0; transform: translateX(-20px); }
+    }
+`;
+document.head.appendChild(style);
 
 // Инициализация вкладок при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
@@ -5367,31 +5608,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-// Обновление бейджей в интерфейсе
-function updateBadges(dialogs) {
-    const notificationsBadge = document.getElementById('notificationsBadge');
-    const messagesBadge = document.getElementById('messagesBadge');
-
-    // Для уведомлений считаем ВСЕ непрочитанные сообщения
-    const unreadCount = dialogs.reduce((sum, dialog) => sum + (dialog.unread || 0), 0);
-
-    // Для сообщений считаем количество диалогов с непрочитанными
-    const unreadDialogsCount = dialogs.filter(d => d.unread > 0).length;
-
-    if (unreadCount > 0) {
-        notificationsBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
-        notificationsBadge.style.display = 'flex';
-    } else {
-        notificationsBadge.style.display = 'none';
-    }
-
-    if (unreadDialogsCount > 0) {
-        messagesBadge.textContent = unreadDialogsCount > 99 ? '99+' : unreadDialogsCount;
-        messagesBadge.style.display = 'flex';
-    } else {
-        messagesBadge.style.display = 'none';
-    }
-}
 
 // Отметить все уведомления как прочитанные
 async function markAllNotificationsRead() {
@@ -5412,27 +5628,22 @@ async function markAllNotificationsRead() {
     }
 }
 
-// Запустить периодическое обновление
+// Периодическое обновление уведомлений
+let notificationsInterval = null;
+
 function startNotificationsRefresh() {
-    if (notificationsRefreshInterval) {
-        clearInterval(notificationsRefreshInterval);
-    }
+    if (notificationsInterval) clearInterval(notificationsInterval);
 
-    notificationsRefreshInterval = setInterval(async () => {
+    notificationsInterval = setInterval(async () => {
         if (window.currentUser?.id) {
-            await loadNotifications();
-            await updateBadgesFromServer();
+            // Обновляем только системные уведомления
+            await loadSystemNotifications();
 
-            // Если дропдаун открыт, прокручиваем к новым
-            const dropdown = document.getElementById('notificationsDropdown');
-            if (dropdown && dropdown.classList.contains('show')) {
-                const list = dropdown.querySelector('.notifications-list');
-                if (list && list.scrollTop > 0) {
-                    // Не сбрасываем прокрутку, если пользователь уже скроллил
-                }
-            }
+            // Обновляем счетчик личных сообщений
+            const unreadCount = await getUnreadMessagesCount();
+            updateBadge('messagesBadge', unreadCount);
         }
-    }, 5000); // Каждые 5 секунд
+    }, 15000); // Каждые 15 секунд
 }
 
 // ==================== АДМИН-ФУНКЦИИ ====================
@@ -5522,16 +5733,9 @@ async function loadAdminUsers(page = 1) {
                         <td style="padding: 12px;">
                             <div style="display: flex; gap: 8px;">
                                 <button class="btn-info" onclick="showAdminUserDetail(${user.id})" style="padding: 5px 10px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                                    👁️ Детали
+                                    👁️ Подробнее
                                 </button>
-                                ${user.is_active ?
-                                    `<button class="btn-warning" onclick="showBlockUserModal(${user.id}, '${(user.full_name || user.email).replace(/'/g, "\\'")}', '${user.email}')" style="padding: 5px 10px; background: #ffc107; color: #212529; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                                        🔒 Блокировать
-                                    </button>` :
-                                    `<button class="btn-success" onclick="confirmUnblockUser(${user.id})" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                                        🔓 Разблокировать
-                                    </button>`
-                                }
+
                             </div>
                         </td>
                     </tr>
@@ -5619,27 +5823,18 @@ async function showAdminUserDetail(userId) {
         const user = await response.json();
 
         // Загружаем профиль этого же пользователя для получения contact_info
-        // Используем админский эндпоинт для получения полных данных
         let contactInfo = {};
         let isActive = true;
+        let userType = user.user_type;
 
         try {
-            // Пытаемся получить данные через админский эндпоинт
             const adminResponse = await fetch(`/api/admin/users/${userId}`, { credentials: 'same-origin' });
             if (adminResponse.ok) {
                 const adminData = await adminResponse.json();
                 contactInfo = adminData.contact_info || {};
                 isActive = adminData.is_active;
             } else {
-                // Если нет админского эндпоинта, используем данные из user
                 contactInfo = user.contact_info || {};
-                // Пытаемся получить статус активности из user
-                const statusResponse = await fetch(`/api/user/${userId}/status`, { credentials: 'same-origin' });
-                if (statusResponse.ok) {
-                    const statusData = await statusResponse.json();
-                    // В статусе нет is_active, только is_online
-                }
-                // По умолчанию считаем активным
                 isActive = true;
             }
         } catch (e) {
@@ -5704,42 +5899,61 @@ async function showAdminUserDetail(userId) {
                 </div>
             </div>
             ` : ''}
+
+            ${contactInfo.block_reason ? `
+            <div style="margin-top: 15px; background: #f8d7da; padding: 15px; border-radius: 8px; border-left: 4px solid #dc3545;">
+                <h4 style="margin: 0 0 8px 0; font-size: 14px; color: #721c24;">📋 Информация о блокировке</h4>
+                <div style="font-size: 13px;">
+                    <div><strong>Причина:</strong> ${contactInfo.block_reason}</div>
+                    <div><strong>Срок:</strong> ${contactInfo.block_duration === '7' ? '7 дней' : contactInfo.block_duration === '30' ? '30 дней' : 'Навсегда'}</div>
+                    ${contactInfo.block_comment ? `<div><strong>Комментарий:</strong> ${contactInfo.block_comment}</div>` : ''}
+                    <div><strong>Дата:</strong> ${contactInfo.blocked_at ? new Date(contactInfo.blocked_at).toLocaleString('ru-RU') : '—'}</div>
+                </div>
+            </div>
+            ` : ''}
         `;
 
-        // Обновляем кнопку блокировки
-        // В static/script.js, в функции showAdminUserDetail
-
-    // Обновляем кнопку блокировки
-    const blockBtn = document.getElementById('adminUserDetailBlockBtn');
-    if (blockBtn) {
-        if (isActive) {
-            blockBtn.textContent = '🔒 Заблокировать';
-            blockBtn.className = 'btn-warning';
-            blockBtn.style.background = '#ffc107';
-            blockBtn.style.color = '#212529';
-            // При блокировке открываем модалку с причиной
-            blockBtn.onclick = function() {
-                showBlockUserModal(userId, user.full_name, user.email);
-            };
-        } else {
-            blockBtn.textContent = '🔓 Разблокировать';
-            blockBtn.className = 'btn-success';
-            blockBtn.style.background = '#28a745';
-            blockBtn.style.color = 'white';
-            // При разблокировке сразу вызываем функцию без модалки
-            blockBtn.onclick = function() {
-                confirmUnblockUser(userId);
-            };
+        // ===== КНОПКА НАЗНАЧЕНИЯ АГЕНТА =====
+        const agentBtn = document.getElementById('adminUserDetailAgentBtn');
+        if (agentBtn) {
+            if (userType === 'agent') {
+                agentBtn.textContent = '🚫 Снять роль агента';
+                agentBtn.className = 'btn-warning';
+                agentBtn.style.background = '#ffc107';
+                agentBtn.style.color = '#212529';
+                agentBtn.onclick = function() {
+                    toggleAgentRole(userId, true); // true = снять роль
+                };
+            } else if (userType !== 'admin') {
+                agentBtn.textContent = '👤 Назначить агентом';
+                agentBtn.className = 'btn-info';
+                agentBtn.style.background = '#17a2b8';
+                agentBtn.style.color = 'white';
+                agentBtn.onclick = function() {
+                    toggleAgentRole(userId, false); // false = назначить
+                };
+            } else {
+                agentBtn.style.display = 'none';
+            }
         }
-    }
 
-        // Сохраняем ID и статус в атрибуты кнопки
-        blockBtn.setAttribute('data-user-id', userId);
-        blockBtn.setAttribute('data-is-active', isActive);
-        blockBtn.onclick = function() {
-            const currentIsActive = this.getAttribute('data-is-active') === 'true';
-            toggleUserBlock(userId, currentIsActive);
-        };
+        // ===== КНОПКА БЛОКИРОВКИ =====
+        const blockBtn = document.getElementById('adminUserDetailBlockBtn');
+        if (blockBtn) {
+            if (isActive) {
+                blockBtn.textContent = '🔒 Заблокировать';
+                blockBtn.className = 'btn-warning';
+                blockBtn.onclick = function() {
+                    showBlockUserModal(userId, user.full_name, user.email);
+                };
+            } else {
+                blockBtn.textContent = '🔓 Разблокировать';
+                blockBtn.className = 'btn-success';
+                blockBtn.onclick = function() {
+                    confirmUnblockUser(userId);
+                };
+            }
+        }
 
         openModal('adminUserDetailModal');
 
@@ -5748,6 +5962,7 @@ async function showAdminUserDetail(userId) {
         showNotification('Ошибка загрузки данных пользователя', 'error');
     }
 }
+
 
 // Переключатель блокировки пользователя
 async function toggleUserBlock(userId, isActive) {
@@ -5796,6 +6011,37 @@ async function toggleUserBlock(userId, isActive) {
     }
 }
 
+// Функция назначения/снятия роли агента
+async function toggleAgentRole(userId, isRemoving) {
+    const action = isRemoving ? 'снять роль агента' : 'назначить агентом';
+    if (!confirm(`Вы уверены, что хотите ${action} этого пользователя?`)) return;
+
+    try {
+        const response = await fetch(`/api/admin/users/${userId}/toggle-agent`, {
+            method: 'PATCH',
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка');
+        }
+
+        const data = await response.json();
+        showNotification(`Пользователь ${data.action}`, 'success');
+
+        // Обновляем детальную информацию
+        showAdminUserDetail(userId);
+
+        // Обновляем список пользователей
+        loadAdminUsers(adminUsersCurrentPage);
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
 // Функция для разблокировки пользователя (без модального окна)
 async function confirmUnblockUser(userId) {
     if (!confirm('Вы уверены, что хотите разблокировать этого пользователя?')) return;
@@ -5821,8 +6067,89 @@ async function confirmUnblockUser(userId) {
         showNotification('Пользователь разблокирован', 'success');
         closeModal('adminUserDetailModal');
 
-        // Обновляем список пользователей
-        loadAdminUsers(adminUsersCurrentPage);
+        // Обновляем список пользователей, если модалка открыта
+        if (document.getElementById('adminUsersModal').style.display === 'flex') {
+            loadAdminUsers(adminUsersCurrentPage);
+        }
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+// Переменные для хранения данных жалобы
+let currentReportPropertyId = null;
+let currentReportPropertyTitle = null;
+
+// Открыть модальное окно жалобы
+function openReportModal(propertyId) {
+    if (!isUserLoggedIn()) {
+        showNotification('Необходимо авторизоваться для отправки жалобы', 'warning');
+        showLoginModal();
+        return;
+    }
+
+    currentReportPropertyId = propertyId;
+
+    // Получаем название объекта
+    fetch(`/api/property/${propertyId}`, { credentials: 'same-origin' })
+        .then(res => res.json())
+        .then(data => {
+            currentReportPropertyTitle = data.title;
+            document.getElementById('reportPropertyTitle').textContent = data.title;
+            document.getElementById('reportReason').value = 'fake';
+            document.getElementById('reportDescription').value = '';
+            // Убираем строку с чекбоксом
+            // document.getElementById('reportAnonymous').checked = false;
+            openModal('reportPropertyModal');
+        })
+        .catch(err => {
+            console.error('Ошибка загрузки объекта:', err);
+            showNotification('Ошибка загрузки данных объекта', 'error');
+        });
+}
+
+// Отправить жалобу
+async function submitReport() {
+    const reason = document.getElementById('reportReason').value;
+    const description = document.getElementById('reportDescription').value.trim();
+
+    // Валидация
+    if (!description) {
+        showNotification('Опишите подробнее причину жалобы', 'warning');
+        return;
+    }
+
+    if (description.length < 10) {
+        showNotification('Опишите проблему подробнее (минимум 10 символов)', 'warning');
+        return;
+    }
+
+    if (!confirm('Отправить жалобу на этот объект? Модераторы рассмотрят её в течение 24 часов.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/reports', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                property_id: currentReportPropertyId,
+                reason: reason,
+                description: description,
+                is_anonymous: false  // всегда false, так как галочка убрана
+            }),
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка отправки жалобы');
+        }
+
+        showNotification('Жалоба отправлена. Спасибо за помощь!', 'success');
+        closeModal('reportPropertyModal');
 
     } catch (error) {
         console.error('Ошибка:', error);
@@ -5969,15 +6296,23 @@ function showBlockUserModal(userId, userName, userEmail) {
     currentBlockUserName = userName;
     currentBlockUserEmail = userEmail;
 
-    document.getElementById('blockUserName').textContent = userName;
-    document.getElementById('blockUserEmail').textContent = userEmail;
+    const blockModal = document.getElementById('blockUserModal');
+    if (blockModal) {
+        document.getElementById('blockUserName').textContent = userName;
+        document.getElementById('blockUserEmail').textContent = userEmail;
 
-    // Сбрасываем значения
-    document.getElementById('blockReason').value = 'fraud';
-    document.getElementById('blockDuration').value = '7';
-    document.getElementById('blockComment').value = '';
+        // Сбрасываем значения
+        document.getElementById('blockReason').value = 'fraud';
+        document.getElementById('blockDuration').value = '7';
+        document.getElementById('blockComment').value = '';
 
-    openModal('blockUserModal');
+        openModal('blockUserModal');
+    } else {
+        // Если модального окна нет, показываем простой confirm
+        if (confirm('Заблокировать пользователя?')) {
+            blockUserWithoutModal(userId);
+        }
+    }
 }
 
 // Подтверждение блокировки

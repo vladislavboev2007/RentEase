@@ -312,6 +312,12 @@ class MessageCreate(BaseModel):
     to_user_id: int
     content: str
 
+class ReportCreate(BaseModel):
+    property_id: int
+    reason: str
+    description: str
+    is_anonymous: bool = False
+
 # ==================== WEBSOCKET ДЛЯ ОНЛАЙН СТАТУСА ====================
 
 # Хранилище активных соединений
@@ -1078,8 +1084,9 @@ async def toggle_user_block(
                 email=user.email,
                 full_name=user.full_name or user.email.split('@')[0],
                 is_blocked=is_blocking,
-                reason=block_reason,
-                duration=block_duration
+                reason=block_reason,  # <-- передаём причину
+                duration=block_duration,  # <-- передаём срок
+                comment=block_comment  # <-- передаём комментарий
             )
             if result:
                 print(f"📧 Уведомление отправлено на {user.email}")
@@ -1087,10 +1094,97 @@ async def toggle_user_block(
                 print(f"⚠️ Не удалось отправить уведомление на {user.email}")
         except Exception as e:
             print(f"❌ Ошибка отправки email: {e}")
-    else:
-        print(f"⚠️ Пропуск отправки email: некорректный адрес {user.email}")
 
     return {"success": True, "is_active": user.is_active}
+
+
+@app.patch("/api/admin/users/{user_id}/toggle-agent")
+async def toggle_user_agent(
+        user_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Назначить/снять роль агента"""
+    if not current_user or current_user.user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Только для администраторов")
+
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+
+    # Нельзя изменять роль администратора
+    if user.user_type == 'admin':
+        raise HTTPException(400, "Нельзя изменить роль администратора")
+
+    old_type = user.user_type
+    is_becoming_agent = (user.user_type != 'agent')
+
+    if is_becoming_agent:
+        user.user_type = 'agent'
+        action = "назначен агентом"
+    else:
+        user.user_type = 'tenant'  # или 'owner', в зависимости от текущей роли
+        action = "снята роль агента"
+
+    db.commit()
+
+    # Логируем действие
+    log_action(db, current_user.user_id, 'TOGGLE_AGENT', 'user', user_id,
+               {'old_type': old_type, 'new_type': user.user_type}, None)
+
+    # Отправляем уведомление пользователю
+    try:
+        from smtp import send_agent_notification
+        send_agent_notification(
+            email=user.email,
+            full_name=user.full_name or user.email,
+            is_agent=is_becoming_agent
+        )
+    except Exception as e:
+        print(f"Ошибка отправки email: {e}")
+
+    return {"success": True, "user_type": user.user_type, "action": action}
+
+@app.post("/api/reports")
+async def create_report(
+        report: ReportCreate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Отправка жалобы на объект через SQL-функцию"""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+
+    # Проверяем существование объекта
+    property_obj = db.query(Property).filter(Property.property_id == report.property_id).first()
+    if not property_obj:
+        raise HTTPException(status_code=404, detail="Объект не найден")
+
+    try:
+        # Вызываем SQL-функцию
+        result = db.execute(
+            text("SELECT send_report_to_admins(:property_id, :user_id, :reason, :description, :is_anonymous)"),
+            {
+                "property_id": report.property_id,
+                "user_id": current_user.user_id,
+                "reason": report.reason,
+                "description": report.description,
+                "is_anonymous": report.is_anonymous
+            }
+        ).scalar()
+
+        db.commit()
+
+        if result:
+            show_notification = True
+            return {"success": True, "message": "Жалоба отправлена"}
+        else:
+            raise HTTPException(status_code=500, detail="Ошибка при отправке жалобы")
+
+    except Exception as e:
+        db.rollback()
+        print(f"Ошибка при отправке жалобы: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/admin/properties")
 async def get_all_properties(
@@ -1295,6 +1389,7 @@ async def search_properties(
         max_price: Optional[str] = None,
         min_area: Optional[str] = None,
         max_area: Optional[str] = None,
+        sort_by: Optional[str] = 'newest',
         page: int = 1,
         per_page: int = 12,
         db: Session = Depends(get_db),
@@ -1314,7 +1409,16 @@ async def search_properties(
         except ValueError:
             # Если не удалось преобразовать, игнорируем эти фильтры
             min_price_val = max_price_val = min_area_val = max_area_val = None
-
+        if sort_by == 'price_asc':
+            query = query.order_by(Property.price.asc())
+        elif sort_by == 'price_desc':
+            query = query.order_by(Property.price.desc())
+        elif sort_by == 'area_asc':
+            query = query.order_by(Property.area.asc())
+        elif sort_by == 'area_desc':
+            query = query.order_by(Property.area.desc())
+        else:  # newest
+            query = query.order_by(Property.created_at.desc())
         if search:
             query = query.filter(
                 or_(
@@ -1370,6 +1474,7 @@ async def search_properties(
                 "search_max_price": max_price,
                 "search_min_area": min_area,
                 "search_max_area": max_area,
+                "sort_by": sort_by,
                 "current_user": current_user,
                 "user_initials": get_user_initials(current_user) if current_user else None,
                 "page": page,
@@ -2011,29 +2116,31 @@ async def get_incoming_applications(current_user: User = Depends(get_current_use
 
 
 @app.post("/api/applications")
-async def create_application(app_data: ApplicationCreate, current_user: User = Depends(get_current_user),
-                             db: Session = Depends(get_db)):
+async def create_application(
+        app_data: ApplicationCreate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
-    # Только арендаторы могут создавать заявки
     if current_user.user_type != 'tenant':
         raise HTTPException(403, "Только арендаторы могут создавать заявки")
 
-    # Проверяем, что объект существует и активен
     property = db.query(Property).filter(
         Property.property_id == app_data.property_id,
-        Property.status == 'active'  # Только активные объекты
+        Property.status == 'active'
     ).first()
+
     if not property:
         raise HTTPException(400, "Объект недоступен для аренды")
 
-    # Проверяем, нет ли уже активной заявки от этого арендатора на этот объект
     existing_app = db.query(Application).filter(
         Application.property_id == app_data.property_id,
         Application.tenant_id == current_user.user_id,
         Application.status.in_(['pending', 'approved'])
     ).first()
+
     if existing_app:
         raise HTTPException(400, "У вас уже есть активная заявка на этот объект")
 
@@ -2053,25 +2160,10 @@ async def create_application(app_data: ApplicationCreate, current_user: User = D
     )
     db.add(new_app)
     db.commit()
-    # Получить только что созданное уведомление и отправить через WebSocket
-    notifications = db.query(Message).filter(
-        Message.to_user_id == owner_id,
-        Message.from_user_id.is_(None),
-        Message.created_at > datetime.now() - timedelta(seconds=5)
-    ).all()
-    for note in notifications:
-        asyncio.create_task(manager.send_new_message_notification(
-            from_user_id=0,  # системное
-            to_user_id=owner_id,
-            message_data={
-                "id": note.message_id,
-                "content": note.content,
-                "created_at": note.created_at.isoformat(),
-                "is_read": note.is_read
-            }
-        ))
     db.refresh(new_app)
 
+    # Уведомление создаст триггер notify_new_application
+    # Не нужно добавлять вручную
 
     return {"success": True, "application_id": new_app.application_id}
 
@@ -2185,21 +2277,7 @@ async def respond_application(
             pass
 
     db.commit()
-
-    # Создаём уведомление арендатору
-    notification_content = f"**Заявка {status}** на объект '{property.title}'. "
-    if answer:
-        notification_content += f"Ответ: {answer}"
-
-    notification = Message(
-        from_user_id=None,  # системное
-        to_user_id=app.tenant_id,
-        content=notification_content,
-        is_read=False,
-        created_at=datetime.now()
-    )
-    db.add(notification)
-    db.commit()
+    db.refresh(app)
 
     return {"success": True}
 
@@ -2239,13 +2317,13 @@ async def get_notifications(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Получить системные уведомления для текущего пользователя (from_user_id IS NULL)"""
+    """Получить ТОЛЬКО СИСТЕМНЫЕ уведомления (from_user_id IS NULL)"""
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
     notifications = db.query(Message).filter(
         Message.to_user_id == current_user.user_id,
-        Message.from_user_id.is_(None)  # только системные
+        Message.from_user_id.is_(None)  # Только системные!
     ).order_by(Message.created_at.desc()).limit(limit).all()
 
     return [
@@ -2299,7 +2377,7 @@ async def get_unread_notifications_count(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """Количество непрочитанных системных уведомлений (from_user_id IS NULL)"""
+    """Количество непрочитанных СИСТЕМНЫХ уведомлений (from_user_id IS NULL)"""
     if not current_user:
         return {"count": 0}
 
@@ -2312,13 +2390,12 @@ async def get_unread_notifications_count(
     return {"count": count}
 
 
-
 @app.get("/api/messages/unread-count")
 async def get_unread_messages_count(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """Количество непрочитанных личных сообщений (from_user_id IS NOT NULL)"""
+    """Количество непрочитанных ЛИЧНЫХ сообщений (from_user_id IS NOT NULL)"""
     if not current_user:
         return {"count": 0}
 
@@ -2520,7 +2597,6 @@ async def sign_contract(contract_id: int, current_user: User = Depends(get_curre
         raise HTTPException(403, "Вы не являетесь стороной договора")
 
     db.commit()
-
 
     return {"success": True}
 

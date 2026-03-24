@@ -269,92 +269,138 @@ def send_registration_code(email: str, code: str) -> bool:
     return sender.send_code(email, code, "registration")
 
 
-def send_block_notification(email: str, full_name: str, is_blocked: bool, reason: str = None,
-                            duration: str = None) -> bool:
+def send_block_notification(email: str, full_name: str, is_blocked: bool, reason: str = None, duration: str = None,
+                            comment: str = None) -> bool:
     """
     Отправка уведомления о блокировке/разблокировке пользователя
     """
     from email.utils import formataddr
-    import time
+    import uuid
+    import re
 
     sender = YandexMailSender()
 
-    # Убираем подозрительные слова и форматируем
+    # Карта причин на русском
+    reasons_map = {
+        "fraud": "Мошеннические действия (попытка получения предоплаты, фишинг)",
+        "spam": "Массовая рассылка спама",
+        "fake_property": "Размещение фальшивых объектов недвижимости",
+        "harassment": "Оскорбления и домогательства в чатах",
+        "documents": "Предоставление поддельных документов",
+        "multiple_accounts": "Создание нескольких аккаунтов для обхода ограничений",
+        "other": "Другое нарушение правил платформы"
+    }
+
+    # Карта сроков на русском
+    duration_map = {
+        "7": "7 дней",
+        "30": "30 дней",
+        "permanent": "Навсегда (без возможности восстановления)"
+    }
+
     if is_blocked:
         subject = "Уведомление о блокировке аккаунта в RentEase"
-        title = "Уведомление о блокировке"
 
-        # Форматируем причину блокировки
-        reasons_map = {
-            "fraud": "нарушение правил платформы",
-            "spam": "нарушение правил платформы",
-            "fake_property": "нарушение правил платформы",
-            "harassment": "нарушение правил платформы",
-            "documents": "нарушение правил платформы",
-            "multiple_accounts": "нарушение правил платформы",
-            "other": "нарушение правил платформы"
-        }
-        reason_text = reasons_map.get(reason, "нарушение правил платформы")
+        # Получаем текст причины
+        reason_text = reasons_map.get(reason, reason or "Нарушение правил платформы")
+        duration_text = duration_map.get(duration, duration or "Временно")
 
-        duration_text = ""
-        if duration:
-            if duration == "7":
-                duration_text = "7 дней"
-            elif duration == "30":
-                duration_text = "30 дней"
-            elif duration == "permanent":
-                duration_text = "навсегда"
-
-        # Более безопасное письмо (меньше спам-триггеров)
+        # Формируем HTML-письмо с подробностями
         html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background: #e74c3c; color: white; padding: 15px; text-align: center; border-radius: 8px 8px 0 0; }}
-                .content {{ background: #f9f9f9; padding: 25px; border: 1px solid #ddd; border-radius: 0 0 8px 8px; }}
-                .footer {{ margin-top: 20px; font-size: 11px; color: #777; text-align: center; border-top: 1px solid #ddd; padding-top: 15px; }}
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #dc3545 0%, #b02a37 100%); color: white; padding: 20px; text-align: center; border-radius: 12px 12px 0 0; }}
+                .content {{ background: #f8f9fa; padding: 25px; border: 1px solid #e9ecef; border-radius: 0 0 12px 12px; }}
+                .reason-box {{ background: white; padding: 15px; border-left: 4px solid #dc3545; margin: 15px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+                .comment-box {{ background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 15px 0; border-radius: 8px; }}
+                .footer {{ margin-top: 20px; font-size: 12px; color: #6c757d; text-align: center; border-top: 1px solid #e9ecef; padding-top: 15px; }}
+                .button {{ display: inline-block; background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; margin-top: 15px; }}
             </style>
         </head>
         <body>
             <div class="header">
                 <h2 style="margin:0;">RentEase</h2>
+                <p style="margin:5px 0 0; opacity:0.9;">Уведомление о блокировке аккаунта</p>
             </div>
             <div class="content">
-                <p>Здравствуйте, {full_name}.</p>
-                <p>Ваш аккаунт на платформе RentEase временно заблокирован.</p>
-                <p>Причина: {reason_text}</p>
-                {f'<p>Срок блокировки: {duration_text}</p>' if duration_text else ''}
-                <p>Если вы считаете это ошибкой, напишите нам на support@rentease.ru.</p>
-                <p>С уважением,<br>Команда RentEase</p>
+                <p>Здравствуйте, <strong>{full_name}</strong>.</p>
+                <p>Ваш аккаунт на платформе RentEase был <strong style="color:#dc3545;">заблокирован</strong>.</p>
+
+                <div class="reason-box">
+                    <strong>📋 Причина блокировки:</strong><br>
+                    {reason_text}
+                </div>
+
+                <div class="reason-box">
+                    <strong>⏱️ Срок блокировки:</strong><br>
+                    {duration_text}
+                </div>
+
+                {f'''
+                <div class="comment-box">
+                    <strong>💬 Комментарий администратора:</strong><br>
+                    {comment}
+                </div>
+                ''' if comment else ''}
+
+                <p><strong>Что это значит?</strong></p>
+                <ul>
+                    <li>Вы не можете создавать новые объявления</li>
+                    <li>Вы не можете отправлять сообщения другим пользователям</li>
+                    <li>Ваши существующие объявления скрыты из поиска</li>
+                    <li>Вы не можете подавать заявки на аренду</li>
+                </ul>
+
+                <p><strong>Как разблокировать аккаунт?</strong></p>
+                <ul>
+                    {f'<li>Если блокировка временная — дождитесь окончания срока ({duration_text})</li>' if duration != "permanent" else '<li>Блокировка является постоянной и не подлежит автоматической разблокировке</li>'}
+                    <li>Если вы считаете блокировку ошибочной — обратитесь в службу поддержки: <strong>support@rentease.ru</strong></li>
+                    <li>Приложите доказательства вашей правоты (скриншоты, документы)</li>
+                </ul>
+
+                <div style="text-align: center; margin-top: 20px;">
+                    <a href="mailto:support@rentease.ru" class="button">Связаться с поддержкой</a>
+                </div>
             </div>
             <div class="footer">
-                <p>Это автоматическое сообщение. Пожалуйста, не отвечайте на него.</p>
+                <p>© 2024 RentEase. Все права защищены.</p>
+                <p>Это автоматическое письмо, пожалуйста, не отвечайте на него.</p>
             </div>
         </body>
         </html>
         """
 
         text_content = f"""
-RentEase
+RentEase - Уведомление о блокировке аккаунта
 
 Здравствуйте, {full_name}.
 
-Ваш аккаунт на платформе RentEase временно заблокирован.
+Ваш аккаунт на платформе RentEase был заблокирован.
 
-Причина: {reason_text}
-{f'Срок блокировки: {duration_text}' if duration_text else ''}
+Причина блокировки: {reason_text}
+Срок блокировки: {duration_text}
+{f'Комментарий администратора: {comment}' if comment else ''}
 
-Если вы считаете это ошибкой, напишите нам на support@rentease.ru.
+Что это значит?
+- Вы не можете создавать новые объявления
+- Вы не можете отправлять сообщения другим пользователям
+- Ваши существующие объявления скрыты из поиска
+- Вы не можете подавать заявки на аренду
+
+{f'Дождитесь окончания срока блокировки ({duration_text})' if duration != "permanent" else 'Блокировка является постоянной и не подлежит автоматической разблокировке'}
+
+Если вы считаете блокировку ошибочной, напишите нам на support@rentease.ru.
 
 С уважением,
 Команда RentEase
         """
+
     else:
         subject = "Уведомление о разблокировке аккаунта в RentEase"
-        title = "Уведомление о разблокировке"
 
         html_content = f"""
         <!DOCTYPE html>
@@ -362,41 +408,130 @@ RentEase
         <head>
             <meta charset="UTF-8">
             <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background: #2ecc71; color: white; padding: 15px; text-align: center; border-radius: 8px 8px 0 0; }}
-                .content {{ background: #f9f9f9; padding: 25px; border: 1px solid #ddd; border-radius: 0 0 8px 8px; }}
-                .footer {{ margin-top: 20px; font-size: 11px; color: #777; text-align: center; border-top: 1px solid #ddd; padding-top: 15px; }}
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%); color: white; padding: 20px; text-align: center; border-radius: 12px 12px 0 0; }}
+                .content {{ background: #f8f9fa; padding: 25px; border: 1px solid #e9ecef; border-radius: 0 0 12px 12px; }}
+                .footer {{ margin-top: 20px; font-size: 12px; color: #6c757d; text-align: center; border-top: 1px solid #e9ecef; padding-top: 15px; }}
+                .button {{ display: inline-block; background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; margin-top: 15px; }}
             </style>
         </head>
         <body>
             <div class="header">
                 <h2 style="margin:0;">RentEase</h2>
+                <p style="margin:5px 0 0; opacity:0.9;">Уведомление о разблокировке аккаунта</p>
             </div>
             <div class="content">
-                <p>Здравствуйте, {full_name}.</p>
-                <p>Ваш аккаунт на платформе RentEase был разблокирован.</p>
-                <p>Вы снова можете пользоваться всеми функциями сервиса.</p>
-                <p>С уважением,<br>Команда RentEase</p>
+                <p>Здравствуйте, <strong>{full_name}</strong>.</p>
+                <p>Ваш аккаунт на платформе RentEase был <strong style="color:#28a745;">разблокирован</strong>.</p>
+
+                <p>Вы снова можете пользоваться всеми функциями сервиса:</p>
+                <ul>
+                    <li>✅ Размещать объекты недвижимости</li>
+                    <li>✅ Отправлять сообщения другим пользователям</li>
+                    <li>✅ Подавать заявки на аренду</li>
+                    <li>✅ Заключать договоры</li>
+                </ul>
+
+                <p><strong>Пожалуйста, соблюдайте правила платформы!</strong></p>
+                <p>При повторном нарушении аккаунт может быть заблокирован навсегда.</p>
+
+                <div style="text-align: center; margin-top: 20px;">
+                    <a href="https://rentease.ru" class="button">Перейти на сайт</a>
+                </div>
             </div>
             <div class="footer">
-                <p>Это автоматическое сообщение. Пожалуйста, не отвечайте на него.</p>
+                <p>© 2024 RentEase. Все права защищены.</p>
+                <p>Это автоматическое письмо, пожалуйста, не отвечайте на него.</p>
             </div>
         </body>
         </html>
         """
 
         text_content = f"""
-RentEase
+RentEase - Уведомление о разблокировке аккаунта
 
 Здравствуйте, {full_name}.
 
 Ваш аккаунт на платформе RentEase был разблокирован.
 
-Вы снова можете пользоваться всеми функциями сервиса.
+Вы снова можете пользоваться всеми функциями сервиса:
+- Размещать объекты недвижимости
+- Отправлять сообщения другим пользователям
+- Подавать заявки на аренду
+- Заключать договоры
+
+Пожалуйста, соблюдайте правила платформы!
 
 С уважением,
 Команда RentEase
         """
+
+    return sender.send_email(email, subject, html_content, text_content)
+
+
+def send_agent_notification(email: str, full_name: str, is_agent: bool) -> bool:
+    """Отправка уведомления о назначении/снятии роли агента"""
+    sender = YandexMailSender()
+
+    if is_agent:
+        subject = "Вы стали агентом в RentEase"
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; padding: 20px; text-align: center; border-radius: 12px 12px 0 0; }}
+                .content {{ background: #f8f9fa; padding: 25px; border: 1px solid #e9ecef; border-radius: 0 0 12px 12px; }}
+                .footer {{ margin-top: 20px; font-size: 12px; color: #6c757d; text-align: center; }}
+            </style>
+        </head>
+        <body>
+            <div class="header"><h2>RentEase</h2></div>
+            <div class="content">
+                <p>Здравствуйте, <strong>{full_name}</strong>!</p>
+                <p>Вам была назначена роль <strong>агента</strong> в системе RentEase.</p>
+                <p>Теперь вам доступны дополнительные возможности:</p>
+                <ul>
+                    <li>📊 Статистика работы агента</li>
+                    <li>📋 Управление объектами собственников</li>
+                    <li>💬 Работа с заявками</li>
+                    <li>📈 Аналитика эффективности</li>
+                </ul>
+                <p>Войдите в систему, чтобы начать работу.</p>
+            </div>
+            <div class="footer"><p>© 2024 RentEase. Все права защищены.</p></div>
+        </body>
+        </html>
+        """
+    else:
+        subject = "Роль агента снята в RentEase"
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; padding: 20px; text-align: center; border-radius: 12px 12px 0 0; }}
+                .content {{ background: #f8f9fa; padding: 25px; border: 1px solid #e9ecef; border-radius: 0 0 12px 12px; }}
+                .footer {{ margin-top: 20px; font-size: 12px; color: #6c757d; text-align: center; }}
+            </style>
+        </head>
+        <body>
+            <div class="header"><h2>RentEase</h2></div>
+            <div class="content">
+                <p>Здравствуйте, <strong>{full_name}</strong>!</p>
+                <p>С вас была снята роль <strong>агента</strong> в системе RentEase.</p>
+                <p>Если вы считаете это ошибкой, обратитесь в службу поддержки: <strong>support@rentease.ru</strong></p>
+            </div>
+            <div class="footer"><p>© 2024 RentEase. Все права защищены.</p></div>
+        </body>
+        </html>
+        """
+
+    text_content = f"RentEase - {subject}\n\nЗдравствуйте, {full_name}!\n\n{'Вам была назначена роль агента.' if is_agent else 'С вас была снята роль агента.'}\n\nС уважением, Команда RentEase"
 
     return sender.send_email(email, subject, html_content, text_content)
 

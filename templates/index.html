@@ -77,7 +77,7 @@
                 <div class="messages-dropdown" id="messagesDropdown">
                     <div class="dropdown-header">
                         <h3>Сообщения</h3>
-                        <a href="#" onclick="showDialogsList(); return false;">Все сообщения</a>
+                        <a href="#" onclick="showDialogsList(); return false; " style="color: #0056b3;">Все сообщения</a>
                     </div>
                     <div class="messages-list" id="messagesDropdownList">
                         <div class="message-item loading">Загрузка...</div>
@@ -176,8 +176,10 @@
     <div class="filter-section">
         <div class="filter-container">
             <form action="/search" method="get" class="filter-form" id="searchForm">
-                <!-- Скрытое поле для страницы -->
                 <input type="hidden" name="page" id="pageInput" value="{{ page|default(1) }}">
+
+                <!-- Скрытое поле для сортировки -->
+                <input type="hidden" name="sort_by" id="sortByHidden" value="{{ sort_by|default('newest') }}">
 
                 <!-- Верхний ряд: поиск с кнопкой внутри -->
                 <div class="filter-row">
@@ -254,12 +256,10 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Скрытые поля для сортировки -->
-                <input type="hidden" name="sort_by" id="sortByHidden" value="{{ sort_by|default('newest') }}">
             </form>
         </div>
     </div>
+
 
 <!-- ОСНОВНОЙ КОНТЕЙНЕР С ОБЪЕКТАМИ -->
 <div class="main-container">
@@ -400,88 +400,211 @@
     </div>
 </div>
 
-<!-- ПОПАП РУКОВОДСТВА (обновленный с вкладками) -->
+<!-- ПОПАП РУКОВОДСТВА, ПОДДЕРЖКИ, ПРАВИЛ И FAQ -->
 <div id="guidePopup" class="popup">
-    <div class="popup-content" style="max-width: 600px;">
+    <div class="popup-content" style="max-width: 700px;">
         <span class="close-popup" onclick="hideGuidePopup()">×</span>
-        <h2>Руководство и поддержка</h2>
+        <h2 style="margin-bottom: 20px;">Руководство и поддержка</h2>
 
-        <!-- Вкладки -->
-        <div class="guide-tabs" style="display: flex; border-bottom: 2px solid #e9ecef; margin-bottom: 20px;">
-            <button class="tab-btn active" data-tab="tenant" onclick="switchGuideTab('tenant')" style="flex:1; padding: 10px; background: none; border: none; border-bottom: 3px solid #007bff; font-weight: 600; color: #007bff; cursor: pointer;">Арендатор</button>
-            <button class="tab-btn" data-tab="owner" onclick="switchGuideTab('owner')" style="flex:1; padding: 10px; background: none; border: none; font-weight: 500; color: #6c757d; cursor: pointer;">Собственник</button>
-            <button class="tab-btn" data-tab="agent" onclick="switchGuideTab('agent')" style="flex:1; padding: 10px; background: none; border: none; font-weight: 500; color: #6c757d; cursor: pointer;">Агент</button>
+        <!-- Вкладки с анимацией -->
+        <div class="guide-tabs" style="display: flex; border-bottom: 2px solid #e9ecef; margin-bottom: 20px; gap: 5px;">
+            <button class="tab-btn active" data-tab="tenant" onclick="switchGuideTab('tenant')">
+                🏠 Арендатор
+            </button>
+            <button class="tab-btn" data-tab="owner" onclick="switchGuideTab('owner')">
+                🔑 Собственник
+            </button>
+            <button class="tab-btn" data-tab="agent" onclick="switchGuideTab('agent')">
+                📊 Агент
+            </button>
+            <button class="tab-btn" data-tab="rules" onclick="switchGuideTab('rules')">
+                ⚖️ Правила
+            </button>
+            <button class="tab-btn" data-tab="faq" onclick="switchGuideTab('faq')">
+                ❓ FAQ
+            </button>
         </div>
 
-        <!-- Контент для Арендатора -->
-        <div id="guideTab-tenant" class="guide-tab-content" style="display: block;">
-            <h3 class="tenant-title">Для арендатора</h3>
-            <div class="guide-section">
-                <h4>Как найти жилье</h4>
-                <p>Используйте фильтры поиска по цене, району, количеству комнат. Сохраняйте понравившиеся объекты.</p>
+        <!-- Контент вкладок с анимацией -->
+        <div class="guide-content-container" style="position: relative; min-height: 400px;">
+            <!-- Арендатор -->
+            <div id="guideTab-tenant" class="guide-tab-content" style="display: block;">
+                <h3 class="tenant-title">Для арендатора</h3>
+                <div class="guide-section">
+                    <h4>🔍 Как найти жилье</h4>
+                    <p>Используйте фильтры поиска по цене, району, количеству комнат. Сохраняйте понравившиеся объекты в избранное.</p>
+                </div>
+                <div class="guide-section">
+                    <h4>📝 Подача заявки</h4>
+                    <p>Нажмите "Подать заявку" на карточке объекта, заполните желаемую дату заселения и отправьте сообщение собственнику.</p>
+                </div>
+                <div class="guide-section">
+                    <h4>📄 Оформление договора</h4>
+                    <p>После одобрения заявки договор создается автоматически. Вы можете подписать его электронной подписью.</p>
+                </div>
+                <div class="guide-section">
+                    <h4>💳 Оплата</h4>
+                    <p>Оплачивайте аренду согласно условиям договора. История платежей доступна в личном кабинете.</p>
+                </div>
             </div>
-            <div class="guide-section">
-                <h4>Подача заявки</h4>
-                <p>Нажмите "Подать заявку" на карточке объекта, заполните желаемую дату заселения и отправьте сообщение собственнику.</p>
+
+            <!-- Собственник -->
+            <div id="guideTab-owner" class="guide-tab-content" style="display: none;">
+                <h3 class="owner-title">Для собственника</h3>
+                <div class="guide-section">
+                    <h4>🏢 Размещение объекта</h4>
+                    <p>Добавьте объект через панель управления, загрузите фотографии, укажите характеристики и цену.</p>
+                </div>
+                <div class="guide-section">
+                    <h4>📋 Управление заявками</h4>
+                    <p>Отслеживайте входящие заявки, общайтесь с потенциальными арендаторами через встроенный чат.</p>
+                </div>
+                <div class="guide-section">
+                    <h4>✍️ Заключение договоров</h4>
+                    <p>При одобрении заявки договор создается автоматически. Вы получите уведомление о необходимости подписания.</p>
+                </div>
+                <div class="guide-section">
+                    <h4>💰 Получение платежей</h4>
+                    <p>Контролируйте поступление арендной платы в разделе "Договоры".</p>
+                </div>
             </div>
-            <div class="guide-section">
-                <h4>Оформление договора</h4>
-                <p>После одобрения заявки договор создается автоматически. Вы можете подписать его электронной подписью.</p>
+
+            <!-- Агент -->
+            <div id="guideTab-agent" class="guide-tab-content" style="display: none;">
+                <h3 class="agent-title">Для агента</h3>
+                <div class="guide-section">
+                    <h4>👥 Работа с клиентами</h4>
+                    <p>Помогайте собственникам размещать объекты, а арендаторам – находить подходящие варианты.</p>
+                </div>
+                <div class="guide-section">
+                    <h4>📊 Управление заявками</h4>
+                    <p>Просматривайте все заявки по закрепленным объектам, отвечайте от имени собственника.</p>
+                </div>
+                <div class="guide-section">
+                    <h4>📈 Аналитика</h4>
+                    <p>Отслеживайте статистику своей работы: количество сделок, доход, конверсию.</p>
+                </div>
+                <div class="guide-section">
+                    <h4>🛠️ Поддержка</h4>
+                    <p>При возникновении вопросов обращайтесь в техподдержку через раздел "Сообщения".</p>
+                </div>
             </div>
-            <div class="guide-section">
-                <h4>Оплата</h4>
-                <p>Оплачивайте аренду согласно условиям договора. История платежей доступна в личном кабинете.</p>
+
+            <!-- Правила использования -->
+            <div id="guideTab-rules" class="guide-tab-content" style="display: none;">
+                <h3 style="color: #dc3545;">Правила использования платформы RentEase</h3>
+
+                <div class="guide-section">
+                    <h4>📋 Общие положения</h4>
+                    <p>Используя платформу RentEase, вы соглашаетесь с данными правилами. Нарушение правил может привести к блокировке аккаунта.</p>
+                </div>
+
+                <div class="guide-section">
+                    <h4>🚫 Причины для блокировки аккаунта</h4>
+                    <ul style="margin-left: 20px; line-height: 1.8;">
+                        <li><strong>🔴 Мошеннические действия</strong> — попытка получения предоплаты за несуществующее жильё, фишинг, обман пользователей</li>
+                        <li><strong>🔴 Размещение фальшивых объектов</strong> — публикация несуществующих объектов или с недостоверными характеристиками</li>
+                        <li><strong>🔴 Подделка документов</strong> — предоставление поддельных паспортных данных или документов о собственности</li>
+                        <li><strong>🔴 Оскорбления и домогательства</strong> — грубость, угрозы, преследование других пользователей</li>
+                        <li><strong>🔴 Массовый спам</strong> — рассылка рекламы, множественные одинаковые сообщения</li>
+                        <li><strong>🔴 Создание нескольких аккаунтов</strong> — регистрация нескольких профилей для обхода ограничений</li>
+                        <li><strong>🔴 Попытки взлома</strong> — DDoS-атаки, подбор паролей, использование уязвимостей</li>
+                        <li><strong>🔴 Неоднократные отказы от подписания договора</strong> — более 3 отказов после одобрения заявки</li>
+                    </ul>
+                </div>
+
+                <div class="guide-section">
+                    <h4>⏱️ Сроки блокировки</h4>
+                    <ul style="margin-left: 20px;">
+                        <li><strong>🟡 Первое нарушение</strong> — предупреждение или блокировка на 7 дней</li>
+                        <li><strong>🟠 Повторное нарушение</strong> — блокировка на 30 дней</li>
+                        <li><strong>🔴 Систематические нарушения</strong> — постоянная блокировка без возможности восстановления</li>
+                    </ul>
+                </div>
+
+                <div class="guide-section">
+                    <h4>📧 Обжалование блокировки</h4>
+                    <p>Если вы считаете блокировку ошибочной, направьте письмо на <strong>support@rentease.ru</strong> с темой "Обжалование блокировки" и приложите доказательства.</p>
+                </div>
+            </div>
+
+            <!-- FAQ -->
+            <div id="guideTab-faq" class="guide-tab-content" style="display: none;">
+                <h3>Часто задаваемые вопросы</h3>
+
+                <div class="faq-section" style="margin-bottom: 20px;">
+                    <div class="faq-question" style="cursor: pointer; padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; font-weight: 600;" onclick="toggleFaqAnswer(this)">
+                        ❓ Как зарегистрироваться на платформе?
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-answer" style="display: none; padding: 12px; background: white; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #007bff;">
+                        Нажмите кнопку "Войти" в правом верхнем углу, затем "Создать аккаунт". Заполните email, пароль, номер телефона. Подтвердите email кодом из письма. После этого заполните профиль.
+                    </div>
+
+                    <div class="faq-question" style="cursor: pointer; padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; font-weight: 600;" onclick="toggleFaqAnswer(this)">
+                        💰 Как рассчитывается стоимость аренды?
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-answer" style="display: none; padding: 12px; background: white; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #007bff;">
+                        Стоимость указывается собственником. Вы можете выбрать помесячную или понедельную оплату. В договоре автоматически рассчитывается общая сумма аренды.
+                    </div>
+
+                    <div class="faq-question" style="cursor: pointer; padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; font-weight: 600;" onclick="toggleFaqAnswer(this)">
+                        📄 Как подписать договор?
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-answer" style="display: none; padding: 12px; background: white; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #007bff;">
+                        После одобрения заявки договор создается автоматически. Перейдите в раздел "Мои договоры", нажмите "Поставить подпись". Договор считается подписанным после подписания обеими сторонами.
+                    </div>
+
+                    <div class="faq-question" style="cursor: pointer; padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; font-weight: 600;" onclick="toggleFaqAnswer(this)">
+                        🔒 Безопасно ли указывать паспортные данные?
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-answer" style="display: none; padding: 12px; background: white; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #007bff;">
+                        Да, все данные шифруются и хранятся в защищенной базе данных. Паспортные данные используются только для составления договоров аренды.
+                    </div>
+
+                    <div class="faq-question" style="cursor: pointer; padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; font-weight: 600;" onclick="toggleFaqAnswer(this)">
+                        🏠 Могу ли я стать собственником, если я арендатор?
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-answer" style="display: none; padding: 12px; background: white; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #007bff;">
+                        Да, вы можете стать собственником. Для этого заполните паспортные данные и ИНН в профиле, затем нажмите кнопку "Стать собственником" в меню.
+                    </div>
+
+                    <div class="faq-question" style="cursor: pointer; padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; font-weight: 600;" onclick="toggleFaqAnswer(this)">
+                        👔 Как стать агентом?
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-answer" style="display: none; padding: 12px; background: white; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #17a2b8;">
+                        <p>Роль агента может быть назначена только администратором. Если вы хотите стать агентом, обратитесь в службу поддержки <strong>support@rentease.ru</strong> с указанием ваших email, ИНН, юридического адреса и причины.</p>
+                        <p><strong>Преимущества роли агента:</strong></p>
+                        <ul style="margin-left: 20px; margin-top: 8px;">
+                            <li>📊 Доступ к расширенной аналитике</li>
+                            <li>📋 Управление объектами собственников</li>
+                            <li>💬 Приоритетная поддержка</li>
+                            <li>📈 Статистика эффективности работы</li>
+                        </ul>
+                    </div>
+
+                    <div class="faq-question" style="cursor: pointer; padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; font-weight: 600;" onclick="toggleFaqAnswer(this)">
+                        📧 Не приходит письмо с кодом подтверждения. Что делать?
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-answer" style="display: none; padding: 12px; background: white; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #007bff;">
+                        Проверьте папку "Спам". Если письма нет, нажмите "Отправить код повторно". Убедитесь, что указали корректный email. Если проблема повторяется, обратитесь в поддержку.
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Контент для Собственника -->
-        <div id="guideTab-owner" class="guide-tab-content" style="display: none;">
-            <h3 class="owner-title">Для собственника</h3>
-            <div class="guide-section">
-                <h4>Размещение объекта</h4>
-                <p>Добавьте объект через панель управления, загрузите фотографии, укажите характеристики и цену.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Управление заявками</h4>
-                <p>Отслеживайте входящие заявки, общайтесь с потенциальными арендаторами через встроенный чат.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Заключение договоров</h4>
-                <p>При одобрении заявки договор создается автоматически. Вы получите уведомление о необходимости подписания.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Получение платежей</h4>
-                <p>Контролируйте поступление арендной платы в разделе "Договоры".</p>
-            </div>
-        </div>
-
-        <!-- Контент для Агента -->
-        <div id="guideTab-agent" class="guide-tab-content" style="display: none;">
-            <h3 class="agent-title">Для агента</h3>
-            <div class="guide-section">
-                <h4>Работа с клиентами</h4>
-                <p>Помогайте собственникам размещать объекты, а арендаторам – находить подходящие варианты.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Управление заявками</h4>
-                <p>Просматривайте все заявки по закрепленным объектам, отвечайте от имени собственника.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Аналитика</h4>
-                <p>Отслеживайте статистику своей работы: количество сделок, доход, конверсию.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Поддержка</h4>
-                <p>При возникновении вопросов обращайтесь в техподдержку через раздел "Сообщения".</p>
-            </div>
-        </div>
-
-        <!-- Контакты поддержки -->
+        <!-- Контакты поддержки (внизу) -->
         <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; text-align: center;">
-            <h4 style="margin-bottom: 10px; color: #007bff;">Служба поддержки</h4>
+            <h4 style="margin-bottom: 10px; color: #007bff;">📞 Служба поддержки</h4>
             <p>📧 support@rentease.ru</p>
-            <p>📞 +7 (999) 123-45-67</p>
-            <p>🕒 Круглосуточно</p>
+            <p>🕒 Круглосуточно, без выходных</p>
+            <p>💬 Ответ в течение 24 часов</p>
         </div>
     </div>
 </div>
@@ -506,12 +629,12 @@
                 <!-- Кнопки в шапке -->
                 <div class="modal-header-actions">
                     <!-- Кнопка жалобы (для всех) -->
-                    <button class="report-btn" onclick="reportProperty(currentPropertyId)" title="Пожаловаться">
+                    <button class="report-btn" onclick="openReportModal(currentPropertyId)" title="Пожаловаться">
                         🏴
                     </button>
 
                     <!-- Кнопки администратора (скрыты по умолчанию) -->
-                    <div id="adminHeaderActions" style="display: none;">
+                    <div id="adminHeaderActions" style="display: none; gap: 10px;">
                         <button class="admin-header-btn admin-edit-btn" onclick="editProperty(currentPropertyId)" title="Изменить">
                             ✎
                         </button>
@@ -585,19 +708,56 @@
                     <button class="btn-secondary" onclick="showApplicationForm()">Подать заявку</button>
                 </div>
 
-                <!-- Кнопки действий для администратора (скрыты по умолчанию) -->
-                <div class="modal-actions" id="adminActions" style="display: none; margin-top: 15px; border-top: 2px solid #ffc107; padding-top: 15px;">
-                    <h3 style="margin-bottom: 10px; color: #dc3545;">Управление объектом (админ)</h3>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn-warning" onclick="editProperty(currentPropertyId)" style="flex: 1; padding: 12px; background: #ffc107; color: #212529; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
-                            ✎ Изменить объект
+                <!-- Кнопки действий для администратора -->
+                <div id="adminActions" style="display: none; margin-top: 20px; border-top: 2px solid #ffc107; padding-top: 20px;">
+                    <h3 style="margin-bottom: 15px; font-size: 16px; color: #dc3545;">⚙️ Управление объектом</h3>
+                    <div class="modal-actions" style="display: flex; gap: 15px;">
+                        <button class="btn-warning" onclick="editProperty(currentPropertyId)" style="flex: 1; height: 48px;">
+                            ✎
                         </button>
-                        <button class="btn-danger" onclick="adminDeleteProperty(currentPropertyId)" style="flex: 1; padding: 12px; background: #dc3545; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
-                            🗑 Удалить объект
+                        <button class="btn-danger" onclick="adminDeleteProperty(currentPropertyId)" style="flex: 1; height: 48px;">
+                            🗑
                         </button>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО: ЖАЛОБА НА ОБЪЕКТ -->
+<div id="reportPropertyModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <button class="close" onclick="closeModal('reportPropertyModal')">×</button>
+        <h2 style="margin-bottom: 20px;">🚨 Пожаловаться на объект</h2>
+
+        <div id="reportPropertyInfo" style="margin-bottom: 20px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
+            <p style="margin: 0;"><strong>Объект:</strong> <span id="reportPropertyTitle"></span></p>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 500;">Причина жалобы *</label>
+            <select id="reportReason" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                <option value="fake">❌ Фальшивый объект (не соответствует описанию)</option>
+                <option value="fraud">💰 Мошенничество (требование предоплаты)</option>
+                <option value="photos">📸 Недостоверные фотографии</option>
+                <option value="spam">📢 Спам или реклама</option>
+                <option value="harassment">🤬 Оскорбительное поведение</option>
+                <option value="documents">📄 Поддельные документы</option>
+                <option value="other">📝 Другое</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 500;">Подробное описание *</label>
+            <textarea id="reportDescription" rows="4"
+                      style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; resize: vertical;"
+                      placeholder="Опишите подробнее, что именно нарушено..."></textarea>
+        </div>
+
+        <div class="modal-actions" style="display: flex; gap: 12px;">
+            <button class="btn-secondary" onclick="closeModal('reportPropertyModal')" style="flex: 1; padding: 12px;">Отмена</button>
+            <button class="btn-danger" onclick="submitReport()" style="flex: 1; padding: 12px;">📨 Отправить жалобу</button>
         </div>
     </div>
 </div>

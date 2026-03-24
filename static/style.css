@@ -535,7 +535,7 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
-    margin-top: 10px;
+    margin-top: 0px;
     width: 100%;
 }
 
@@ -788,7 +788,7 @@ body {
 }
 
 .checkbox-group input[type="checkbox"] {
-    width: auto;
+    width: min-content;
 }
 
 .filter-toggle {
@@ -3872,7 +3872,8 @@ details > summary::marker {
     padding: 8px 18px;
     border-radius: 30px;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
+    font-family: 'Segoe UI', 'Times New Roman', Tahoma, Geneva, Verdana, sans-serif;
     cursor: pointer;
     transition: all 0.3s;
     white-space: nowrap;
@@ -3882,7 +3883,6 @@ details > summary::marker {
 .become-owner-btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
-    background: linear-gradient(135deg, #218838 0%, #166b2c 100%);
 }
 
 @media (max-width: 768px) {
@@ -3891,3 +3891,605 @@ details > summary::marker {
         font-size: 12px;
     }
 }
+
+/* В static/style.css добавьте: */
+
+/* Анимация переключения вкладок */
+.guide-tab-content {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Анимация для FAQ */
+.faq-question {
+    transition: all 0.2s ease;
+}
+
+.faq-question:hover {
+    background: #e9ecef !important;
+}
+
+.faq-answer {
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Стили для вкладок */
+.tab-btn {
+    flex: 1;
+    padding: 12px 16px;
+    background: none;
+    border: none;
+    font-weight: 500;
+    color: #6c757d;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-radius: 30px;
+    font-size: 14px;
+}
+
+.tab-btn:hover {
+    background: #f8f9fa;
+    color: #007bff;
+}
+
+.tab-btn.active {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
+/* Кнопка жалобы */
+.report-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    color: #6c757d;
+    font-size: 18px;
+}
+
+.report-btn:hover {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+}
+
+/* В static/style.css добавьте/обновите */
+
+/* Мигающий индикатор */
+.badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #dc3545;
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    border: 2px solid #0056b3;
+    animation: badgePulse 1.5s infinite;
+    transition: all 0.2s;
+}
+
+@keyframes badgePulse {
+    0% {
+        transform: scale(1);
+        background: #dc3545;
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+    }
+    50% {
+        transform: scale(1.1);
+        background: #ff4444;
+        box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.4);
+    }
+    100% {
+        transform: scale(1);
+        background: #dc3545;
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+    }
+}
+
+/* В static/style.css добавьте: */
+@keyframes badgeBlink {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+        background: #dc3545;
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.2);
+        background: #ff6666;
+    }
+}
+
+.badge.blink {
+    animation: badgeBlink 0.8s ease-in-out 3;
+}
+
+/* ==================== ГЛОБАЛЬНЫЕ СТИЛИ ==================== */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Segoe UI', 'Times New Roman', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f8f9fa;
+}
+
+/* Единый шрифт для всех текстовых полей, кнопок и элементов интерфейса */
+input, textarea, select, button, .btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-success, .btn-info {
+    font-family: 'Segoe UI', 'Times New Roman', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ==================== ОСНОВНЫЕ СТИЛИ КНОПОК ==================== */
+/* Базовый класс для всех кнопок */
+.btn-base {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-family: 'Segoe UI', 'Times New Roman', Tahoma, Geneva, Verdana, sans-serif;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+    text-decoration: none;
+    line-height: 1.2;
+}
+
+/* ==================== СТАНДАРТНЫЕ КНОПКИ (С ТЕКСТОМ) ==================== */
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-warning,
+.btn-success,
+.btn-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 20px;  /* Убираем вертикальный padding, оставляем только горизонтальный */
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'Segoe UI', 'Times New Roman', Tahoma, Geneva, Verdana, sans-serif;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+    text-decoration: none;
+    white-space: nowrap;
+    line-height: 1;
+    height: 44px;
+    min-width: 120px;
+    border-radius: 8px;
+}
+
+/* Для кнопок с длинным текстом */
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-warning,
+.btn-success,
+.btn-info {
+    width: auto;  /* Автоматическая ширина */
+    min-width: 120px;
+}
+
+/* Кнопки в модальных окнах - растягиваются по ширине */
+.modal-actions .btn-primary,
+.modal-actions .btn-secondary,
+.modal-actions .btn-danger,
+.modal-actions .btn-warning {
+    flex: 1;
+    min-width: 0;  /* Убираем min-width для модальных кнопок */
+    width: 100%;
+    justify-content: center;
+}
+
+/* ==================== КВАДРАТНЫЕ КНОПКИ ==================== */
+.admin-header-btn,
+.admin-edit-btn,
+.admin-delete-btn,
+.report-btn,
+.page-btn,
+.icon-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 18px;
+}
+
+/* Кнопка жалобы */
+.report-btn {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    color: #6c757d;
+}
+
+.report-btn:hover {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+/* Кнопки навигации пагинации */
+.page-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    background: white;
+    border: 1px solid #ced4da;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.page-btn.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+/* ==================== КНОПКИ В МОДАЛЬНЫХ ОКНАХ ==================== */
+.modal-actions {
+    display: flex;
+    gap: 15px;
+    margin-top: 25px;
+    width: 100%;
+}
+
+.modal-actions .btn-primary,
+.modal-actions .btn-secondary,
+.modal-actions .btn-danger,
+.modal-actions .btn-warning {
+    flex: 1;
+    height: 48px;
+    font-size: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+/* ==================== КНОПКИ В СПИСКЕ ОБЪЕКТОВ ==================== */
+.property-item .btn-primary,
+.property-item .btn-danger {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+/* ==================== КНОПКИ В ПРОФИЛЕ ==================== */
+.profile-actions {
+    display: flex;
+    gap: 15px;
+    margin-top: 20px;
+    width: 100%;
+}
+
+.profile-actions .btn-primary,
+.profile-actions .btn-secondary {
+    flex: 1;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* ==================== КНОПКИ В СПИСКЕ ЗАЯВОК ==================== */
+.application-item .btn-info,
+.application-item .btn-danger {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+/* ==================== КНОПКИ В СПИСКЕ ДОГОВОРОВ ==================== */
+.contract-item .btn-info,
+.contract-item .btn-danger {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+/* ==================== КНОПКА "СТАТЬ СОБСТВЕННИКОМ" ==================== */
+.become-owner-btn {
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+    color: white;
+    border: none;
+    padding: 0 18px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: 600;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+/* ==================== КНОПКА "ПРОПУСТИТЬ" В РЕГИСТРАЦИИ ==================== */
+#step3 .btn-secondary {
+    background: #f8f9fa;
+    color: #495057;
+    border: 1px solid #ced4da;
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#step3 .btn-secondary:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+/* ==================== АДАПТИВНОСТЬ ==================== */
+@media (max-width: 768px) {
+    .btn,
+    .btn-primary,
+    .btn-secondary,
+    .btn-danger,
+    .btn-warning,
+    .btn-success,
+    .btn-info {
+        padding: 0 16px;
+        height: 40px;
+        min-width: 100px;
+    }
+
+    .modal-actions {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .modal-actions .btn-primary,
+    .modal-actions .btn-secondary,
+    .modal-actions .btn-danger,
+    .modal-actions .btn-warning {
+        width: 100%;
+        height: 44px;
+        flex: none;
+    }
+
+    .admin-header-btn,
+    .admin-edit-btn,
+    .admin-delete-btn,
+    .report-btn {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        font-size: 16px;
+    }
+
+    .page-btn {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+    }
+
+    .become-owner-btn {
+        padding: 0 14px;
+        height: 34px;
+        font-size: 13px;
+    }
+}
+
+/* ==================== КНОПКИ В МОДАЛЬНОМ ОКНЕ РЕДАКТИРОВАНИЯ ОБЪЕКТА ==================== */
+#propertyEditForm .modal-actions {
+    display: flex;
+    gap: 15px;
+    margin-top: 25px;
+    justify-content: space-between;
+    width: 100%;
+    align-items: stretch;
+}
+
+#propertyEditForm .modal-actions .btn-secondary,
+#propertyEditForm .modal-actions .btn-warning,
+#propertyEditForm .modal-actions .btn-primary {
+    flex: 1;
+    height: 48px;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+#propertyEditForm .modal-actions .btn-secondary {
+    background: #f8f9fa;
+    color: #495057;
+    border: 1px solid #ced4da;
+}
+
+#propertyEditForm .modal-actions .btn-secondary:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+#propertyEditForm .modal-actions .btn-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+    color: #212529;
+}
+
+#propertyEditForm .modal-actions .btn-warning:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
+}
+
+#propertyEditForm .modal-actions .btn-primary {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+}
+
+#propertyEditForm .modal-actions .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+}
+
+/* ==================== БАЗОВЫЕ СТИЛИ ДЛЯ ВСЕХ КНОПОК ==================== */
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-warning,
+.btn-success,
+.btn-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 20px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'Segoe UI', 'Times New Roman', Tahoma, Geneva, Verdana, sans-serif;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+    text-decoration: none;
+    white-space: nowrap;
+    line-height: 1;
+    height: 44px;
+    min-width: 100px;
+    border-radius: 8px;
+}
+
+/* Убираем min-width для кнопок в модалках */
+.modal-actions .btn-primary,
+.modal-actions .btn-secondary,
+.modal-actions .btn-danger,
+.modal-actions .btn-warning {
+    flex: 1;
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
+    padding: 0 20px;
+    font-size: 15px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    column-gap: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/* Специфичные стили для каждой кнопки */
+.modal-actions .btn-primary {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    border: none;
+}
+
+.modal-actions .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+    background: linear-gradient(135deg, #0056b3 0%, #003d80 100%);
+}
+
+.modal-actions .btn-secondary {
+    background: #28a745;
+    color: white;
+    border: none;
+}
+
+.modal-actions .btn-secondary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+    background: #218838;
+}
+
+.modal-actions button,
+.modal-actions .btn,
+.modal-actions .btn-primary,
+.modal-actions .btn-secondary
+{
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: middle !important;
+    line-height: 1 !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    flex: 1 !important;
+    height: 48px !important;
+    min-height: 48px !important;
+}
+

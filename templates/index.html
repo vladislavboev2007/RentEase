@@ -43,8 +43,60 @@
 <div class="header">
     <div class="logo">RentEase</div>
     <div class="menu">
-        <a href="/">Каталог объектов</a>
-        <a href="#" onclick="showGuidePopup()">Руководство и поддержка</a>
+        <div class="nav-item">
+            <div class="nav-link">
+                Каталог объектов
+                <span class="arrow">▼</span>
+            </div>
+            <div class="nav-dropdown" style="transition: 0.3s;">
+                <a href="/" class="dropdown-item">
+                    <span class="dropdown-icon">🏠</span>
+                    <span class="dropdown-text" style="color: black;">Все объекты</span>
+                </a>
+                <a href="/search?page=1&sort_by=newest&property_type=apartment" class="dropdown-item">
+                    <span class="dropdown-icon">🏢</span>
+                    <span class="dropdown-text" style="color: black;">Квартиры</span>
+                </a>
+                <a href="/search?page=1&sort_by=newest&property_type=house" class="dropdown-item">
+                    <span class="dropdown-icon">🏡</span>
+                    <span class="dropdown-text" style="color: black;">Дома</span>
+                </a>
+                <a href="/search?page=1&sort_by=newest&property_type=commercial" class="dropdown-item">
+                    <span class="dropdown-icon">🏭</span>
+                    <span class="dropdown-text" style="color: black;">Коммерческая</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Руководство и поддержка с выпадающим меню -->
+        <div class="nav-item">
+            <div class="nav-link">
+                Руководство и поддержка
+                <span class="arrow">▼</span>
+            </div>
+            <div class="nav-dropdown">
+                <div class="dropdown-item" onclick="showGuidePopup(); switchGuideTab('tenant')">
+                    <span class="dropdown-icon">👤</span>
+                    <span class="dropdown-text">Арендатор</span>
+                </div>
+                <div class="dropdown-item" onclick="showGuidePopup(); switchGuideTab('owner')">
+                    <span class="dropdown-icon">🔑</span>
+                    <span class="dropdown-text">Собственник</span>
+                </div>
+                <div class="dropdown-item" onclick="showGuidePopup(); switchGuideTab('agent')">
+                    <span class="dropdown-icon">📊</span>
+                    <span class="dropdown-text">Агент</span>
+                </div>
+                <div class="dropdown-item" onclick="showGuidePopup(); switchGuideTab('rules')">
+                    <span class="dropdown-icon">⚖️</span>
+                    <span class="dropdown-text">Правила использования</span>
+                </div>
+                <div class="dropdown-item" onclick="showGuidePopup(); switchGuideTab('faq')">
+                    <span class="dropdown-icon">❓</span>
+                    <span class="dropdown-text">Часто задаваемые вопросы</span>
+                </div>
+            </div>
+        </div>
 
         <!-- ИКОНКИ: Уведомления и Сообщения -->
         <div class="header-icons">
@@ -402,7 +454,7 @@
 
 <!-- ПОПАП РУКОВОДСТВА, ПОДДЕРЖКИ, ПРАВИЛ И FAQ -->
 <div id="guidePopup" class="popup">
-    <div class="popup-content" style="max-width: 700px;">
+    <div class="popup-content" style="max-width: 700px; padding-top: 30px;">
         <span class="close-popup" onclick="hideGuidePopup()">×</span>
         <h2 style="margin-bottom: 20px;">Руководство и поддержка</h2>
 

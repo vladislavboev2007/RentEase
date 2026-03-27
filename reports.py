@@ -2,6 +2,7 @@ from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference, PieChart
 import os
 import time
+import random
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Cm, Inches
@@ -161,6 +162,26 @@ def generate_contract_docx(contract_data: dict, property_data: dict, tenant_data
     heading2 = doc.styles['Heading 2']
     heading2.font.name = 'Times New Roman'
     heading2.font.color.rgb = RGBColor(0, 0, 0)
+
+    # ========== ФУНКЦИЯ ДЛЯ СЛУЧАЙНОЙ ПОДПИСИ ==========
+    def get_random_signature_path() -> str:
+        """Возвращает путь к случайной подписи из папки resources/signatures/"""
+        signatures_dir = Path(__file__).parent / "resources" / "signatures"
+        if not signatures_dir.exists():
+            # Если папка не существует, используем старую подпись
+            return Path(__file__).parent / "resources" / "signature.png"
+
+        # Ищем все файлы подписей
+        signature_files = list(signatures_dir.glob("signature*.png")) + \
+                          list(signatures_dir.glob("signature*.jpg")) + \
+                          list(signatures_dir.glob("signature*.jpeg"))
+
+        if not signature_files:
+            # Если нет файлов в папке, используем старую подпись
+            return Path(__file__).parent / "resources" / "signature.png"
+
+        # Выбираем случайную подпись
+        return random.choice(signature_files)
 
     # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
     def detect_gender(full_name: str) -> dict:
@@ -357,10 +378,9 @@ def generate_contract_docx(contract_data: dict, property_data: dict, tenant_data
     table.cell(2, 0).text = f'Паспорт: {owner_data.get("passport", "___________")}'
     table.cell(3, 0).text = ''  # Пустая строка для отступа
 
-    # ===== ПОДПИСЬ АРЕНДОДАТЕЛЯ =====
+    # ===== ПОДПИСЬ АРЕНДОДАТЕЛЯ (СЛУЧАЙНАЯ) =====
     if contract_data.get("owner_signed"):
-        # Если подписано, вставляем картинку подписи
-        signature_path = Path(__file__).parent / "resources" / "signature.png"
+        signature_path = get_random_signature_path()
         if signature_path.exists():
             run = table.cell(4, 0).paragraphs[0].add_run()
             run.add_picture(str(signature_path), width=Cm(3), height=Cm(1.5))
@@ -376,9 +396,9 @@ def generate_contract_docx(contract_data: dict, property_data: dict, tenant_data
     table.cell(2, 1).text = f'Паспорт: {tenant_data.get("passport", "___________")}'
     table.cell(3, 1).text = ''  # Пустая строка для отступа
 
-    # ===== ПОДПИСЬ АРЕНДАТОРА =====
+    # ===== ПОДПИСЬ АРЕНДАТОРА (СЛУЧАЙНАЯ) =====
     if contract_data.get("tenant_signed"):
-        signature_path = Path(__file__).parent / "resources" / "signature.png"
+        signature_path = get_random_signature_path()
         if signature_path.exists():
             run = table.cell(4, 1).paragraphs[0].add_run()
             run.add_picture(str(signature_path), width=Cm(3), height=Cm(1.5))
@@ -692,6 +712,22 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
     c = canvas.Canvas(output_path, pagesize=A4)
     width, height = A4
 
+    # ========== ФУНКЦИЯ ДЛЯ СЛУЧАЙНОЙ ПОДПИСИ ==========
+    def get_random_signature_path() -> str:
+        """Возвращает путь к случайной подписи из папки resources/signatures/"""
+        signatures_dir = Path(__file__).parent / "resources" / "signatures"
+        if not signatures_dir.exists():
+            return Path(__file__).parent / "resources" / "signature.png"
+
+        signature_files = list(signatures_dir.glob("signature*.png")) + \
+                          list(signatures_dir.glob("signature*.jpg")) + \
+                          list(signatures_dir.glob("signature*.jpeg"))
+
+        if not signature_files:
+            return Path(__file__).parent / "resources" / "signature.png"
+
+        return random.choice(signature_files)
+
     # Регистрируем шрифты с поддержкой кириллицы
     fonts = register_cyrillic_fonts()
     regular_font = fonts['regular']
@@ -767,10 +803,9 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
         f'{owner_data.get("rep", "_______________")}, действующего на основании {owner_data.get("basis", "_______________")}, передал, а',
         f'{tenant_data.get("name", "_______________")}, {tenant_decl} в дальнейшем «Арендатор», в лице',
         f'{tenant_data.get("rep", "_______________")}, действующего на основании {tenant_data.get("basis", "_______________")}, принял в аренду',
-        f'нежилое помещение, расположенное по адресу {property_data.get("address", "_______________")} общей площадью',
-        f'{property_data.get("area", "___")} кв. м для использования под {contract_data.get("purpose", "проживание")} согласно договору N',
-        f'{contract_data.get("number", "___")} аренды нежилого помещения от',
-        f'«{contract_data.get("start_day", "___")}» {contract_data.get("start_month", "_____")} {contract_data.get("start_year", "___")} г.'
+        f'нежилое помещение, расположенное по адресу {property_data.get("city", "_______________")}, {property_data.get("address", "_______________")}',
+        f'общей площадью {property_data.get("area", "___")} кв. м для использования под {contract_data.get("purpose", "проживание")} согласно договору',
+        f'№{contract_data.get("number", "___")} аренды нежилого помещения от «{contract_data.get("start_day", "___")}» {contract_data.get("start_month", "_____")} {contract_data.get("start_year", "___")} г.'
     ]
 
     for text in texts:
@@ -798,31 +833,20 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
     y -= 30
     c.setFont(regular_font, 12)
 
-    # ===== ФУНКЦИЯ ДЛЯ ВСТАВКИ ПОДПИСИ =====
+    # ===== ФУНКЦИЯ ДЛЯ ВСТАВКИ ПОДПИСИ (СЛУЧАЙНАЯ) =====
     def draw_signature(canvas, x, y, width=100, height=40, is_signed=False):
         if is_signed:
-            # Путь к изображению подписи
-            signature_path = Path(__file__).parent / "resources" / "signature.png"
+            signature_path = get_random_signature_path()
             if signature_path.exists():
                 try:
-                    # Открываем изображение с PIL
                     img = Image.open(signature_path)
-
-                    # Конвертируем в RGBA для обработки прозрачности
                     if img.mode != 'RGBA':
                         img = img.convert('RGBA')
 
-                    # Создаем белый фон (можно убрать, если нужно только прозрачность)
-                    # white_bg = Image.new('RGBA', img.size, (255, 255, 255, 255))
-                    # combined = Image.alpha_composite(white_bg, img)
-                    # combined = combined.convert('RGB')
-
-                    # Сохраняем во временный буфер
                     img_buffer = io.BytesIO()
                     img.save(img_buffer, format='PNG')
                     img_buffer.seek(0)
 
-                    # Рисуем изображение с прозрачностью
                     canvas.drawImage(ImageReader(img_buffer), x, y - height + 20, width=width, height=height,
                                      preserveAspectRatio=True, mask='auto')
                     return True
@@ -837,13 +861,13 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
             canvas.drawString(x, y, '_______________')
             return False
 
-    # Подпись арендодателя
+    # Подпись арендодателя (случайная)
     if contract_data.get("owner_signed"):
         draw_signature(c, 50, y, width=100, height=40, is_signed=True)
     else:
         c.drawString(50, y, '_______________')
 
-    # Подпись арендатора
+    # Подпись арендатора (случайная)
     if contract_data.get("tenant_signed"):
         draw_signature(c, width / 2 + 50, y, width=100, height=40, is_signed=True)
     else:

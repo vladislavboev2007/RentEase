@@ -2,3 +2,7 @@
 __pycache__/
 .venv/
 buffer/
+temp/
+static/uploads/avatars/*.jpg
+static/uploads/avatars/*.png
+resources/signatures/

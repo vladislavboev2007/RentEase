@@ -53,6 +53,7 @@
 ---
 
 ## 📁 Структура проекта
+<img width="337" height="905" alt="image" src="https://github.com/user-attachments/assets/66cb43ee-200a-4279-ab8d-5a4f5ed5c6c3" />
 
 ---
 

@@ -15,6 +15,8 @@
 - **🏠 Управление объектами** - CRUD операции с недвижимостью, загрузка фотографий
 - **🔐 Безопасность** - JWT-аутентификация, хеширование паролей, защита от SQL-инъекций
 
+
+--- 
 ## 🏗 Архитектура
 
 ### Технологический стек
@@ -33,6 +35,7 @@
 - **Chart.js** - визуализация статистических данных
 - **HTMX** - асинхронные запросы без перезагрузки страницы
 
+--- 
 ## 📊 Модель данных
 
 ### Основные сущности
@@ -45,3 +48,113 @@
 - contracts      # Договоры аренды (авто-генерация при одобрении)
 - messages       # Сообщения между пользователями (WebSocket)
 - audit_logs     # Логи действий для аудита
+```
+
+---
+
+## 📁 Структура проекта
+
+---
+
+## 🚀 Инструкция по запуску
+
+### Требования
+
+- **Python** 3.9 или выше
+- **PostgreSQL** 13 или выше
+- **pip** (менеджер пакетов Python)
+- **Git** (для клонирования репозитория)
+
+### 1. Клонирование репозитория
+
+```bash
+git clone https://github.com/your-username/rentease.git
+cd rentease
+```
+
+### 2. Создание виртуального окружения
+
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# Linux/Mac
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Установка зависимостей
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Настройка базы данных
+
+#### 4.1. Создание базы данных PostgreSQL
+
+```sql
+CREATE DATABASE "RentEase";
+```
+
+#### 4.2. Загрузить схему и данные из `database/RentEase.sql` туда через формат Plain в окне Restore
+
+#### 4.3. Настройка подключения
+Откройте файл `database.py` и измените строку подключения:
+```python
+POSTGRESQL_DATABASE_URL = "postgresql+psycopg2://postgres:1234@localhost:5432/RentEase"
+```
+
+### 5. Настройка подключения
+Откройте файл `smtp.py` и настройте параметры:
+```python
+SMTP_SERVER = "smtp.yandex.ru"
+SMTP_PORT = 587
+SMTP_USER = "your-email@yandex.ru"
+SMTP_PASSWORD = "your-app-password"
+```
+
+### 6. Настройка безопасности
+Откройте файл `app.py` и измените секретный ключ:
+```python
+SECRET_KEY = "your-secret-key-here-change-in-production"  # ⚠️ Обязательно сменить!
+```
+
+### 7. Запуск приложения
+
+```bash
+python app.py
+```
+Или через uvicorn:
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 8. Проверка работы
+- **Главная страница:** http://localhost:8000
+- **API документация:** http://localhost:8000/docs
+
+--- 
+
+## 🧪 Тестирование
+Через unittest:
+```bash
+python tests/test_basic.py
+```
+
+## ⚠️ Важные замечания
+1. **Безопасность:** Обязательно измените `SECRET_KEY` перед развертыванием
+2. **SMTP:** Используйте пароль приложения, а не пароль от аккаунта
+3. **Файлы:** Папка `static/uploads/` должна иметь права на запись
+4. **База данных:** Регулярно делайте бэкапы PostgreSQL
+
+---
+
+## 📞 Поддержка
+- 📧 Email: support@rentease.ru
+- 📚 Документация: http://localhost:8000/docs
+
+---
+
+**© 2026 RentEase. Все права защищены.**

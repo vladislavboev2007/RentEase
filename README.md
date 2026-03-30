@@ -153,7 +153,7 @@ python tests/test_basic.py
 ---
 
 ## 📞 Поддержка
-- 📧 Email: support@rentease.ru
+- 📧 Email: vladislav.boev02@mail.ru
 - 📚 Документация: http://localhost:8000/docs
 
 ---

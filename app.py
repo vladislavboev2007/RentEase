@@ -3524,7 +3524,8 @@ async def generate_act_document(
     property_data = {
         "address": property.address if property else "_______________",
         "city": property.city if property else "Москва",
-        "area": str(property.area) if property and property.area else "___"
+        "area": str(property.area) if property and property.area else "___",
+        "type": property.property_type
     }
 
     try:

@@ -712,6 +712,19 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
     c = canvas.Canvas(output_path, pagesize=A4)
     width, height = A4
 
+    # ========== ОПРЕДЕЛЕНИЕ ТИПА ПОМЕЩЕНИЯ ==========
+    property_type = property_data.get("type", "apartment")
+
+    # Определяем текст для акта в зависимости от типа объекта
+    if property_type == "commercial":
+        premises_type = "нежилого помещения"
+        premises_word = "нежилое помещение"
+        premises_word_genitive = "нежилого помещения"
+    else:
+        premises_type = "жилого помещения"
+        premises_word = "жилое помещение"
+        premises_word_genitive = "жилого помещения"
+
     # ========== ФУНКЦИЯ ДЛЯ СЛУЧАЙНОЙ ПОДПИСИ ==========
     def get_random_signature_path() -> str:
         """Возвращает путь к случайной подписи из папки resources/signatures/"""
@@ -756,7 +769,7 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
     c.setFillColorRGB(0, 0, 0)
     c.drawCentredString(width / 2, height - 40, "АКТ")
     c.setFont(bold_font, 14)
-    c.drawCentredString(width / 2, height - 60, "приема-передачи нежилого помещения")
+    c.drawCentredString(width / 2, height - 60, f"приема-передачи {premises_type}")
 
     # Адрес
     #c.setFont(bold_font, 12)
@@ -803,9 +816,9 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
         f'{owner_data.get("rep", "_______________")}, действующего на основании {owner_data.get("basis", "_______________")}, передал, а',
         f'{tenant_data.get("name", "_______________")}, {tenant_decl} в дальнейшем «Арендатор», в лице',
         f'{tenant_data.get("rep", "_______________")}, действующего на основании {tenant_data.get("basis", "_______________")}, принял в аренду',
-        f'нежилое помещение, расположенное по адресу {property_data.get("city", "_______________")}, {property_data.get("address", "_______________")}',
+        f'{premises_word}, расположенное по адресу {property_data.get("city", "_______________")}, {property_data.get("address", "_______________")}',
         f'общей площадью {property_data.get("area", "___")} кв. м для использования под {contract_data.get("purpose", "проживание")} согласно договору',
-        f'№{contract_data.get("number", "___")} аренды нежилого помещения от «{contract_data.get("start_day", "___")}» {contract_data.get("start_month", "_____")} {contract_data.get("start_year", "___")} г.'
+        f'№{contract_data.get("number", "___")} аренды {premises_word_genitive} от «{contract_data.get("start_day", "___")}» {contract_data.get("start_month", "_____")} {contract_data.get("start_year", "___")} г.'
     ]
 
     for text in texts:
@@ -813,7 +826,7 @@ def generate_act_pdf(contract_data: dict, property_data: dict, tenant_data: dict
 
     # Состояние помещения
     y -= 15
-    state_text = ('Техническое состояние нежилого помещения удовлетворительное и позволяет использовать его '
+    state_text = (f'Техническое состояние {premises_word_genitive} удовлетворительное и позволяет использовать его '
                   f'в целях, предусмотренных п. 1.1 указанного Договора аренды')
 
     y = draw_wrapped_text(state_text, 50, y, width - 100, regular_font, 12) - 10

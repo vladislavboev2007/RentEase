@@ -2398,7 +2398,7 @@ async function loadMyProperties() {
                     <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
                         <div style="font-weight: 600; font-size: 18px; color: #212529;">${prop.title}</div>
                         <div style="color: #6c757d; font-size: 14px; display: flex; align-items: center; gap: 5px;">
-                            <img src="/resources/pin.png" style="width: 14px; opacity: 0.5;"> ${prop.address}
+                            <img src="/resources/pin.png" style="width: 14px; opacity: 0.5;"> ${prop.city}, ${prop.address}
                         </div>
                         <div style="display: flex; gap: 15px; font-size: 14px; color: #495057;">
                             <span>${prop.rooms} комн.</span>
@@ -2411,7 +2411,7 @@ async function loadMyProperties() {
                         </div>
                     </div>
 
-                    <!-- Кнопки действий (однородные с другими модалками) -->
+                    <!-- Кнопки действий -->
                     <div style="display: flex; flex-direction: column; gap: 8px; min-width: 140px;">
                         <button class="btn-primary" onclick="editProperty(${prop.property_id})"
                                 style="padding: 10px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; border-radius: 6px; font-weight: 500; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;">

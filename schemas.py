@@ -4,6 +4,42 @@ import re
 from fastapi import UploadFile
 
 
+class PropertyCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    address: str
+    city: str
+
+    @field_validator('title', 'description', 'address', 'city')
+    @classmethod
+    def sanitize_string(cls, v):
+        if not v:
+            return v
+        # Удаляем потенциально опасные теги
+        import re
+        # Удаляем HTML-теги
+        v = re.sub(r'<[^>]*>', '', v)
+        # Ограничиваем длину
+        if len(v) > 1000:
+            v = v[:1000]
+        return v
+
+
+class ApplicationCreate(BaseModel):
+    message: Optional[str] = None
+
+    @field_validator('message')
+    @classmethod
+    def sanitize_message(cls, v):
+        if not v:
+            return v
+        # Удаляем HTML-теги и опасные символы
+        import re
+        v = re.sub(r'<[^>]*>', '', v)
+        if len(v) > 2000:
+            v = v[:2000]
+        return v
+
 # ==================== БАЗОВЫЕ ВАЛИДАТОРЫ ====================
 
 def validate_password_strength(password: str) -> str:

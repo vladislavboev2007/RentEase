@@ -19,6 +19,32 @@ let draggedItem = null;  // для drag & drop
 window.hasValidationErrors = false;
 window.uploadedFiles = [];
 
+/**
+ * Экранирование HTML-сущностей для защиты от XSS
+ * @param {string} str - строка для экранирования
+ * @returns {string} - экранированная строка
+ */
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/`/g, '&#96;')
+        .replace(/\//g, '&#x2F;');
+}
+
+/**
+ * Безопасная вставка текста в HTML
+ * @param {string} text - текст для вставки
+ * @returns {string} - безопасный HTML
+ */
+function safeText(text) {
+    return escapeHtml(String(text));
+}
+
 console.log('🚀 script.js загружен, версия 2.0');
 
 function formatNotificationText(text) {
@@ -595,16 +621,13 @@ function hidePropertyModal() {
 }
 
 function fillPropertyModal(data) {
-    document.getElementById('modalPropertyTitle').textContent = data.title || 'Без названия';
+    // ✅ Экранируем все данные перед вставкой
+    document.getElementById('modalPropertyTitle').textContent = escapeHtml(data.title || 'Без названия');
+    document.getElementById('modalPropertyCity').textContent = escapeHtml(data.city || '-');
+    document.getElementById('modalPropertyAddress').textContent = escapeHtml(data.address || '-');
+    document.getElementById('modalPropertyDescription').textContent = escapeHtml(data.description || 'Нет описания');
 
-    // Скрываем статус (он больше не нужен)
-    // const statusBadge = document.getElementById('modalPropertyStatus');
-    // statusBadge.textContent = data.status === 'active' ? 'Активно' :
-    //     data.status === 'rented' ? 'Сдано' : 'В архиве';
-    // statusBadge.className = `property-status-badge status-${data.status || 'active'}`;
-
-    document.getElementById('modalPropertyCity').textContent = data.city || '-';
-    document.getElementById('modalPropertyAddress').textContent = data.address || '-';
+    // Для цены и чисел экранирование не требуется
     document.getElementById('modalPropertyArea').textContent = data.area ? `${data.area} м²` : '-';
 
     let propertyType = '-';
@@ -619,8 +642,6 @@ function fillPropertyModal(data) {
     if (data.interval_pay === 'month') priceText += '/мес';
     else if (data.interval_pay === 'week') priceText += '/нед';
     document.getElementById('modalPropertyPrice').textContent = priceText;
-
-    document.getElementById('modalPropertyDescription').textContent = data.description || 'Нет описания';
 
     updateModalGallery(data.photos || []);
 
@@ -1407,6 +1428,9 @@ async function loadIncomingApplications() {
         let html = '';
         pendingApps.forEach(app => {
             const desiredDate = app.desired_date ? new Date(app.desired_date).toLocaleDateString('ru-RU') : 'не указана';
+            const safeTenantName = escapeHtml(app.tenant_name || 'Неизвестно');
+            const safePropertyTitle = escapeHtml(app.property_title || 'Без названия');
+            const safeMessage = escapeHtml(app.message || 'Нет сообщения');
 
             html += `
                 <div class="application-card" onclick="showRespondModal(${app.application_id})"
@@ -1414,11 +1438,11 @@ async function loadIncomingApplications() {
                     <img src="${app.property_photo || '/resources/placeholder-image.png'}"
                          style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px;">
                     <div style="flex: 1;">
-                        <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">${app.property_title || 'Без названия'}</div>
+                        <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">${safePropertyTitle}</div>
                         <div style="color: #6c757d; font-size: 13px; margin-bottom: 6px;">${app.property_address || ''}</div>
                         <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; font-size: 13px;">
                             <span style="background: #e9ecef; padding: 2px 8px; border-radius: 12px;">
-                                👤 ${app.tenant_name || 'Неизвестно'}
+                                👤 ${safeTenantName}
                             </span>
                             <span style="background: #e9ecef; padding: 2px 8px; border-radius: 12px;">
                                 📅 ${desiredDate}
@@ -1428,7 +1452,7 @@ async function loadIncomingApplications() {
                             </span>
                         </div>
                         <div style="font-size: 13px; color: #495057; background: #f8f9fa; padding: 6px; border-radius: 6px; margin-top: 4px;">
-                            💬 ${app.message || 'Нет сообщения'}
+                            💬 ${safeMessage}
                         </div>
                     </div>
                     <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
@@ -2358,6 +2382,10 @@ async function loadMyProperties() {
         let html = '';
         properties.forEach(prop => {
             const priceDisplay = formatPrice(prop.price, prop.interval_pay);
+            // ✅ Экранируем все данные перед вставкой
+            const safeTitle = escapeHtml(prop.title);
+            const safeAddress = escapeHtml(prop.address);
+            const safeCity = escapeHtml(prop.city);
 
             // Определяем класс и текст статуса
             let statusClass = '';
@@ -2396,9 +2424,9 @@ async function loadMyProperties() {
 
                     <!-- Информация об объекте -->
                     <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
-                        <div style="font-weight: 600; font-size: 18px; color: #212529;">${prop.title}</div>
+                        <div style="font-weight: 600; font-size: 18px; color: #212529;">${safeTitle}</div>
                         <div style="color: #6c757d; font-size: 14px; display: flex; align-items: center; gap: 5px;">
-                            <img src="/resources/pin.png" style="width: 14px; opacity: 0.5;"> ${prop.city}, ${prop.address}
+                            <img src="/resources/pin.png" style="width: 14px; opacity: 0.5;"> ${safeCity}, ${safeAddress}
                         </div>
                         <div style="display: flex; gap: 15px; font-size: 14px; color: #495057;">
                             <span>${prop.rooms} комн.</span>
@@ -3770,6 +3798,9 @@ async function loadMessages(userId) {
             const msgDate = new Date(msg.created_at);
             const msgDateStr = msgDate.toDateString();
 
+            const safeContent = escapeHtml(msg.content);
+            const safeName = escapeHtml(msg.sender_name || 'Пользователь');
+
             // Добавляем разделитель только если день изменился
             if (msgDateStr !== currentDate) {
                 // Если это не первое сообщение, добавляем отступ
@@ -3785,7 +3816,7 @@ async function loadMessages(userId) {
                 html += `
                     <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
                         <div style="background: #007bff; color: white; padding: 10px 15px; border-radius: 18px 18px 4px 18px; max-width: 70%; word-wrap: break-word;">
-                            ${msg.content}
+                            ${safeContent}
                             <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 11px; opacity: 0.7; margin-top: 4px;">
                                 <span>${formatMessageTime(msg.created_at)}</span>
                                 <span class="message-status" data-message-id="${msg.id}">${msg.is_read ? '✓✓' : '✓'}</span>
@@ -3797,7 +3828,7 @@ async function loadMessages(userId) {
                 html += `
                     <div style="display: flex; justify-content: flex-start; margin-bottom: 8px;">
                         <div style="background: white; padding: 10px 15px; border-radius: 18px 18px 18px 4px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-wrap: break-word;">
-                            ${msg.content}
+                            ${safeContent}
                             <div style="font-size: 11px; color: #6c757d; margin-top: 4px;" class="message-time" data-datetime="${msg.created_at}">${formatMessageTime(msg.created_at)}</div>
                         </div>
                     </div>

@@ -57,6 +57,10 @@ from reports import (
     generate_agent_stats_excel
 )
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+
 # ==================== НАСТРОЙКИ ====================
 BASE_DIR = Path(__file__).resolve().parent
 SECRET_KEY = "your-secret-key-here-change-in-production"  # В продакшене сменить!
@@ -112,6 +116,31 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(cleanup_temp_files, 'interval', hours=1)
 scheduler.start()
 
+# ОБЕСПЕЧЕНИЕ ЗАЩИТЫ ОТ XSS
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+
+        # Запрещаем загрузку ресурсов с других доменов
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+
+        # Исправленный CSP — разрешаем нужные источники
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' ws://localhost:8000 wss://localhost:8000 https://cdn.jsdelivr.net; "
+            "font-src 'self' data:;"
+        )
+
+        return response
+
+
+# Подключение middleware (убедитесь, что оно добавлено)
+app.add_middleware(SecurityHeadersMiddleware)
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 def get_db():
@@ -212,7 +241,7 @@ def get_db_with_audit(current_user: User = Depends(get_current_user)):
     try:
         if current_user:
             # Устанавливаем ID пользователя для триггеров аудита
-            db.execute(text(f"SELECT set_current_user_id({current_user.user_id})"))
+            db.execute(text("SELECT set_current_user_id(:user_id)"), {"user_id": current_user.user_id})
         else:
             # Если пользователь не авторизован, устанавливаем NULL
             db.execute(text("SELECT set_current_user_id(NULL)"))

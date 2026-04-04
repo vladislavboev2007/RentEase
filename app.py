@@ -2153,7 +2153,7 @@ async def create_application(
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
-    if current_user.user_type != 'tenant':
+    if current_user.user_type not in ['tenant', 'owner']:
         raise HTTPException(403, "Только арендаторы могут создавать заявки")
 
     property = db.query(Property).filter(

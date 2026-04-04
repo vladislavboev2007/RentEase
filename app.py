@@ -121,18 +121,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
 
-        # Запрещаем загрузку ресурсов с других доменов
+        # Базовые заголовки безопасности
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-XSS-Protection'] = '1; mode=block'
 
-        # Исправленный CSP — разрешаем нужные источники
+        # Исправленный CSP с добавлением api.hh.ru
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
-            "connect-src 'self' ws://localhost:8000 wss://localhost:8000 https://cdn.jsdelivr.net; "
+            "connect-src 'self' ws: wss: https://cdn.jsdelivr.net https://api.hh.ru; "  # ← ДОБАВЛЕН api.hh.ru
             "font-src 'self' data:;"
         )
 
@@ -236,18 +236,20 @@ async def get_current_user(
         return None
 
 # Добавьте эту функцию после get_db()
-def get_db_with_audit(current_user: User = Depends(get_current_user)):
-    db = SessionLocal()
-    try:
-        if current_user:
-            # Устанавливаем ID пользователя для триггеров аудита
-            db.execute(text("SELECT set_current_user_id(:user_id)"), {"user_id": current_user.user_id})
-        else:
-            # Если пользователь не авторизован, устанавливаем NULL
+def get_db_with_audit(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Dependency для БД с установкой ID пользователя для триггеров аудита"""
+    if current_user and current_user.user_id:
+        try:
+            db.execute(text(f"SELECT set_current_user_id({current_user.user_id})"))
+            print(f"🔐 АУДИТ: установлен user_id = {current_user.user_id}")
+        except Exception as e:
+            print(f"⚠️ Ошибка установки user_id: {e}")
+    else:
+        try:
             db.execute(text("SELECT set_current_user_id(NULL)"))
-        yield db
-    finally:
-        db.close()
+        except:
+            pass
+    return db
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -836,7 +838,7 @@ async def resend_code(email: str = Form(...)):
 @app.delete("/api/user/avatar")
 async def delete_avatar(
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     if not current_user:
         raise HTTPException(401, "Не авторизован")
@@ -862,7 +864,7 @@ async def update_user_profile(
     passport: str = Form(None),
     inn: str = Form(None),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_audit)
 ):
     if not current_user:
         raise HTTPException(401, "Не авторизован")
@@ -940,7 +942,7 @@ async def login(
     if not user.is_active:
         return JSONResponse(
             status_code=403,
-            content={"success": False, "message": "Аккаунт деактивирован"}
+            content={"success": False, "message": "Аккаунт заблокирован"}
         )
 
     # Создаем токен
@@ -1059,7 +1061,7 @@ async def toggle_user_block(
         block_duration: str = Body(None, embed=True),
         block_comment: str = Body(None, embed=True),
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     """Блокировка/разблокировка пользователя с отправкой уведомления"""
     if not current_user or current_user.user_type != 'admin':
@@ -1131,7 +1133,7 @@ async def toggle_user_block(
 async def toggle_user_agent(
         user_id: int,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     """Назначить/снять роль агента"""
     if not current_user or current_user.user_type != 'admin':
@@ -1289,7 +1291,7 @@ async def get_all_properties(
 async def admin_delete_property(
         property_id: int,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     """Удаление объекта администратором"""
     if not current_user or current_user.user_type != 'admin':
@@ -1314,7 +1316,7 @@ async def admin_update_property_status(
         property_id: int,
         status: str = Body(..., embed=True),
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     """Изменение статуса объекта администратором"""
     if not current_user or current_user.user_type != 'admin':
@@ -1648,7 +1650,7 @@ async def get_my_properties(current_user: User = Depends(get_current_user), db: 
 async def create_property(
         request: Request,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
 
     if not current_user:
@@ -1741,7 +1743,7 @@ async def update_property(
         property_id: int,
         request: Request,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
 
     if not current_user:
@@ -1893,7 +1895,7 @@ async def update_property(
 async def delete_property(
     property_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_audit)
 ):
     if not current_user:
         raise HTTPException(401, "Не авторизован")
@@ -1917,7 +1919,7 @@ async def upload_property_photos(
     property_id: int,
     photos: List[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_audit)
 ):
     print(f"\n📸 ЗАГРУЗКА ФОТО ДЛЯ ОБЪЕКТА ID={property_id}")
 
@@ -1978,7 +1980,7 @@ async def delete_property_photo(
         property_id: int,
         photo_id: int,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     """Удаление фотографии объекта"""
     if not current_user:
@@ -2148,13 +2150,13 @@ async def get_incoming_applications(current_user: User = Depends(get_current_use
 async def create_application(
         app_data: ApplicationCreate,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
     if current_user.user_type not in ['tenant', 'owner']:
-        raise HTTPException(403, "Только арендаторы могут создавать заявки")
+        raise HTTPException(403, "Только арендаторы или собственники могут создавать заявки")
 
     property = db.query(Property).filter(
         Property.property_id == app_data.property_id,
@@ -2244,7 +2246,7 @@ async def get_application(app_id: int, current_user: User = Depends(get_current_
 
 @app.post("/api/applications/{app_id}/cancel")
 async def cancel_application(app_id: int, current_user: User = Depends(get_current_user),
-                             db: Session = Depends(get_db)):
+                             db: Session = Depends(get_db_with_audit)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
     app = db.query(Application).filter(
@@ -2268,7 +2270,7 @@ async def respond_application(
         duration_days: Optional[int] = Form(None),
         desired_date: Optional[str] = Form(None),
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
@@ -2596,7 +2598,7 @@ async def get_contract(contract_id: int, current_user: User = Depends(get_curren
 
 @app.post("/api/contracts/{contract_id}/sign")
 async def sign_contract(contract_id: int, current_user: User = Depends(get_current_user),
-                        db: Session = Depends(get_db)):
+                        db: Session = Depends(get_db_with_audit)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
@@ -2633,7 +2635,7 @@ async def sign_contract(contract_id: int, current_user: User = Depends(get_curre
 async def cancel_contract(
     contract_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_audit)
 ):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
@@ -2851,7 +2853,7 @@ async def get_messages(chat_with: int, current_user: User = Depends(get_current_
 async def send_message(
         msg: MessageCreate,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
@@ -2888,7 +2890,7 @@ async def send_message(
 
 
 @app.delete("/api/dialogs/{user_id}")
-async def delete_dialog(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def delete_dialog(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db_with_audit)):
     """Удалить диалог с пользователем (только личные сообщения)"""
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
@@ -2920,7 +2922,7 @@ async def delete_dialog(user_id: int, current_user: User = Depends(get_current_u
 async def upload_avatar(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_audit)
 ):
     if not current_user:
         raise HTTPException(401, "Не авторизован")
@@ -2941,7 +2943,7 @@ async def update_user_profile(
         passport: str = Form(None),
         inn: str = Form(None),
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db_with_audit)
 ):
     if not current_user:
         raise HTTPException(401, "Не авторизован")
@@ -3238,35 +3240,103 @@ def get_entity_name(db: Session, entity_type: str, entity_id: Optional[int]) -> 
 
     return ""
 
+def format_value_for_display(value) -> str:
+    """Форматирует значение для отображения"""
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "Да" if value else "Нет"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        # Для словарей показываем количество изменённых полей
+        return f"{{...}} ({len(value)} полей)"
+    if isinstance(value, str):
+        # Ограничиваем длину строки
+        if len(value) > 100:
+            return value[:47] + "..."
+        return value
+    return str(value)
+
 def format_changes_for_display(details: Optional[dict]) -> str:
-    """Форматирует изменения для отображения"""
+    """Форматирует изменения для отображения в таблице аудит-лога"""
     if not details:
         return "—"
 
+    # Прямой доступ к changes
     changes = details.get('changes')
     if not changes:
         return "—"
 
     changes_list = []
+
+    # Карта понятных названий полей
+    field_names = {
+        'title': 'Название',
+        'description': 'Описание',
+        'address': 'Адрес',
+        'city': 'Город',
+        'price': 'Цена',
+        'area': 'Площадь',
+        'rooms': 'Комнаты',
+        'status': 'Статус',
+        'user_type': 'Тип пользователя',
+        'full_name': 'ФИО',
+        'email': 'Email',
+        'phone': 'Телефон',
+        'is_active': 'Активность',
+        'interval_pay': 'Интервал оплаты',
+        'property_type': 'Тип недвижимости',
+        'desired_date': 'Желаемая дата',
+        'duration_days': 'Длительность',
+        'answer': 'Ответ',
+        'responded_at': 'Дата ответа',
+        'signing_status': 'Статус подписания',
+        'total_amount': 'Сумма',
+        'start_date': 'Дата начала',
+        'end_date': 'Дата окончания',
+        'tenant_signed': 'Подпись арендатора',
+        'owner_signed': 'Подпись собственника',
+        'content': 'Содержание',
+        'is_read': 'Прочитано',
+        'contact_info': 'Контактная информация',
+        'avatar_url': 'Аватар'
+    }
+
     for field, values in changes.items():
-        if isinstance(values, dict):
-            old_val = values.get('old', '')
-            new_val = values.get('new', '')
+        # Получаем человеко-читаемое название поля
+        field_display = field_names.get(field, field)
 
-            # Форматируем названия полей
-            field_display = get_field_display(field)
+        # Получаем старое и новое значение
+        old_val = values.get('old')
+        new_val = values.get('new')
 
-            # Для JSON полей
-            if isinstance(old_val, dict) or isinstance(new_val, dict):
-                continue
+        # Форматируем для отображения
+        old_str = format_value_for_display(old_val)
+        new_str = format_value_for_display(new_val)
 
-            # Сокращаем длинные значения
-            old_str = str(old_val)[:50] + "..." if len(str(old_val)) > 50 else str(old_val)
-            new_str = str(new_val)[:50] + "..." if len(str(new_val)) > 50 else str(new_val)
+        # Для JSONB полей (contact_info) показываем конкретные изменения
+        if field == 'contact_info' and isinstance(new_val, dict) and isinstance(old_val, dict):
+            # Находим только изменившиеся поля внутри contact_info
+            changed_fields = []
+            for key in set(old_val.keys()) | set(new_val.keys()):
+                old_part = old_val.get(key)
+                new_part = new_val.get(key)
+                if old_part != new_part:
+                    key_display = field_names.get(key, key)
+                    old_part_str = format_value_for_display(old_part)
+                    new_part_str = format_value_for_display(new_part)
+                    changed_fields.append(f"{key_display}: {old_part_str} → {new_part_str}")
 
+            if changed_fields:
+                changes_list.append(f"{field_display}: " + ", ".join(changed_fields))
+            else:
+                changes_list.append(f"{field_display}: {old_str} → {new_str}")
+        else:
+            # Обычные поля
             if old_str and new_str and old_str != new_str:
                 changes_list.append(f"{field_display}: {old_str} → {new_str}")
-            elif new_str and (not old_str or old_str != new_str):
+            elif new_str and (not old_str or old_str == 'None'):
                 changes_list.append(f"{field_display}: {new_str}")
 
     return ", ".join(changes_list) if changes_list else "—"

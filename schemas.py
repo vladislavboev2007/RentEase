@@ -248,5 +248,16 @@ class ApplicationResponse(BaseModel):
 # ==================== МОДЕЛИ ДЛЯ СООБЩЕНИЙ ====================
 
 class MessageCreate(BaseModel):
-    to_user_id: int = Field(..., gt=0)
-    content: str = Field(..., min_length=1, max_length=2000)
+    to_user_id: int
+    content: str
+
+    @field_validator('content')
+    @classmethod
+    def sanitize_content(cls, v):
+        # Удаляем HTML-теги
+        import re
+        v = re.sub(r'<[^>]*>', '', v)
+        # Ограничиваем длину
+        if len(v) > 2000:
+            v = v[:2000]
+        return v

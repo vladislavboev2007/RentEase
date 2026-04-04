@@ -71,8 +71,8 @@ function updateCitySearchResults(cities) {
 
         html += `
             <div class="city-result-item" onclick="selectCityFromPopup('${city.replace(/'/g, "\\'")}')">
-                <span class="city-name">${cityName}</span>
-                ${region ? `<span class="region-name">${region}</span>` : ''}
+                <span class="city-name">${escapeHtml(cityName)}</span>
+                ${region ? `<span class="region-name">${escapeHtml(region)}</span>` : ''}
             </div>
         `;
     });
@@ -80,137 +80,8 @@ function updateCitySearchResults(cities) {
     container.innerHTML = html;
 }
 
-// Выбор города из попапа
-function selectCityFromPopup(city) {
-    const fullCity = city;
-    const cityName = city.split(' (')[0];
-
-    // Обновляем поле в профиле
-    const profileCity = document.getElementById('profileCity');
-    if (profileCity) {
-        profileCity.value = cityName;
-        profileCity.dataset.fullCity = fullCity;
-    }
-
-    // Обновляем верхнюю панель
-    const selectedCity = document.getElementById('selectedCity');
-    if (selectedCity) {
-        selectedCity.textContent = cityName;
-    }
-
-    // Закрываем попап
-    hideCityPopup();
-}
-
-// Кеш для популярных городов
-let popularCities = [];
-
-// Загрузка популярных городов
-async function loadPopularCities() {
-    try {
-        // Получаем популярные города через API
-        const cities = await new Promise((resolve) => {
-            HH_API.getPopularCities(12, resolve);
-        });
-
-        popularCities = cities;
-        renderPopularCities();
-    } catch (error) {
-        console.error('Ошибка загрузки популярных городов:', error);
-        // Запасной список
-        popularCities = ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург',
-                        'Казань', 'Нижний Новгород', 'Челябинск', 'Самара'];
-        renderPopularCities();
-    }
-}
-
-// Отображение популярных городов
-function renderPopularCities() {
-    const grid = document.getElementById('popularCitiesGrid');
-    if (!grid) return;
-
-    let html = '';
-    popularCities.forEach(city => {
-        const cityName = city.split(' (')[0]; // Без региона
-        html += `<button class="popular-city-btn" onclick="selectCityFromPopup('${city.replace(/'/g, "\\'")}')">${cityName}</button>`;
-    });
-    grid.innerHTML = html;
-}
-
-// ==================== УПРАВЛЕНИЕ МОДАЛЬНЫМИ ОКНАМИ ====================
-
-function showCityPopup() {
-    const popup = document.getElementById('cityPopup');
-    popup.style.display = 'flex';
-
-    // Загружаем популярные города при открытии
-    loadPopularCities();
-
-    // Очищаем поле поиска
-    const searchInput = document.getElementById('citySearch');
-    if (searchInput) {
-        searchInput.value = '';
-        searchInput.focus();
-    }
-
-    // Показываем заглушку загрузки
-    const resultsContainer = document.getElementById('cityResultsContainer');
-    resultsContainer.innerHTML = '<div class="city-loading">Введите минимум 2 символа для поиска</div>';
-}
-
-
-// Обработчик поиска с вежливой паузой
-let searchTimeout;
-document.getElementById('citySearch')?.addEventListener('input', function() {
-    clearTimeout(searchTimeout);
-
-    const query = this.value.trim();
-    const resultsContainer = document.getElementById('cityResultsContainer');
-
-    if (query.length < 2) {
-        resultsContainer.innerHTML = '<div class="city-loading">Введите минимум 2 символа для поиска</div>';
-        return;
-    }
-
-    resultsContainer.innerHTML = '<div class="city-loading">Поиск...</div>';
-
-    searchTimeout = setTimeout(() => {
-        HH_API.searchCities(query, (cities) => {
-            displayCitySearchResults(cities);
-        });
-    }, 300);
-});
-
-// Отображение результатов поиска
-function displayCitySearchResults(cities) {
-    const container = document.getElementById('cityResultsContainer');
-
-    if (!cities || cities.length === 0) {
-        container.innerHTML = '<div class="no-results">Города не найдены</div>';
-        return;
-    }
-
-    let html = '';
-    cities.forEach(city => {
-        // Разделяем город и регион
-        const match = city.match(/^(.*?)(?:\s*\(([^)]+)\))?$/);
-        const cityName = match[1].trim();
-        const region = match[2] || '';
-
-        html += `
-            <div class="city-result-item" onclick="selectCityFromPopup('${city.replace(/'/g, "\\'")}')">
-                <img src="/resources/pin.png" class="pin-icon" alt="📍">
-                <span class="city-name">${cityName}</span>
-                ${region ? `<span class="region-name">${region}</span>` : ''}
-            </div>
-        `;
-    });
-
-    container.innerHTML = html;
-}
-
-// Выбор города из попапа
-function selectCityFromPopup(city) {
+// Выбор города из попапа (с сохранением в профиль)
+async function selectCityFromPopup(city) {
     const fullCity = city;
     const cityName = city.split(' (')[0]; // Только название города
 
@@ -243,11 +114,350 @@ function selectCityFromPopup(city) {
 
     // Показываем уведомление
     showNotification(`Выбран город: ${cityName}`, 'success');
+
+    // ===== НОВОЕ: Сохраняем город в профиль пользователя, если авторизован =====
+    if (isUserLoggedIn()) {
+        await saveCityToProfile(cityName);
+    }
+}
+
+// Новая функция для сохранения города в профиль
+async function saveCityToProfile(city) {
+    try {
+        const formData = new FormData();
+        formData.append('city', city);
+
+        const response = await fetch('/api/user/profile', {
+            method: 'PUT',
+            body: formData,
+            credentials: 'same-origin'
+        });
+
+        if (response.ok) {
+            console.log('✅ Город сохранён в профиль:', city);
+            // Обновляем данные текущего пользователя
+            if (window.currentUser && window.currentUser.contact_info) {
+                window.currentUser.contact_info.city = city;
+            }
+        } else {
+            console.warn('⚠️ Не удалось сохранить город в профиль');
+        }
+    } catch (error) {
+        console.error('❌ Ошибка сохранения города:', error);
+    }
+}
+
+// Кеш для популярных городов
+let popularCities = [];
+
+
+
+// ==================== УПРАВЛЕНИЕ МОДАЛЬНЫМИ ОКНАМИ ====================
+
+// ==================== УПРАВЛЕНИЕ ПОПАПОМ ВЫБОРА ГОРОДА ====================
+
+// Глобальные переменные
+let currentUserCity = ''; // Текущий город пользователя
+let searchActive = false;  // Флаг активного поиска
+
+// Получение текущего города пользователя
+function getCurrentUserCity() {
+    const selectedCity = document.getElementById('selectedCity');
+    if (selectedCity) {
+        return selectedCity.textContent.trim();
+    }
+    return 'Москва';
+}
+
+// Показать попап выбора города
+function showCityPopup() {
+    const popup = document.getElementById('cityPopup');
+    if (!popup) return;
+
+    popup.style.display = 'flex';
+
+    // Получаем текущий город
+    currentUserCity = getCurrentUserCity();
+
+    // Обновляем отображение текущего города
+    const currentCitySpan = document.getElementById('currentCityValue');
+    if (currentCitySpan) {
+        currentCitySpan.textContent = currentUserCity;
+    }
+
+    // Загружаем популярные города
+    loadPopularCities();
+
+    // Сбрасываем флаг поиска и очищаем поле
+    searchActive = false;
+    const searchInput = document.getElementById('citySearch');
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+    }
+
+    // Показываем блоки с текущим городом и популярными городами
+    showDefaultCityBlocks();
+}
+
+// Показать блоки по умолчанию (текущий город + популярные)
+function showDefaultCityBlocks() {
+    const currentCityBlock = document.getElementById('currentCityBlock');
+    const popularBlock = document.getElementById('popularCitiesBlock');
+    const searchResultsBlock = document.getElementById('citySearchResultsBlock');
+
+    if (currentCityBlock) currentCityBlock.style.display = 'block';
+    if (popularBlock) popularBlock.style.display = 'block';
+    if (searchResultsBlock) searchResultsBlock.style.display = 'none';
+
+    searchActive = false;
+}
+
+
+// Отображение результатов поиска (единый стиль с профилем)
+function displayCitySearchResults(cities) {
+    const container = document.getElementById('cityResultsContainer');
+
+    if (!cities || cities.length === 0) {
+        container.innerHTML = '<div class="city-loading" style="padding: 40px 20px; text-align: center; color: #6c757d;">Города не найдены</div>';
+        return;
+    }
+
+    let html = '';
+    cities.forEach(city => {
+        // Разделяем город и регион
+        const match = city.match(/^(.*?)(?:\s*\(([^)]+)\))?$/);
+        const cityName = match[1].trim();
+        const region = match[2] || '';
+
+        html += `
+            <div class="city-option" onclick="selectCityFromPopup('${city.replace(/'/g, "\\'")}')"
+                 style="padding: 12px 15px; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px;">
+                <img src="/resources/pin.png" style="width: 14px; height: 14px; opacity: 0.5;">
+                <span class="city-name" style="font-weight: 500; color: #212529;">${escapeHtml(cityName)}</span>
+                ${region ? `<span class="region-name" style="font-size: 12px; color: #6c757d; margin-left: auto;">${escapeHtml(region)}</span>` : ''}
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+
+    // Добавляем hover-эффекты
+    document.querySelectorAll('.city-option').forEach(option => {
+        option.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+        option.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = '';
+        });
+    });
+}
+// Показать блок с результатами поиска
+function showSearchResultsBlock() {
+    const currentCityBlock = document.getElementById('currentCityBlock');
+    const popularBlock = document.getElementById('popularCitiesBlock');
+    const searchResultsBlock = document.getElementById('citySearchResultsBlock');
+
+    if (currentCityBlock) currentCityBlock.style.display = 'none';
+    if (popularBlock) popularBlock.style.display = 'none';
+    if (searchResultsBlock) searchResultsBlock.style.display = 'block';
+
+    searchActive = true;
+}
+
+// Фиксированный список популярных городов (10 городов, включая Севастополь)
+const POPULAR_CITIES_LIST = [
+    "Москва",
+    "Санкт-Петербург",
+    "Севастополь",
+    "Новосибирск",
+    "Екатеринбург",
+    "Казань",
+    "Нижний Новгород",
+    "Челябинск",
+    "Самара",
+    "Омск"
+];
+
+// Загрузка популярных городов (используем фиксированный список)
+async function loadPopularCities() {
+    try {
+        // Используем фиксированный список, не загружаем из API
+        popularCities = [...POPULAR_CITIES_LIST];
+        renderPopularCities();
+    } catch (error) {
+        console.error('Ошибка загрузки популярных городов:', error);
+        // Запасной список на случай ошибки
+        popularCities = [...POPULAR_CITIES_LIST];
+        renderPopularCities();
+    }
+}
+
+// Отображение популярных городов
+function renderPopularCities() {
+    const grid = document.getElementById('popularCitiesGrid');
+    if (!grid) return;
+
+    let html = '';
+    popularCities.forEach(city => {
+        const cityName = city.split(' (')[0]; // Без региона
+        html += `
+            <button type="button" class="popular-city-btn" onclick="selectCityFromPopup('${city.replace(/'/g, "\\'")}')"
+                    style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 30px; padding: 8px 16px; font-size: 13px; color: #495057; cursor: pointer; transition: all 0.2s;">
+                ${escapeHtml(cityName)}
+            </button>
+        `;
+    });
+    grid.innerHTML = html;
+
+    // Добавляем hover-эффекты
+    document.querySelectorAll('.popular-city-btn').forEach(btn => {
+        btn.addEventListener('mouseenter', function() {
+            this.style.background = '#007bff';
+            this.style.color = 'white';
+            this.style.borderColor = '#007bff';
+            this.style.transform = 'translateY(-1px)';
+        });
+        btn.addEventListener('mouseleave', function() {
+            this.style.background = '#f8f9fa';
+            this.style.color = '#495057';
+            this.style.borderColor = '#e9ecef';
+            this.style.transform = 'translateY(0)';
+        });
+    });
+}
+
+// Обработчик поиска с вежливой паузой
+let searchTimeout;
+document.getElementById('citySearch')?.addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+
+    const query = this.value.trim();
+    const resultsContainer = document.getElementById('citySearchResults');
+
+    if (query.length < 2) {
+        // Меньше 2 символов - показываем блоки по умолчанию
+        showDefaultCityBlocks();
+        return;
+    }
+
+    // Показываем блок с результатами поиска
+    showSearchResultsBlock();
+    resultsContainer.innerHTML = '<div class="city-loading">Поиск...</div>';
+
+    searchTimeout = setTimeout(() => {
+        HH_API.searchCities(query, (cities) => {
+            displayCitySearchResults(cities);
+        });
+    }, 300);
+});
+
+// Отображение результатов поиска
+function displayCitySearchResults(cities) {
+    const container = document.getElementById('citySearchResults');
+
+    if (!cities || cities.length === 0) {
+        container.innerHTML = '<div class="no-results" style="padding: 40px 20px; text-align: center; color: #6c757d;">Города не найдены</div>';
+        return;
+    }
+
+    let html = '';
+    cities.forEach(city => {
+        const match = city.match(/^(.*?)(?:\s*\(([^)]+)\))?$/);
+        const cityName = match[1].trim();
+        const region = match[2] || '';
+
+        html += `
+            <div class="city-search-result-item" onclick="selectCityFromPopup('${city.replace(/'/g, "\\'")}')"
+                 style="padding: 12px 15px; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px;">
+                <img src="/resources/pin.png" style="width: 14px; height: 14px; opacity: 0.5;">
+                <span style="font-weight: 500; color: #212529;">${escapeHtml(cityName)}</span>
+                ${region ? `<span style="font-size: 12px; color: #6c757d; margin-left: auto;">${escapeHtml(region)}</span>` : ''}
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+
+    // Добавляем hover-эффекты
+    document.querySelectorAll('.city-search-result-item').forEach(item => {
+        item.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+        item.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = '';
+        });
+    });
+}
+
+// Выбор города из попапа
+async function selectCityFromPopup(city) {
+    const fullCity = city;
+    const cityName = city.split(' (')[0];
+
+    // Обновляем поле в профиле
+    const profileCity = document.getElementById('profileCity');
+    if (profileCity) {
+        profileCity.value = cityName;
+        profileCity.dataset.fullCity = fullCity;
+        if (window.citySelectors && window.citySelectors['profileCity']) {
+            window.citySelectors['profileCity'].selectedCity = fullCity;
+        }
+    }
+
+    // Обновляем поле поиска на главной
+    const mainCityInput = document.getElementById('city');
+    if (mainCityInput) {
+        mainCityInput.value = cityName;
+    }
+
+    // Обновляем верхнюю панель
+    const selectedCitySpan = document.getElementById('selectedCity');
+    if (selectedCitySpan) {
+        selectedCitySpan.textContent = cityName;
+    }
+
+    // Закрываем попап
+    hideCityPopup();
+
+    showNotification(`Выбран город: ${cityName}`, 'success');
+
+    // Сохраняем город в профиль, если пользователь авторизован
+    if (isUserLoggedIn()) {
+        await saveCityToProfile(cityName);
+    }
+}
+
+// Сохранение города в профиль
+async function saveCityToProfile(city) {
+    try {
+        const formData = new FormData();
+        formData.append('city', city);
+
+        const response = await fetch('/api/user/profile', {
+            method: 'PUT',
+            body: formData,
+            credentials: 'same-origin'
+        });
+
+        if (response.ok) {
+            console.log('✅ Город сохранён в профиль:', city);
+            if (window.currentUser && window.currentUser.contact_info) {
+                window.currentUser.contact_info.city = city;
+            }
+        }
+    } catch (error) {
+        console.error('❌ Ошибка сохранения города:', error);
+    }
 }
 
 // Скрытие попапа
 function hideCityPopup() {
-    document.getElementById('cityPopup').style.display = 'none';
+    const popup = document.getElementById('cityPopup');
+    if (popup) {
+        popup.style.display = 'none';
+    }
+    searchActive = false;
 }
 
 function showGuidePopup() {
@@ -1023,9 +1233,9 @@ async function showContractDetail(contractId, source = 'contracts') {
         document.getElementById('contractDetailNumber').textContent = contract.contract_number || `Договор №${contract.contract_id}`;
 
         // Информация об объекте
-        document.getElementById('contractDetailTitle').textContent = contract.property_title || 'Без названия';
+        document.getElementById('contractDetailTitle').textContent = escapeHtml(contract.property_title || 'Без названия');
 
-        const fullAddress = contract.property_city ? `${contract.property_city}, ${contract.property_address}` : (contract.property_address || 'Адрес не указан');
+        const fullAddress = contract.property_city ? `${escapeHtml(contract.property_city)}, ${escapeHtml(contract.property_address)}` : (escapeHtml(contract.property_address || 'Адрес не указан'));
         document.getElementById('contractDetailAddress').textContent = fullAddress;
 
         let propertyType = '';
@@ -1073,9 +1283,9 @@ async function showContractDetail(contractId, source = 'contracts') {
         document.getElementById('contractDetailStatus').innerHTML = `<span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${status.bg}; color: ${status.color};">${status.text}</span>`;
 
         // Информация о сторонах
-        document.getElementById('contractDetailTenantName').textContent = contract.tenant_name || 'Не указан';
+        document.getElementById('contractDetailTenantName').textContent = escapeHtml(contract.tenant_name || 'Не указан');
         document.getElementById('contractDetailTenantEmail').textContent = contract.tenant_email || '';
-        document.getElementById('contractDetailOwnerName').textContent = contract.owner_name || 'Не указан';
+        document.getElementById('contractDetailOwnerName').textContent = escapeHtml(contract.owner_name || 'Не указан');
         document.getElementById('contractDetailOwnerEmail').textContent = contract.owner_email || '';
 
         // ===== ОТОБРАЖЕНИЕ ПОДПИСЕЙ =====
@@ -1235,13 +1445,13 @@ async function loadContracts(containerId, myOnly) {
                     </div>
                     <div style="flex: 1;">
                         <div style="font-weight: 700; font-size: 16px;">${contract.contract_number}</div>
-                        <div style="color: #212529;">${contract.property_title || 'Без названия'}</div>
+                        <div style="color: #212529;">${escapeHtml(contract.property_title || 'Без названия')}</div>
                         <div style="color: #6c757d; font-size: 14px;">Период: ${startDate} - ${endDate}</div>
                         <div style="font-size: 13px; color: #495057; margin-top: 4px;">${signedStatus}</div>
                     </div>
                     <div style="text-align: right;">
                         <div style="margin-bottom: 8px;">
-                            <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${status.bg}; color: ${status.color};">${status.text}</span>
+                            <span style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${status.bg}; color: ${status.color};">${escapeHtml(status.text)}</span>
                         </div>
                         <div style="font-weight: 700; color: #28a745; font-size: 16px;">${amount} ₽</div>
                     </div>
@@ -1318,7 +1528,7 @@ async function loadMyContracts() {
                     <!-- Информация по центру -->
                     <div style="flex: 1;">
                         <div style="font-weight: 700; font-size: 16px;">${contract.contract_number || 'Договор №' + contract.contract_id}</div>
-                        <div style="color: #212529;">${contract.property_title || 'Без названия'}</div>
+                        <div style="color: #212529;">${escapeHtml(contract.property_title || 'Без названия')}</div>
                         <div style="color: #6c757d; font-size: 14px;">Период: ${startDate} - ${endDate}</div>
                     </div>
 
@@ -2297,7 +2507,7 @@ async function loadMyApplications() {
 
                     <!-- Информация по центру -->
                     <div style="flex: 1;">
-                        <div style="font-weight: 700; font-size: 18px; margin-bottom: 5px;">${app.property_title || 'Без названия'}</div>
+                        <div style="font-weight: 700; font-size: 18px; margin-bottom: 5px;">${escapeHtml(app.property_title || 'Без названия')}</div>
                         <div style="color: #6c757d; font-size: 14px; margin-bottom: 5px;">Длительность: ${app.duration_days || '?'} дней</div>
                         <div style="color: #6c757d; font-size: 14px; margin-bottom: 5px;">Желаемая дата: ${desiredDate}</div>
                         <div style="margin-bottom: 5px;">
@@ -2306,7 +2516,7 @@ async function loadMyApplications() {
                             </span>
                         </div>
                         <div style="font-weight: 700; color: #28a745; font-size: 16px;">${priceDisplay}</div>
-                        ${app.answer ? `<div style="margin-top: 8px; font-size: 13px; color: #495057; background: #f8f9fa; padding: 8px; border-radius: 6px;"><strong>Ответ:</strong> ${app.answer}</div>` : ''}
+                        ${app.answer ? `<div style="margin-top: 8px; font-size: 13px; color: #495057; background: #f8f9fa; padding: 8px; border-radius: 6px;"><strong>Ответ:</strong> ${escapeHtml(app.answer)}</div>` : ''}
                     </div>
 
                     <!-- Кнопки справа -->
@@ -3641,11 +3851,11 @@ async function loadDialogsList() {
 
                     <div style="flex: 1;">
                         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                            <span style="font-weight: 600; font-size: 16px;">${dialog.user_name || 'Пользователь'}</span>
+                            <span style="font-weight: 600; font-size: 16px;">${escapeHtml(dialog.user_name || 'Пользователь')}</span>
                             ${dialog.unread > 0 ? `<span class="unread-badge" data-user-id="${dialog.user_id}" style="background: #007bff; color: white; border-radius: 20px; padding: 2px 8px; font-size: 11px; font-weight: 600;">${dialog.unread}</span>` : ''}
                         </div>
                         <div style="color: ${dialog.unread > 0 ? '#212529' : '#6c757d'}; font-size: 14px; display: flex; justify-content: space-between;">
-                            <span style="font-weight: ${dialog.unread > 0 ? '500' : 'normal'};">${dialog.last_message || 'Нет сообщений'}</span>
+                            <span style="font-weight: ${dialog.unread > 0 ? '500' : 'normal'};">${escapeHtml(dialog.last_message || 'Нет сообщений')}</span>
                             <span style="font-size: 11px; color: #999; margin-left: 10px;">${lastTimeText || ''}</span>
                         </div>
                     </div>
@@ -4012,6 +4222,7 @@ function appendMyMessageToChat(message) {
 
     const msgDate = new Date(message.created_at);
     const lastMessage = messagesContainer.lastElementChild;
+    const safeContent = escapeHtml(message.content);
 
     // Проверяем, нужно ли добавить разделитель даты
     let needsSeparator = true;
@@ -4044,7 +4255,7 @@ function appendMyMessageToChat(message) {
     const messageHtml = `
         <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
             <div style="background: #007bff; color: white; padding: 10px 15px; border-radius: 18px 18px 4px 18px; max-width: 70%; word-wrap: break-word;">
-                ${message.content}
+                ${safeContent}
                 <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 11px; opacity: 0.7; margin-top: 4px;">
                     <span>${formatMessageTime(message.created_at)}</span>
                     <span class="message-status">✓</span>
@@ -4409,6 +4620,7 @@ function appendMessageToChat(message) {
     const messagesContainer = document.getElementById('chatMessages');
     if (!messagesContainer) return;
 
+    const safeContent = escapeHtml(message.content);
     const msgDate = new Date(message.created_at);
     const lastMessage = messagesContainer.lastElementChild;
 
@@ -4443,7 +4655,7 @@ function appendMessageToChat(message) {
     const messageHtml = `
         <div style="display: flex; justify-content: flex-start; margin-bottom: 8px;">
             <div style="background: white; padding: 10px 15px; border-radius: 18px 18px 18px 4px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-wrap: break-word;">
-                ${message.content}
+                ${safeContent}
                 <div style="font-size: 11px; color: #6c757d; margin-top: 4px;">${formatMessageTime(message.created_at)}</div>
             </div>
         </div>
@@ -5256,7 +5468,7 @@ async function loadNotifications() {
                     <!-- Верхняя строка с иконкой и временем -->
                     <div class="notification-header">
                         <span class="notification-icon">${icon}</span>
-                        ${title ? `<div class="notification-title"><strong>${title}</strong></div>` : ''}
+                        ${title ? `<div class="notification-title"><strong>${escapeHtml(title)}</strong></div>` : ''}
                         <span class="notification-time">${timeStr}</span>
                     </div>
 
@@ -5264,7 +5476,7 @@ async function loadNotifications() {
 
 
                     <!-- Описание (остальной текст) -->
-                    ${description ? `<div class="notification-description">${description}</div>` : ''}
+                    ${description ? `<div class="notification-description">${escapeHtml(description)}</div>` : ''}
 
                     ${n.is_read ? '' : '<span class="unread-dot"></span>'}
                 </div>
@@ -5409,11 +5621,11 @@ async function loadSystemNotifications() {
                 <div class="notification-item ${n.is_read ? '' : 'unread'}" onclick="markNotificationRead(${n.id})">
                     <div class="notification-header">
                         <span class="notification-icon">${icon}</span>
-                        ${title ? `<div class="notification-title"><strong>${title}</strong></div>` : ''}
+                        ${title ? `<div class="notification-title"><strong>${escapeHtml(title)}</strong></div>` : ''}
                         <span class="notification-time">${timeStr}</span>
                     </div>
 
-                    ${description ? `<div class="notification-description">${description}</div>` : ''}
+                    ${description ? `<div class="notification-description">${escapeHtml(description)}</div>` : ''}
                     ${n.is_read ? '' : '<span class="unread-dot"></span>'}
                 </div>
             `;
@@ -5456,7 +5668,7 @@ async function loadRecentMessages() {
             html += `
                 <div class="message-item ${dialog.unread > 0 ? 'unread' : ''}" onclick="openChat(${dialog.user_id}); toggleMessages()">
                     <div class="message-sender">${dialog.user_name}</div>
-                    <div class="message-preview">${dialog.last_message || '...'}</div>
+                    <div class="message-preview">${escapeHtml(dialog.last_message || '...')}</div>
                     <div class="message-time">${time}</div>
                 </div>
             `;
@@ -5889,8 +6101,8 @@ async function showAdminUserDetail(userId) {
                     }
                 </div>
                 <div style="flex: 1;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 20px;">${user.full_name || 'Без имени'}</h3>
-                    <p style="margin: 0; color: #6c757d; font-size: 14px;">${user.email}</p>
+                    <h3 style="margin: 0 0 5px 0; font-size: 20px;">${escapeHtml(user.full_name || 'Без имени')}</h3>
+                    <p style="margin: 0; color: #6c757d; font-size: 14px;">${escapeHtml(user.email)}</p>
                 </div>
             </div>
 
@@ -5909,11 +6121,11 @@ async function showAdminUserDetail(userId) {
                 </div>
                 <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
                     <div style="font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Телефон</div>
-                    <div style="font-weight: 500;">${contactInfo.phone || '—'}</div>
+                    <div style="font-weight: 500;">${escapeHtml(contactInfo.phone || '—')}</div>
                 </div>
                 <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
                     <div style="font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Город</div>
-                    <div style="font-weight: 500;">${contactInfo.city || '—'}</div>
+                    <div style="font-weight: 500;">${escapeHtml(contactInfo.city || '—')}</div>
                 </div>
                 <div style="background: #f8f9fa; padding: 12px; border-radius: 8px;">
                     <div style="font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Дата рождения</div>
@@ -5935,9 +6147,9 @@ async function showAdminUserDetail(userId) {
             <div style="margin-top: 15px; background: #f8d7da; padding: 15px; border-radius: 8px; border-left: 4px solid #dc3545;">
                 <h4 style="margin: 0 0 8px 0; font-size: 14px; color: #721c24;">📋 Информация о блокировке</h4>
                 <div style="font-size: 13px;">
-                    <div><strong>Причина:</strong> ${contactInfo.block_reason}</div>
+                    <div><strong>Причина:</strong> ${escapeHtml(contactInfo.block_reason)}</div>
                     <div><strong>Срок:</strong> ${contactInfo.block_duration === '7' ? '7 дней' : contactInfo.block_duration === '30' ? '30 дней' : 'Навсегда'}</div>
-                    ${contactInfo.block_comment ? `<div><strong>Комментарий:</strong> ${contactInfo.block_comment}</div>` : ''}
+                    ${contactInfo.block_comment ? `<div><strong>Комментарий:</strong> ${escapeHtml(contactInfo.block_comment)}</div>` : ''}
                     <div><strong>Дата:</strong> ${contactInfo.blocked_at ? new Date(contactInfo.blocked_at).toLocaleString('ru-RU') : '—'}</div>
                 </div>
             </div>
@@ -6218,7 +6430,7 @@ async function showAdminProperty(propertyId) {
 
         // Информация о владельце
         const ownerInfo = prop.owner ?
-            `<div><strong>Владелец:</strong> ${prop.owner.full_name || 'Не указан'} (${prop.owner.email || 'нет email'})</div>` :
+            `<div><strong>Владелец:</strong> ${escapeHtml(prop.owner.full_name || 'Не указан')} (${prop.owner.email || 'нет email'})</div>` :
             '<div><strong>Владелец:</strong> Не указан</div>';
 
         content.innerHTML = `
@@ -6235,19 +6447,19 @@ async function showAdminProperty(propertyId) {
                 </div>
                 <div style="grid-column: span 2;">
                     <div style="font-size: 12px; color: #6c757d;">Название</div>
-                    <div style="font-weight: 600; font-size: 18px;">${prop.title}</div>
+                    <div style="font-weight: 600; font-size: 18px;">${escapeHtml(prop.title)}</div>
                 </div>
                 <div>
                     <div style="font-size: 12px; color: #6c757d;">Город</div>
-                    <div style="font-weight: 500;">${prop.city}</div>
+                    <div style="font-weight: 500;">${escapeHtml(prop.city)}</div>
                 </div>
                 <div>
                     <div style="font-size: 12px; color: #6c757d;">Адрес</div>
-                    <div style="font-weight: 500;">${prop.address}</div>
+                    <div style="font-weight: 500;">${escapeHtml(prop.address)}</div>
                 </div>
                 <div>
                     <div style="font-size: 12px; color: #6c757d;">Тип</div>
-                    <div style="font-weight: 500;">${getPropertyTypeName(prop.property_type)}</div>
+                    <div style="font-weight: 500;">${escapeHtml(getPropertyTypeName(prop.property_type))}</div>
                 </div>
                 <div>
                     <div style="font-size: 12px; color: #6c757d;">Площадь</div>
@@ -6273,7 +6485,7 @@ async function showAdminProperty(propertyId) {
             <div style="margin-top: 15px;">
                 <div style="font-weight: 600; margin-bottom: 8px;">Описание</div>
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; line-height: 1.6; color: #495057;">
-                    ${prop.description || 'Нет описания'}
+                    ${escapeHtml(prop.description || 'Нет описания')}
                 </div>
             </div>
         `;

@@ -17,11 +17,13 @@
 <!-- Скрытые данные пользователя -->
 {% if current_user %}
     <div id="user-data"
-         data-user-id="{{ current_user.user_id }}"
-         data-user-email="{{ current_user.email }}"
-         data-user-name="{{ current_user.full_name|default('') }}"
-         data-user-type="{{ current_user.user_type }}"
-         style="display: none;"></div>
+     data-user-id="{{ current_user.user_id }}"
+     data-user-email="{{ current_user.email }}"
+     data-user-name="{{ current_user.full_name|default('') }}"
+     data-user-type="{{ current_user.user_type }}"
+     data-user-avatar="{{ current_user.avatar_url|default('') }}"
+     data-user-city="{{ current_user.contact_info.city if current_user.contact_info else '' }}"
+     style="display: none;"></div>
 
     <script>
         window.currentUser = {
@@ -424,30 +426,40 @@
 
 <!-- ПОПАП ВЫБОРА ГОРОДА -->
 <div id="cityPopup" class="popup city-popup">
-    <div class="popup-content">
+    <div class="popup-content" style="max-width: 500px;">
         <button class="close-popup" onclick="hideCityPopup()">×</button>
-        <h2>Выберите город</h2>
+        <h2 style="margin-bottom: 20px;">Выберите город</h2>
 
-        <!-- Поиск с иконкой -->
-        <div class="city-search-container">
+        <!-- Поле поиска -->
+        <div class="city-search-container" style="position: relative; margin-bottom: 20px;">
             <input type="text"
                    class="city-search-input"
                    id="citySearch"
-                   placeholder="Поиск города или населённого пункта..."
-                   autocomplete="off">
-            <img src="/resources/pin.png" class="city-search-icon" alt="🔍">
+                   placeholder="Поиск города..."
+                   autocomplete="off"
+                   style="width: 100%; padding: 14px 45px 14px 15px; border: 2px solid #e9ecef; border-radius: 12px; font-size: 15px;">
+            <img src="/resources/search.png" class="city-search-icon" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; opacity: 0.5;">
         </div>
 
-        <!-- Популярные города (будут загружаться динамически) -->
-        <div class="popular-cities-section" id="popularCitiesSection">
-            <div class="popular-cities-title">Популярные города</div>
-            <div class="popular-cities-grid" id="popularCitiesGrid"></div>
+        <!-- Блок: Текущий город -->
+        <div id="currentCityBlock" style="margin-bottom: 20px;">
+            <div style="font-size: 14px; color: #6c757d; margin-bottom: 8px;">📍 Текущий город</div>
+            <button type="button" id="currentCityBtn" onclick="selectCityFromPopup(document.getElementById('currentCityValue').textContent)"
+                    style="width: 100%; text-align: left; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px; padding: 12px 15px; cursor: pointer; font-weight: 500; font-size: 16px; transition: all 0.2s;">
+                <span id="currentCityValue">Москва</span>
+            </button>
         </div>
 
-        <!-- Результаты поиска -->
-        <div class="city-results-container" id="cityResultsContainer">
-            <!-- Результаты будут добавляться сюда -->
-            <div class="city-loading">Загрузка справочника городов...</div>
+        <!-- Блок: Популярные города -->
+        <div id="popularCitiesBlock" style="margin-bottom: 20px;">
+            <div style="font-size: 14px; color: #6c757d; margin-bottom: 10px;">⭐ Популярные города</div>
+            <div id="popularCitiesGrid" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+        </div>
+
+        <!-- Блок: Результаты поиска (изначально скрыт) -->
+        <div id="citySearchResultsBlock" style="display: none;">
+            <div style="font-size: 14px; color: #6c757d; margin-bottom: 10px;">🔍 Результаты поиска</div>
+            <div id="citySearchResults" style="max-height: 350px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 12px; background: white;"></div>
         </div>
     </div>
 </div>
@@ -912,5 +924,17 @@
 {% include "modals/chat_modals.html" %}
 {% include "modals/admin_modals.html" %}
 
+<script>
+    // Проверяем параметр URL для открытия модалки входа
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('showLogin') === 'true') {
+            showLoginModal();
+            // Убираем параметр из URL без перезагрузки страницы
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+        }
+    });
+</script>
 </body>
 </html>

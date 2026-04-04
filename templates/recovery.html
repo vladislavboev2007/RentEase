@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RentEase - Восстановление пароля</title>
+    <script src="/static/script.js"></script>
     <link rel="stylesheet" href="/static/style.css">
     <style>
         body.recovery-body { overflow: hidden; height: 100vh; margin: 0; padding: 0; }
@@ -63,7 +64,7 @@
                         <div class="section-title">Шаг 1 из 3: Введите email</div>
                         <div class="form-group"><label>Email *</label><input type="email" id="email" placeholder="name@service.com"></div>
                         <button class="btn-primary" id="step1NextBtn">Отправить код</button>
-                        <div class="form-footer"><a href="#" onclick="showLoginModal()">Вспомнили пароль? Войти</a></div>
+                        <div class="form-footer">Вспомнили пароль? <a href="/?showLogin=true">Войти</a></div>
                     </div>
 
                     <div class="recovery-form" id="step2" style="display: none;">
@@ -195,6 +196,18 @@
                 if(--t < 0) { clearInterval(timerInterval); span.textContent = '00:00'; span.style.color = '#dc3545'; }
             }, 1000);
         }
+
+        // Дополнительная инициализация для страницы восстановления
+    document.addEventListener('DOMContentLoaded', function() {
+        // Перенаправление на главную с открытием модалки входа
+        const goToLogin = document.querySelector('.form-footer a');
+        if (goToLogin) {
+            goToLogin.addEventListener('click', function(e) {
+                e.preventDefault();
+                window.location.href = '/?showLogin=true';
+            });
+        }
+    });
 
         document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.code-digit').forEach((inp, idx) => {

@@ -947,7 +947,7 @@ body {
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
-    min-height: 50px;
+    min-height: 10px;
 }
 
 .results-grid .property-address {
@@ -959,7 +959,7 @@ body {
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
-    min-height: 42px;
+    min-height: 30px;
 }
 
 .results-grid .property-details {
@@ -4619,4 +4619,28 @@ input, textarea, select, button, .btn, .btn-primary, .btn-secondary, .btn-danger
         visibility: visible;
         transform: translateY(0);
     }
+}
+
+/* Кнопка текущего города */
+#currentCityBtn {
+    transition: all 0.2s ease;
+}
+
+#currentCityBtn:hover {
+    background: #e9ecef !important;
+    border-color: #007bff !important;
+    transform: translateY(-1px);
+}
+
+/* Кнопки популярных городов */
+.popular-city-btn {
+    transition: all 0.2s ease;
+}
+
+.popular-city-btn:hover {
+    background: #007bff !important;
+    color: white !important;
+    border-color: #007bff !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.2);
 }

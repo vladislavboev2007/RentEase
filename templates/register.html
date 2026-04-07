@@ -3,728 +3,743 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RentEase - Регистрация</title>
+    <title>RentEase - Аудит-лог</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:,">
     <style>
-        body.register-body {
-            overflow: hidden;
-            height: 100vh;
-            margin: 0;
-            padding: 0;
+        .admin-page {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
         }
 
-        .register-page {
-            height: calc(100vh - 70px);
-            background-image: url('/resources/background-register.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            position: relative;
-            display: flex;
-            align-items: flex-start;
-            padding: 30px 0 30px 5%;
-            box-sizing: border-box;
-            overflow: hidden;
-        }
-
-        .register-page::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.1) 100%);
-            pointer-events: none;
-        }
-
-        .register-container {
-            width: 40%;
-            min-width: 450px;
-            max-width: 550px;
-            position: relative;
-            z-index: 2;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .register-card {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
-            animation: slideIn 0.5s ease-out;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            max-height: 100%;
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateX(-30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-
-        .register-header {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            padding: 20px 30px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-
-        .register-header h1 {
-            font-size: 26px;
-            margin-bottom: 5px;
-            font-weight: 600;
-        }
-
-        .register-header p {
-            font-size: 14px;
-            opacity: 0.9;
-            margin: 0;
-        }
-
-        .steps-indicator {
+        /* Верхняя панель */
+        .admin-header {
             display: flex;
             justify-content: space-between;
-            padding: 15px 30px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
-            flex-shrink: 0;
-        }
-
-        .step-item {
-            flex: 1;
-            text-align: center;
-            position: relative;
-        }
-
-        .step-item:not(:last-child)::after {
-            content: '';
-            position: absolute;
-            top: 18px;
-            right: -30px;
-            width: 60px;
-            height: 2px;
-            background: #dee2e6;
-        }
-
-        .step-item.active .step-circle {
-            background: #007bff;
-            color: white;
-            border-color: #007bff;
-        }
-
-        .step-item.completed .step-circle {
-            background: #28a745;
-            color: white;
-            border-color: #28a745;
-        }
-
-        .step-circle {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: white;
-            border: 2px solid #dee2e6;
-            display: flex;
             align-items: center;
-            justify-content: center;
-            margin: 0 auto 6px;
-            font-weight: 600;
-            font-size: 16px;
-            color: #6c757d;
-            transition: all 0.3s;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
         }
 
-        .step-label {
-            font-size: 11px;
-            color: #6c757d;
-            font-weight: 500;
-        }
-
-        .step-item.active .step-label {
-            color: #007bff;
+        .admin-header h1 {
+            font-size: 28px;
+            color: #212529;
+            margin: 0;
             font-weight: 600;
         }
 
-        .step-item.completed .step-label {
-            color: #28a745;
-        }
-
-        .register-form-container {
-            padding: 20px 30px;
-            overflow-y: auto;
-            flex: 1;
-            min-height: 0;
-        }
-
-        .register-form-container::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .register-form-container::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 10px;
-        }
-
-        .register-form-container::-webkit-scrollbar-thumb {
-            background: #007bff;
-            border-radius: 10px;
-        }
-
-        .register-form {
-            display: block;
-        }
-
-        .register-form.hidden {
-            display: none;
-        }
-
-        .section-title {
-            font-size: 18px;
-            color: #333;
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-            color: #495057;
+        /* Кнопка назад */
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+            text-decoration: none;
             font-size: 14px;
-        }
-
-        .form-group label .required {
-            color: #dc3545;
-            margin-left: 4px;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #ced4da;
+            font-weight: 500;
+            transition: all 0.3s;
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            padding: 10px 20px;
             border-radius: 8px;
-            font-size: 14px;
-            transition: all 0.3s;
-            box-sizing: border-box;
         }
 
-        .form-group input:focus {
+        .back-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+            color: white;
+        }
+
+        .back-link img {
+            width: 16px;
+            height: 16px;
+            filter: brightness(0) invert(1);
+        }
+
+        /* Умный поиск */
+        .smart-search {
+            margin-bottom: 25px;
+        }
+
+        .search-container {
+            position: relative;
+            max-width: 500px;
+        }
+
+        .smart-search-input {
+            width: 100%;
+            padding: 14px 20px 14px 45px;
+            border: 2px solid #e9ecef;
+            border-radius: 30px;
+            font-size: 15px;
+            transition: all 0.3s;
+            background: white;
+        }
+
+        .smart-search-input:focus {
             outline: none;
             border-color: #007bff;
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+            box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.1);
         }
 
-        .form-row {
+        .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            opacity: 0.5;
+        }
+
+        /* Таблица */
+        .logs-table {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+            border: 1px solid #e9ecef;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f8f9fa;
+            padding: 16px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #e9ecef;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 16px;
+            border-bottom: 1px solid #e9ecef;
+            color: #212529;
+            vertical-align: middle;
+        }
+
+        tr:hover td {
+            background: #f8f9fa;
+        }
+
+        /* Аватар пользователя */
+        .user-cell {
             display: flex;
+            align-items: center;
             gap: 12px;
         }
 
-        .form-row .form-group {
-            flex: 1;
-        }
-
-        .form-hint {
-            font-size: 11px;
-            color: #6c757d;
-            margin-top: 4px;
-        }
-
-        .checkbox-group {
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-            margin: 15px 0;
-        }
-
-        .checkbox-group input[type="checkbox"] {
-            width: auto;
-            margin-top: 2px;
-        }
-
-        .checkbox-group label {
-            margin-bottom: 0;
-            font-weight: normal;
-            font-size: 13px;
-        }
-
-        .checkbox-group a {
-            color: #007bff;
-            text-decoration: none;
-        }
-
-        .code-input-container {
-            display: flex;
-            gap: 6px;
-            justify-content: center;
-            margin: 20px 0;
-            flex-wrap: wrap;
-        }
-
-        .code-digit {
-            width: 40px;
-            height: 45px;
-            text-align: center;
-            font-size: 20px;
-            border: 2px solid #dee2e6;
-            border-radius: 8px;
-            transition: all 0.3s;
-        }
-
-        .code-digit:focus {
-            border-color: #007bff;
-            outline: none;
-        }
-
-        .code-separator {
-            font-size: 20px;
-            color: #6c757d;
-            display: flex;
-            align-items: center;
-        }
-
-        .code-timer {
-            text-align: center;
-            color: #6c757d;
-            margin: 15px 0;
-            font-size: 13px;
-        }
-
-        .code-timer span {
-            font-weight: 600;
-            color: #007bff;
-        }
-
-        .avatar-section {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .avatar-preview {
-            width: 120px;
-            height: 120px;
+        .user-avatar-small {
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
-            margin: 0 auto 15px;
-            background: #f8f9fa;
-            border: 3px dashed #007bff;
+            background: linear-gradient(135deg, #007bff, #0056b3);
             display: flex;
             align-items: center;
             justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            flex-shrink: 0;
             overflow: hidden;
-            cursor: pointer;
         }
 
-        .avatar-preview img {
+        .user-avatar-small img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            width: 100%;
-            margin: 8px 0;
+        .user-info {
+            display: flex;
+            flex-direction: column;
         }
 
-        .btn-primary:disabled {
+        .user-name {
+            font-weight: 600;
+            color: #212529;
+            font-size: 14px;
+        }
+
+        .user-email {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        /* Бейджи для действий */
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-insert {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-update {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .badge-delete {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .badge-toggle {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        /* Тип объекта */
+        .entity-type {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #495057;
+        }
+
+        .entity-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #6c757d;
+            margin-left: 5px;
+        }
+
+        /* Изменения */
+        .changes-cell {
+            max-width: 350px;
+            font-size: 13px;
+            color: #495057;
+            line-height: 1.5;
+        }
+
+        /* Пагинация */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 30px;
+        }
+
+        .page-btn {
+            width: 38px;
+            height: 38px;
+            border: 1px solid #dee2e6;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .page-btn:hover:not(.active):not(:disabled) {
+            background: #e9ecef;
+            border-color: #007bff;
+        }
+
+        .page-btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .page-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
 
-        .btn-secondary {
-            background: #f8f9fa;
-            color: #495057;
-            border: 1px solid #ced4da;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 15px;
-            cursor: pointer;
-            width: 100%;
-            margin: 8px 0;
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
         }
 
-        .btn-link {
-            background: none;
+        /* Подсветка поиска */
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 0;
+            border-radius: 2px;
+            font-weight: 500;
+        }
+
+        .logs-table table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .logs-table th,
+        .logs-table td {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .logs-table td:first-child {
+            white-space: nowrap;
+        }
+
+        .logs-table td:nth-child(3) {
+            white-space: normal;
+        }
+
+        .logs-table td:last-child {
+            word-break: break-word;
+        }
+
+        .logs-table .badge {
+            position: static;
+            top: auto;
+            right: auto;
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 500;
+            min-width: auto;
+            height: auto;
             border: none;
-            color: #007bff;
-            cursor: pointer;
-            font-size: 13px;
-            text-decoration: none;
-            margin: 5px 0;
+            background: transparent;
+            color: inherit;
+        }
+
+        .logs-table .badge-insert {
+            background: #d4edda !important;
+            color: #155724 !important;
+        }
+
+        .logs-table .badge-update {
+            background: #cce5ff !important;
+            color: #004085 !important;
+        }
+
+        .logs-table .badge-delete {
+            background: #f8d7da !important;
+            color: #721c24 !important;
+        }
+
+        .logs-table .badge-toggle {
+            background: #fff3cd !important;
+            color: #856404 !important;
+        }
+
+        /* Дополнительные стили для выпадающих меню */
+        .nav-item {
+            position: relative;
             display: inline-block;
         }
 
-        .error-field {
-            border-color: #dc3545 !important;
-            background-color: #fff8f8 !important;
+        .nav-link {
+            padding: 8px 16px;
+            cursor: pointer;
+            color: white;
+            font-weight: 500;
+            transition: all 0.3s;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
-        .field-error {
-            color: #dc3545;
-            font-size: 12px;
-            margin-top: 4px;
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.15);
         }
 
-        @media (max-width: 768px) {
-            .register-container {
-                width: 100%;
-                max-width: 500px;
-                margin-left: 0;
-            }
-            .form-row {
-                flex-direction: column;
-                gap: 0;
-            }
-            .step-item:not(:last-child)::after {
-                width: 30px;
-                right: -15px;
-            }
-            .register-form-container {
-                padding: 15px;
-            }
+        .arrow {
+            font-size: 10px;
+            transition: transform 0.3s;
+        }
+
+        .nav-item:hover .arrow {
+            transform: rotate(180deg);
+        }
+
+        .nav-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            min-width: 220px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .nav-item:hover .nav-dropdown {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            text-decoration: none;
+            color: #212529 !important;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .dropdown-item:hover {
+            background: #f8f9fa;
+            padding-left: 22px;
+        }
+
+        .dropdown-icon {
+            font-size: 18px;
+            width: 24px;
+        }
+
+        .dropdown-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: #212529 !important;
         }
     </style>
 </head>
-<body class="register-body">
+<body>
+    {% if current_user %}
+    <div id="user-data"
+         data-user-id="{{ current_user.user_id }}"
+         data-user-email="{{ current_user.email }}"
+         data-user-name="{{ current_user.full_name|default('') }}"
+         data-user-type="{{ current_user.user_type }}"
+         data-user-avatar="{{ current_user.avatar_url|default('') }}"
+         style="display: none;"></div>
+    <script>
+        window.currentUser = {
+            id: {{ current_user.user_id }},
+            email: "{{ current_user.email }}",
+            name: "{{ current_user.full_name|default('') }}",
+            type: "{{ current_user.user_type }}",
+            avatar_url: "{{ current_user.avatar_url|default('') }}"
+        };
+        console.log('Current user initialized:', window.currentUser);
+    </script>
+    {% else %}
+    <div id="user-data" style="display: none;"></div>
+    <script>window.currentUser = null;</script>
+    {% endif %}
+
     <div class="header">
         <div class="logo">RentEase</div>
         <div class="menu">
-            <a href="/">Каталог объектов</a>
-            <a href="#" onclick="showGuidePopup()">Руководство и поддержка</a>
-            <div class="location" onclick="showCityPopup()">
-                <span id="selectedCity">Москва</span>
+            <div class="nav-item">
+                <div class="nav-link">
+                    Каталог объектов
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="nav-dropdown">
+                    <a href="/" class="dropdown-item">
+                        <span class="dropdown-icon">🏠</span>
+                        <span class="dropdown-text">Все объекты</span>
+                    </a>
+                    <a href="/search?page=1&sort_by=newest&property_type=apartment" class="dropdown-item">
+                        <span class="dropdown-icon">🏢</span>
+                        <span class="dropdown-text">Квартиры</span>
+                    </a>
+                    <a href="/search?page=1&sort_by=newest&property_type=house" class="dropdown-item">
+                        <span class="dropdown-icon">🏡</span>
+                        <span class="dropdown-text">Дома</span>
+                    </a>
+                    <a href="/search?page=1&sort_by=newest&property_type=commercial" class="dropdown-item">
+                        <span class="dropdown-icon">🏭</span>
+                        <span class="dropdown-text">Коммерческая</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="nav-item">
+                <div class="nav-link">
+                    Руководство и поддержка
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="nav-dropdown">
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">👤</span>
+                        <span class="dropdown-text">Арендатор</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">🔑</span>
+                        <span class="dropdown-text">Собственник</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">📊</span>
+                        <span class="dropdown-text">Агент</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">⚖️</span>
+                        <span class="dropdown-text">Правила использования</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">❓</span>
+                        <span class="dropdown-text">Часто задаваемые вопросы</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="location" id="citySelector">
+                <span id="selectedCity">
+                    {% if current_user and current_user.contact_info and current_user.contact_info.city %}
+                        {{ current_user.contact_info.city }}
+                    {% else %}
+                        Москва
+                    {% endif %}
+                </span>
                 <img src="/resources/pin.png" alt="Location">
             </div>
-            <a href="#" class="login" onclick="showLoginModal()">Войти</a>
-        </div>
-    </div>
 
-    <div class="register-page">
-        <div class="register-container">
-            <div class="register-card">
-                <div class="register-header">
-                    <h1>Регистрация в RentEase</h1>
-                    <p>Присоединяйтесь к сообществу арендаторов и собственников</p>
+            {% if current_user %}
+            <div class="user-menu">
+                <div class="user-avatar" onclick="toggleUserMenu(event)" id="userAvatarContainer" data-initials="{{ user_initials }}">
+                    {% if current_user.avatar_url %}
+                    <img src="{{ current_user.avatar_url }}" alt="Avatar" class="user-avatar-img">
+                    {% else %}
+                    <span class="user-initials">{{ user_initials }}</span>
+                    {% endif %}
                 </div>
-
-                <div class="steps-indicator">
-                    <div class="step-item active" id="step1-indicator">
-                        <div class="step-circle">1</div>
-                        <div class="step-label">Основные данные</div>
-                    </div>
-                    <div class="step-item" id="step2-indicator">
-                        <div class="step-circle">2</div>
-                        <div class="step-label">Подтверждение</div>
-                    </div>
-                    <div class="step-item" id="step3-indicator">
-                        <div class="step-circle">3</div>
-                        <div class="step-label">Профиль</div>
-                    </div>
-                </div>
-
-                <div class="register-form-container">
-                    <!-- ШАГ 1 -->
-                    <div class="register-form" id="step1">
-                        <div class="section-title">Шаг 1 из 3: Основные данные</div>
-                        <div class="form-group">
-                            <label for="email">Email <span class="required">*</span></label>
-                            <input type="email" id="email" placeholder="name@service.com">
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="password">Пароль <span class="required">*</span></label>
-                                <input type="password" id="password" placeholder="Не менее 8 символов">
-                            </div>
-                            <div class="form-group">
-                                <label for="password-confirm">Повторите <span class="required">*</span></label>
-                                <input type="password" id="password-confirm" placeholder="Подтвердите пароль">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="phone">Номер телефона</label>
-                            <input type="tel" id="phone" placeholder="+7 (XXX) XXX-XX-XX">
-                            <div class="form-hint">Для связи и уведомлений</div>
-                        </div>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="agree">
-                            <label for="agree">Я принимаю <a href="#">условия использования</a> и <a href="#">политику конфиденциальности</a></label>
-                        </div>
-                        <button class="btn-primary" id="step1NextBtn">Продолжить</button>
-                        <div class="form-footer">
-                            Уже есть аккаунт? <a href="#" onclick="showLoginModal()">Войдите</a>
+                <div id="userDropdown" class="dropdown-content user-dropdown">
+                    <div class="dropdown-header">
+                        <div class="dropdown-user-info">
+                            <span class="dropdown-user-name">{{ current_user.full_name or current_user.email }}</span>
+                            <span class="dropdown-user-email">{{ current_user.email }}</span>
                         </div>
                     </div>
-
-                    <!-- ШАГ 2 -->
-                    <div class="register-form" id="step2" style="display: none;">
-                        <div class="section-title">Шаг 2 из 3: Подтверждение email</div>
-                        <p style="color: #6c757d; margin-bottom: 15px;">На вашу почту <strong id="displayEmail">example@service.com</strong> отправлен код подтверждения</p>
-                        <div class="code-input-container">
-                            <input type="text" maxlength="1" class="code-digit"> <input type="text" maxlength="1" class="code-digit">
-                            <input type="text" maxlength="1" class="code-digit"> <input type="text" maxlength="1" class="code-digit">
-                            <span class="code-separator">-</span>
-                            <input type="text" maxlength="1" class="code-digit"> <input type="text" maxlength="1" class="code-digit">
-                            <input type="text" maxlength="1" class="code-digit"> <input type="text" maxlength="1" class="code-digit">
-                        </div>
-                        <div class="code-timer">Код действителен: <span id="timer">05:00</span></div>
-                        <button class="btn-primary" id="step2NextBtn">Подтвердить</button>
-                        <button class="btn-secondary" id="resendCode">Отправить код повторно</button>
-                        <button class="btn-link" onclick="goToStep(1)">← Вернуться</button>
-                    </div>
-
-                    <!-- ШАГ 3 -->
-                    <div class="register-form" id="step3" style="display: none;">
-                        <div class="section-title">Шаг 3 из 3: Заполните профиль</div>
-                        <div class="avatar-section">
-                            <div class="avatar-preview" id="registerAvatarPreview" onclick="document.getElementById('registerAvatarInput').click()">
-                                <img src="/resources/placeholder-avatar.png" alt="Avatar" style="display: none;">
-                                <div class="placeholder">+ Загрузить фото</div>
-                            </div>
-                            <input type="file" id="registerAvatarInput" accept="image/*" style="display: none;" onchange="previewRegisterAvatar(this)">
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group"><label for="name">Имя</label><input type="text" id="name"></div>
-                            <div class="form-group"><label for="surname">Фамилия</label><input type="text" id="surname"></div>
-                        </div>
-                        <div class="form-group"><label for="patronymic">Отчество</label><input type="text" id="patronymic"></div>
-                        <div class="form-group"><label for="passport">Серия и номер паспорта</label><input type="text" id="passport" placeholder="0000 000000"></div>
-                        <div class="form-group"><label for="inn">ИНН</label><input type="text" id="inn" placeholder="000000000000"></div>
-                        <button class="btn-primary" id="step3CompleteBtn">Завершить регистрацию</button>
-                        <button class="btn-secondary" id="step3SkipBtn">Пропустить и завершить</button>
-                        <button class="btn-link" onclick="goToStep(2)">← Назад</button>
-                    </div>
+                    <div class="dropdown-divider"></div>
+                    <a href="/">На главную</a>
+                    <a href="#" onclick="logout(); return false;" class="logout-link">Выйти</a>
                 </div>
             </div>
+            {% else %}
+            <a href="#" class="login" onclick="showLoginModal(); return false;">Войти</a>
+            {% endif %}
         </div>
     </div>
 
+    <div class="admin-page">
+        <div class="admin-header">
+            <h1>Аудит-лог</h1>
+            <a href="/" class="back-link">
+                <img src="/resources/back-icon.png" alt="Back"> На главную
+            </a>
+        </div>
+
+        <div class="smart-search">
+            <div class="search-container">
+                <img src="/resources/search.png" class="search-icon" alt="Search">
+                <input type="text"
+                       class="smart-search-input"
+                       id="smartSearch"
+                       placeholder="Поиск по пользователям, действиям, объектам..."
+                       autocomplete="off">
+            </div>
+        </div>
+
+        <div class="logs-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 15%;">Дата и время</th>
+                        <th style="width: 20%;">Пользователь</th>
+                        <th style="width: 15%;">Действие</th>
+                        <th style="width: 20%;">Объект</th>
+                        <th style="width: 30%;">Изменения</th>
+                    </tr>
+                </thead>
+                <tbody id="logsTableBody">
+                    <tr>
+                        <td colspan="5" class="empty-state">Загрузка...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <script src="/static/hh_api.js"></script>
     <script>
-        let currentStep = 1;
-        let timerInterval;
-        let userEmail = '';
-        let step1Valid = false;
-        let step2Valid = false;
-        let step3Valid = false;
+        let auditCurrentPage = 1;
+        let auditTotalPages = 1;
+        let auditSearchTimeout = null;
 
-        // ========== ВАЛИДАЦИЯ ==========
-        function validateEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
-        function validatePasswordStrength(pass) { return pass.length >= 8 && /[a-zA-Z]/.test(pass) && /\d/.test(pass); }
-        function validatePhone(phone) {
-            if (!phone) return true;
-            const digits = phone.replace(/\D/g, '');
-            return digits.length === 11 && (digits[0] === '7' || digits[0] === '8');
-        }
-        function validateInn(inn) {
-            if (!inn) return true;
-            const clean = inn.replace(/\s/g, '');
-            return /^\d+$/.test(clean) && (clean.length === 10 || clean.length === 12);
-        }
-        function validatePassport(pass) {
-            if (!pass) return true;
-            const clean = pass.replace(/\s/g, '');
-            return /^\d+$/.test(clean) && clean.length === 10;
-        }
-
-        function showFieldError(input, msg) {
-            clearFieldError(input);
-            input.classList.add('error-field');
-            const div = document.createElement('div');
-            div.className = 'field-error';
-            div.textContent = msg;
-            input.parentNode.appendChild(div);
-        }
-        function clearFieldError(input) {
-            input.classList.remove('error-field');
-            const existing = input.parentNode.querySelector('.field-error');
-            if (existing) existing.remove();
-        }
-
-        function validateStep1() {
-            let valid = true;
-            const email = document.getElementById('email').value.trim();
-            const pass = document.getElementById('password').value;
-            const confirm = document.getElementById('password-confirm').value;
-            const phone = document.getElementById('phone').value.trim();
-            const agree = document.getElementById('agree').checked;
-
-            if (!email) { showFieldError(document.getElementById('email'), 'Email обязателен'); valid = false; }
-            else if (!validateEmail(email)) { showFieldError(document.getElementById('email'), 'Некорректный email'); valid = false; }
-            else clearFieldError(document.getElementById('email'));
-
-            if (!pass) { showFieldError(document.getElementById('password'), 'Пароль обязателен'); valid = false; }
-            else if (!validatePasswordStrength(pass)) { showFieldError(document.getElementById('password'), 'Пароль: мин. 8 символов, буква и цифра'); valid = false; }
-            else clearFieldError(document.getElementById('password'));
-
-            if (!confirm) { showFieldError(document.getElementById('password-confirm'), 'Подтвердите пароль'); valid = false; }
-            else if (pass !== confirm) { showFieldError(document.getElementById('password-confirm'), 'Пароли не совпадают'); valid = false; }
-            else clearFieldError(document.getElementById('password-confirm'));
-
-            if (phone && !validatePhone(phone)) { showFieldError(document.getElementById('phone'), 'Некорректный номер'); valid = false; }
-            else clearFieldError(document.getElementById('phone'));
-
-            if (!agree) { alert('Необходимо согласиться с условиями'); valid = false; }
-            return valid;
-        }
-
-        function validateStep2() {
-            const inputs = document.querySelectorAll('#step2 .code-digit');
-            let code = '';
-            inputs.forEach(i => code += i.value);
-            if (code.length !== 8) { alert('Введите полный код'); return false; }
-            return true;
-        }
-
-        function validateStep3() {
-            let valid = true;
-            const passport = document.getElementById('passport').value.trim();
-            const inn = document.getElementById('inn').value.trim();
-            if (passport && !validatePassport(passport)) { showFieldError(document.getElementById('passport'), 'Паспорт: 10 цифр'); valid = false; }
-            else clearFieldError(document.getElementById('passport'));
-            if (inn && !validateInn(inn)) { showFieldError(document.getElementById('inn'), 'ИНН: 10 или 12 цифр'); valid = false; }
-            else clearFieldError(document.getElementById('inn'));
-            return valid;
-        }
-
-        // ========== ПЕРЕКЛЮЧЕНИЕ ШАГОВ ==========
-        function goToStep(step) {
-            document.querySelectorAll('.register-form').forEach(f => f.style.display = 'none');
-            document.getElementById(`step${step}`).style.display = 'block';
-            for (let i = 1; i <= 3; i++) {
-                const ind = document.getElementById(`step${i}-indicator`);
-                ind.classList.remove('active', 'completed');
-                if (i < step) ind.classList.add('completed');
-                if (i === step) ind.classList.add('active');
+        function getInitials(fullName) {
+            if (!fullName) return '?';
+            const parts = fullName.split(' ');
+            if (parts.length >= 2) {
+                return (parts[0][0] + parts[1][0]).toUpperCase();
             }
-            currentStep = step;
-            document.querySelector('.register-form-container').scrollTop = 0;
+            return fullName[0].toUpperCase();
         }
 
-        // ========== ОТПРАВКА ШАГОВ ==========
-        document.getElementById('step1NextBtn').addEventListener('click', async function(e) {
-            e.preventDefault();
-            if (!validateStep1()) return;
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const phone = document.getElementById('phone').value;
-            const formData = new FormData();
-            formData.append('email', email);
-            formData.append('password', password);
-            if (phone) formData.append('phone', phone);
+        async function loadAuditLogs(page = 1) {
+            auditCurrentPage = page;
+            const searchTerm = document.getElementById('smartSearch').value.trim();
+            let url = `/api/admin/audit-logs?page=${page}&per_page=50`;
+            if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
+
             try {
-                const res = await fetch('/api/register/step1', { method: 'POST', body: formData });
-                const data = await res.json();
-                if (data.success) {
-                    userEmail = email;
-                    document.getElementById('displayEmail').textContent = email;
-                    alert('Код отправлен');
-                    goToStep(2);
-                    startTimer(300);
-                } else alert(data.message);
-            } catch (err) { alert('Ошибка'); }
-        });
+                const response = await fetch(url, { credentials: 'same-origin' });
+                if (!response.ok) throw new Error(`Ошибка: ${response.status}`);
 
-        document.getElementById('step2NextBtn').addEventListener('click', async function(e) {
-            e.preventDefault();
-            if (!validateStep2()) return;
-            let code = '';
-            document.querySelectorAll('#step2 .code-digit').forEach(i => code += i.value);
-            const fd = new FormData();
-            fd.append('email', userEmail);
-            fd.append('code', code);
-            try {
-                const res = await fetch('/api/register/step2', { method: 'POST', body: fd });
-                const data = await res.json();
-                if (data.success) { alert('Код подтверждён'); goToStep(3); }
-                else alert(data.message);
-            } catch (err) { alert('Ошибка'); }
-        });
+                const data = await response.json();
+                const tbody = document.getElementById('logsTableBody');
+                auditTotalPages = data.total_pages;
 
-        async function completeRegistration(skip = false) {
-            if (!validateStep3()) return;
-            const fd = new FormData();
-            fd.append('email', userEmail);
-            if (!skip) {
-                if (document.getElementById('name').value) fd.append('name', document.getElementById('name').value);
-                if (document.getElementById('surname').value) fd.append('surname', document.getElementById('surname').value);
-                if (document.getElementById('patronymic').value) fd.append('patronymic', document.getElementById('patronymic').value);
-                if (document.getElementById('passport').value) fd.append('passport', document.getElementById('passport').value);
-                if (document.getElementById('inn').value) fd.append('inn', document.getElementById('inn').value);
-                if (window.registerAvatar) fd.append('avatar', window.registerAvatar);
-            }
-            try {
-                const res = await fetch('/api/register/step3', { method: 'POST', body: fd });
-                const data = await res.json();
-                if (data.success) { alert('Регистрация завершена!'); window.location.href = '/'; }
-                else alert(data.message);
-            } catch (err) { alert('Ошибка'); }
-        }
-        document.getElementById('step3CompleteBtn').addEventListener('click', () => completeRegistration(false));
-        document.getElementById('step3SkipBtn').addEventListener('click', () => completeRegistration(true));
+                if (data.logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Записей не найдено</td></tr>';
+                } else {
+                    let html = '';
+                    data.logs.forEach(log => {
+                        const date = new Date(log.created_at).toLocaleString('ru-RU');
+                        let actionClass = 'badge';
+                        if (log.action === 'INSERT') actionClass += ' badge-insert';
+                        else if (log.action === 'UPDATE') actionClass += ' badge-update';
+                        else if (log.action === 'DELETE') actionClass += ' badge-delete';
+                        else if (log.action === 'TOGGLE_BLOCK') actionClass += ' badge-toggle';
 
-        function startTimer(dur) {
-            const timerSpan = document.getElementById('timer');
-            let t = dur;
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(() => {
-                const m = Math.floor(t / 60);
-                const s = t % 60;
-                timerSpan.textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-                if (--t < 0) { clearInterval(timerInterval); timerSpan.textContent = '00:00'; timerSpan.style.color = '#dc3545'; }
-            }, 1000);
-        }
+                        const userInitials = getInitials(log.user_name);
+                        const userAvatar = log.user_avatar ?
+                            `<img src="${log.user_avatar}" style="width:100%;height:100%;object-fit:cover;">` :
+                            `<span>${userInitials}</span>`;
 
-        document.getElementById('resendCode').addEventListener('click', async function() {
-            const fd = new FormData(); fd.append('email', userEmail);
-            try {
-                const res = await fetch('/api/register/resend-code', { method: 'POST', body: fd });
-                const data = await res.json();
-                if (data.success) { alert('Новый код отправлен'); startTimer(300); }
-                else alert(data.message);
-            } catch (err) { alert('Ошибка'); }
-        });
-
-        function previewRegisterAvatar(input) {
-            const preview = document.getElementById('registerAvatarPreview');
-            const img = preview.querySelector('img');
-            const placeholder = preview.querySelector('.placeholder');
-            if (input.files && input.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    img.src = e.target.result;
-                    img.style.display = 'block';
-                    if (placeholder) placeholder.style.display = 'none';
-                };
-                reader.readAsDataURL(input.files[0]);
-                window.registerAvatar = input.files[0];
+                        html += `<tr>
+                            <td style="white-space: nowrap;">${date}</td>
+                            <td><div class="user-cell"><div class="user-avatar-small">${userAvatar}</div><div class="user-info"><span class="user-name">${log.user_name || 'Система'}</span><span class="user-email">${log.user_email || ''}</span></div></div></td>
+                            <td><span class="${actionClass}">${log.action_display || log.action}</span></td>
+                            <td><span class="entity-type">${log.entity_type_display || log.entity_type}</span>${log.entity_id ? `<span class="entity-id">ID: ${log.entity_id}</span>` : ''}${log.entity_name ? `<div style="font-size:12px;color:#28a745;">📌 ${log.entity_name}</div>` : ''}</td>
+                            <td class="changes-cell">${log.changes || '—'}</td>
+                        </tr>`;
+                    });
+                    tbody.innerHTML = html;
+                }
+                renderPagination();
+            } catch (error) {
+                console.error('Ошибка:', error);
+                document.getElementById('logsTableBody').innerHTML = `<tr><td colspan="5" class="empty-state">Ошибка загрузки: ${error.message}</td></tr>`;
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('.code-digit').forEach((inp, idx) => {
-                inp.addEventListener('input', function() { if (this.value.length === 1 && idx < 7) document.querySelectorAll('.code-digit')[idx+1]?.focus(); });
-                inp.addEventListener('keydown', function(e) { if (e.key === 'Backspace' && !this.value && idx > 0) document.querySelectorAll('.code-digit')[idx-1]?.focus(); });
-            });
+        function renderPagination() {
+            const pagination = document.getElementById('pagination');
+            if (auditTotalPages <= 1) { pagination.innerHTML = ''; return; }
+            let html = `<button class="page-btn" ${auditCurrentPage === 1 ? 'disabled' : ''} onclick="loadAuditLogs(${auditCurrentPage - 1})">←</button>`;
+            for (let i = 1; i <= auditTotalPages; i++) {
+                if (i === 1 || i === auditTotalPages || (i >= auditCurrentPage - 2 && i <= auditCurrentPage + 2)) {
+                    html += `<button class="page-btn ${i === auditCurrentPage ? 'active' : ''}" onclick="loadAuditLogs(${i})">${i}</button>`;
+                } else if (i === auditCurrentPage - 3 || i === auditCurrentPage + 3) {
+                    html += `<span class="page-dots">...</span>`;
+                }
+            }
+            html += `<button class="page-btn" ${auditCurrentPage === auditTotalPages ? 'disabled' : ''} onclick="loadAuditLogs(${auditCurrentPage + 1})">→</button>`;
+            pagination.innerHTML = html;
+        }
+
+        document.getElementById('smartSearch').addEventListener('input', function() {
+            clearTimeout(auditSearchTimeout);
+            auditSearchTimeout = setTimeout(() => loadAuditLogs(1), 500);
+        });
+
+        // Функции для города
+        async function loadUserCity() {
+            try {
+                const response = await fetch('/api/user/profile', { credentials: 'same-origin' });
+                if (response.ok) {
+                    const user = await response.json();
+                    if (user.contact_info && user.contact_info.city) {
+                        document.getElementById('selectedCity').textContent = user.contact_info.city;
+                        localStorage.setItem('selectedCity', user.contact_info.city);
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки города:', error);
+            }
+        }
+
+        const POPULAR_CITIES = ['Москва', 'Санкт-Петербург', 'Севастополь', 'Новосибирск', 'Екатеринбург', 'Казань', 'Нижний Новгород', 'Челябинск', 'Самара', 'Омск'];
+
+        function openCityModal() {
+            let modal = document.getElementById('citySelectModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'citySelectModal';
+                modal.className = 'popup';
+                modal.innerHTML = `<div class="popup-content" style="max-width:500px;"><button class="close-popup" onclick="closeCityModal()">×</button><h2>Выберите город</h2><div style="position:relative;margin-bottom:20px;"><input type="text" id="citySearchInput" placeholder="Поиск города..." style="width:100%;padding:14px 45px 14px 15px;border:2px solid #e9ecef;border-radius:12px;"><img src="/resources/search.png" style="position:absolute;right:15px;top:50%;transform:translateY(-50%);width:18px;"></div><div id="popularCitiesBlock"><div style="font-size:14px;color:#6c757d;margin-bottom:10px;">⭐ Популярные города</div><div id="popularCitiesGrid" style="display:flex;flex-wrap:wrap;gap:8px;"></div></div><div id="searchResultsBlock" style="display:none;"><div style="font-size:14px;color:#6c757d;margin-bottom:10px;">🔍 Результаты поиска</div><div id="searchResultsList" style="max-height:300px;overflow-y:auto;border:1px solid #e9ecef;border-radius:12px;"></div></div></div>`;
+                document.body.appendChild(modal);
+            }
+            const grid = document.getElementById('popularCitiesGrid');
+            if (grid) grid.innerHTML = POPULAR_CITIES.map(c => `<button style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:30px;padding:8px 16px;margin:4px;cursor:pointer;" onclick="selectCity('${c}')">${c}</button>`).join('');
+            document.getElementById('popularCitiesBlock').style.display = 'block';
+            document.getElementById('searchResultsBlock').style.display = 'none';
+            const searchInput = document.getElementById('citySearchInput');
+            searchInput.value = '';
+            searchInput.oninput = function() {
+                const q = this.value.trim();
+                if (q.length >= 2) {
+                    HH_API.searchCities(q, (cities) => {
+                        if (cities.length === 0) {
+                            document.getElementById('searchResultsList').innerHTML = '<div style="padding:20px;text-align:center;">Ничего не найдено</div>';
+                        } else {
+                            document.getElementById('searchResultsList').innerHTML = cities.map(c => `<div style="padding:12px 15px;cursor:pointer;border-bottom:1px solid #f0f0f0;" onclick="selectCity('${c.replace(/'/g, "\\'")}')">${c.split(' (')[0]}</div>`).join('');
+                        }
+                        document.getElementById('popularCitiesBlock').style.display = 'none';
+                        document.getElementById('searchResultsBlock').style.display = 'block';
+                    });
+                } else {
+                    document.getElementById('popularCitiesBlock').style.display = 'block';
+                    document.getElementById('searchResultsBlock').style.display = 'none';
+                }
+            };
+            modal.style.display = 'flex';
+        }
+
+        function closeCityModal() { document.getElementById('citySelectModal')?.remove(); }
+        function selectCity(city) {
+            document.getElementById('selectedCity').textContent = city.split(' (')[0];
+            localStorage.setItem('selectedCity', city.split(' (')[0]);
+            closeCityModal();
+        }
+
+        function toggleUserMenu(event) {
+            event.stopPropagation();
+            document.getElementById('userDropdown')?.classList.toggle('show');
+        }
+
+        function showLoginModal() { window.location.href = '/?showLogin=true'; }
+        function logout() { window.location.href = '/api/logout'; }
+
+        document.getElementById('citySelector').addEventListener('click', openCityModal);
+        document.addEventListener('click', (e) => { if (e.target.classList.contains('popup')) closeCityModal(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCityModal(); });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAuditLogs();
+            const savedCity = localStorage.getItem('selectedCity');
+            if (savedCity) document.getElementById('selectedCity').textContent = savedCity;
+            if (window.currentUser?.id) loadUserCity();
+            const userAvatarContainer = document.getElementById('userAvatarContainer');
+            if (userAvatarContainer && window.currentUser?.avatar_url) {
+                userAvatarContainer.innerHTML = `<img src="${window.currentUser.avatar_url}" alt="Avatar" class="user-avatar-img">`;
+            }
         });
     </script>
 </body>

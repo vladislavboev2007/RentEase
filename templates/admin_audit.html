@@ -14,44 +14,48 @@
             padding: 0 20px;
         }
 
-        /* Уменьшенная кнопка назад */
-        .back-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            color: #6c757d;
-            text-decoration: none;
-            margin-bottom: 20px;
-            font-size: 14px;
-            transition: color 0.2s;
-            padding: 4px 10px;
-            border-radius: 20px;
-            background: #f8f9fa;
-        }
-
-        .back-link:hover {
-            color: #007bff;
-            background: #e7f1ff;
-        }
-
-        .back-link img {
-            width: 14px;
-            height: 14px;
-            opacity: 0.6;
-        }
-
-        .page-header {
+        /* Верхняя панель */
+        .admin-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 25px;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
         }
 
-        .page-header h1 {
+        .admin-header h1 {
             font-size: 28px;
             color: #212529;
             margin: 0;
             font-weight: 600;
+        }
+
+        /* Кнопка назад */
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            padding: 10px 20px;
+            border-radius: 8px;
+        }
+
+        .back-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+            color: white;
+        }
+
+        .back-link img {
+            width: 16px;
+            height: 16px;
+            filter: brightness(0) invert(1);
         }
 
         /* Умный поиск */
@@ -88,21 +92,6 @@
             width: 18px;
             height: 18px;
             opacity: 0.5;
-        }
-
-        .search-hint {
-            font-size: 12px;
-            color: #6c757d;
-            margin-top: 6px;
-            margin-left: 15px;
-        }
-
-        .search-hint span {
-            background: #f8f9fa;
-            padding: 2px 8px;
-            border-radius: 12px;
-            margin-right: 8px;
-            font-size: 11px;
         }
 
         /* Таблица */
@@ -240,15 +229,6 @@
             line-height: 1.5;
         }
 
-        .change-item {
-            background: #f8f9fa;
-            padding: 3px 8px;
-            border-radius: 4px;
-            margin: 2px 0;
-            display: inline-block;
-            border-left: 2px solid #007bff;
-        }
-
         /* Пагинация */
         .pagination {
             display: flex;
@@ -298,72 +278,69 @@
             font-weight: 500;
         }
 
-        /* В стилях страницы добавьте: */
-.logs-table table {
-    table-layout: fixed; /* Фиксированная ширина колонок */
-    width: 100%;
-}
+        .logs-table table {
+            table-layout: fixed;
+            width: 100%;
+        }
 
-.logs-table th,
-.logs-table td {
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
+        .logs-table th,
+        .logs-table td {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
 
-.logs-table td:first-child {
-    white-space: nowrap;
-}
+        .logs-table td:first-child {
+            white-space: nowrap;
+        }
 
-/* Для колонки с действиями */
-.logs-table td:nth-child(3) {
-    white-space: normal;
-}
+        .logs-table td:nth-child(3) {
+            white-space: normal;
+        }
 
-/* Для колонки с изменениями */
-.logs-table td:last-child {
-    word-break: break-word;
-}
-        /* Переопределяем .badge только внутри таблицы */
-.logs-table .badge {
-    position: static; /* Отменяем absolute */
-    top: auto;
-    right: auto;
-    display: inline-block;
-    padding: 6px 12px;
-    border-radius: 30px;
-    font-size: 12px;
-    font-weight: 500;
-    min-width: auto;
-    height: auto;
-    border: none;
-    background: transparent;
-    color: inherit;
-}
+        .logs-table td:last-child {
+            word-break: break-word;
+        }
 
-.logs-table .badge-insert {
-    background: #d4edda !important;
-    color: #155724 !important;
-}
+        .logs-table .badge {
+            position: static;
+            top: auto;
+            right: auto;
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 500;
+            min-width: auto;
+            height: auto;
+            border: none;
+            background: transparent;
+            color: inherit;
+        }
 
-.logs-table .badge-update {
-    background: #cce5ff !important;
-    color: #004085 !important;
-}
+        .logs-table .badge-insert {
+            background: #d4edda !important;
+            color: #155724 !important;
+        }
 
-.logs-table .badge-delete {
-    background: #f8d7da !important;
-    color: #721c24 !important;
-}
+        .logs-table .badge-update {
+            background: #cce5ff !important;
+            color: #004085 !important;
+        }
 
-.logs-table .badge-toggle {
-    background: #fff3cd !important;
-    color: #856404 !important;
-}
+        .logs-table .badge-delete {
+            background: #f8d7da !important;
+            color: #721c24 !important;
+        }
+
+        .logs-table .badge-toggle {
+            background: #fff3cd !important;
+            color: #856404 !important;
+        }
     </style>
 </head>
 <body>
-<!-- Скрытые данные пользователя -->
-{% if current_user %}
+    <!-- Скрытые данные пользователя -->
+    {% if current_user %}
     <div id="user-data"
          data-user-id="{{ current_user.user_id }}"
          data-user-email="{{ current_user.email }}"
@@ -371,7 +348,6 @@
          data-user-type="{{ current_user.user_type }}"
          data-user-avatar="{{ current_user.avatar_url|default('') }}"
          style="display: none;"></div>
-
     <script>
         window.currentUser = {
             id: {{ current_user.user_id }},
@@ -382,29 +358,30 @@
         };
         console.log('Current user initialized:', window.currentUser);
     </script>
-{% else %}
+    {% else %}
     <div id="user-data" style="display: none;"></div>
     <script>
         window.currentUser = null;
     </script>
-{% endif %}
+    {% endif %}
+
+    <!-- Верхняя панель -->
     <div class="header">
         <div class="logo">RentEase</div>
         <div class="menu">
             <a href="/">Каталог объектов</a>
-            <a href="#" onclick="showGuidePopup()">Руководство и поддержка</a>
-            <div class="location" onclick="showCityPopup()">
+            <a href="/">Руководство и поддержка</a>
+            <div class="location" id="citySelector">
                 <span id="selectedCity">Москва</span>
                 <img src="/resources/pin.png" alt="Location">
             </div>
-
-            <!-- Аватар пользователя -->
+            {% if current_user %}
             <div class="user-menu">
                 <div class="user-avatar" onclick="toggleUserMenu(event)" id="userAvatarContainer" data-initials="{{ user_initials }}">
-                    {% if current_user and current_user.avatar_url %}
-                        <img src="{{ current_user.avatar_url }}" alt="Avatar" class="user-avatar-img">
+                    {% if current_user.avatar_url %}
+                    <img src="{{ current_user.avatar_url }}" alt="Avatar" class="user-avatar-img">
                     {% else %}
-                        <span class="user-initials">{{ user_initials }}</span>
+                    <span class="user-initials">{{ user_initials }}</span>
                     {% endif %}
                 </div>
                 <div id="userDropdown" class="dropdown-content user-dropdown">
@@ -415,28 +392,26 @@
                         </div>
                     </div>
                     <div class="dropdown-divider"></div>
-                    <a href="#" onclick="showProfileModal(); return false;">
-                        <span class="dropdown-icon">👤</span> Мой профиль
-                    </a>
-                    <a href="#" onclick="logout(); return false;" class="logout-link">
-                        <span class="dropdown-icon">🚪</span> Выйти
-                    </a>
+                    <a href="/">На главную</a>
+                    <a href="#" onclick="logout(); return false;" class="logout-link">Выйти</a>
                 </div>
             </div>
+            {% else %}
+            <a href="/?showLogin=true" class="login">Войти</a>
+            {% endif %}
         </div>
     </div>
 
     <div class="admin-page">
-        <!-- Уменьшенная кнопка назад -->
-        <a href="/" class="back-link">
-            <img src="/resources/back-icon.png" alt="Back"> ← На главную
-        </a>
-
-        <div class="page-header">
+        <!-- Заголовок страницы с кнопкой назад справа -->
+        <div class="admin-header">
             <h1>Аудит-лог</h1>
+            <a href="/" class="back-link">
+                <img src="/resources/back-icon.png" alt="Back"> На главную
+            </a>
         </div>
 
-        <!-- Умный поиск (без фильтров) -->
+        <!-- Умный поиск -->
         <div class="smart-search">
             <div class="search-container">
                 <img src="/resources/search.png" class="search-icon" alt="Search">
@@ -448,6 +423,7 @@
             </div>
         </div>
 
+        <!-- Таблица аудит-лога -->
         <div class="logs-table">
             <table>
                 <thead>
@@ -460,7 +436,9 @@
                     </tr>
                 </thead>
                 <tbody id="logsTableBody">
-                    <!-- Данные загружаются динамически -->
+                    <tr>
+                        <td colspan="5" class="empty-state">Загрузка...</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -471,7 +449,7 @@
     <script>
         let currentPage = 1;
         let totalPages = 1;
-        let searchTimeout = null;
+        let auditSearchTimeout = null;
 
         // Функция для получения инициалов
         function getInitials(fullName) {
@@ -490,7 +468,7 @@
             return text.replace(regex, '<span class="highlight">$1</span>');
         }
 
-        // Загрузка аудит-логов с умным поиском
+        // Загрузка аудит-логов
         async function loadAuditLogs(page = 1) {
             currentPage = page;
             const searchTerm = document.getElementById('smartSearch').value.trim();
@@ -503,23 +481,16 @@
             try {
                 const response = await fetch(url, { credentials: 'same-origin' });
 
-                // Проверяем, что ответ успешный
                 if (!response.ok) {
                     if (response.status === 403) {
                         window.location.href = '/';
                         return;
                     }
-                    // Пробуем получить текст ошибки
-                    const errorText = await response.text();
-                    console.error('Ошибка ответа:', errorText);
                     throw new Error(`Ошибка загрузки: ${response.status}`);
                 }
 
-                // Проверяем, что ответ - JSON
                 const contentType = response.headers.get('content-type');
                 if (!contentType || !contentType.includes('application/json')) {
-                    const text = await response.text();
-                    console.error('Получен не JSON ответ:', text.substring(0, 200));
                     throw new Error('Сервер вернул не JSON');
                 }
 
@@ -543,20 +514,17 @@
                             second: '2-digit'
                         });
 
-                        // Определяем класс для действия
                         let actionClass = 'badge';
                         if (log.action === 'INSERT') actionClass += ' badge-insert';
                         else if (log.action === 'UPDATE') actionClass += ' badge-update';
                         else if (log.action === 'DELETE') actionClass += ' badge-delete';
                         else if (log.action === 'TOGGLE_BLOCK') actionClass += ' badge-toggle';
 
-                        // Аватар пользователя
                         const userInitials = getInitials(log.user_name) || log.user_email?.[0]?.toUpperCase() || '?';
                         const userAvatar = log.user_avatar ?
                             `<img src="${log.user_avatar}" alt="Avatar" style="width:100%;height:100%;object-fit:cover;">` :
                             `<span>${userInitials}</span>`;
 
-                        // Безопасное отображение изменений
                         const changes = log.changes || '—';
 
                         html += `
@@ -600,12 +568,12 @@
             }
         }
 
-        // Обработчик умного поиска с debounce
+        // Обработчик поиска с debounce
         document.getElementById('smartSearch').addEventListener('input', function() {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
+            clearTimeout(auditSearchTimeout);
+            auditSearchTimeout = setTimeout(() => {
                 loadAuditLogs(1);
-            }, 500); // Задержка 500ms для избежания частых запросов
+            }, 500);
         });
 
         function renderPagination() {
@@ -627,11 +595,153 @@
             pagination.innerHTML = html;
         }
 
-        // Загрузка при открытии страницы
-        document.addEventListener('DOMContentLoaded', () => {
-            loadAuditLogs();
+        // Функции для работы с городом
+        function openCityModal() {
+            let modal = document.getElementById('citySelectModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'citySelectModal';
+                modal.className = 'popup';
+                modal.innerHTML = `
+                    <div class="popup-content" style="max-width: 500px;">
+                        <button class="close-popup" onclick="closeCityModal()">×</button>
+                        <h2>Выберите город</h2>
+                        <div style="position: relative; margin-bottom: 20px;">
+                            <input type="text" id="citySearchInput" placeholder="Поиск города..." style="width: 100%; padding: 14px 45px 14px 15px; border: 2px solid #e9ecef; border-radius: 12px;">
+                            <img src="/resources/search.png" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); width: 18px; opacity: 0.5;">
+                        </div>
+                        <div id="popularCitiesBlock">
+                            <div style="font-size: 14px; color: #6c757d; margin-bottom: 10px;">⭐ Популярные города</div>
+                            <div id="popularCitiesGrid" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                        </div>
+                        <div id="searchResultsBlock" style="display: none;">
+                            <div style="font-size: 14px; color: #6c757d; margin-bottom: 10px;">🔍 Результаты поиска</div>
+                            <div id="searchResultsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 12px;"></div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
 
-            // Синхронизация аватарки
+            const popularCities = ['Москва', 'Санкт-Петербург', 'Севастополь', 'Новосибирск', 'Екатеринбург', 'Казань', 'Нижний Новгород', 'Челябинск', 'Самара', 'Омск'];
+            const grid = document.getElementById('popularCitiesGrid');
+            if (grid) {
+                grid.innerHTML = popularCities.map(city =>
+                    `<button class="popular-city-btn" style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 30px; padding: 8px 16px; cursor: pointer;" onclick="selectCity('${city}')">${city}</button>`
+                ).join('');
+            }
+
+            document.getElementById('searchResultsBlock').style.display = 'none';
+            document.getElementById('popularCitiesBlock').style.display = 'block';
+
+            const searchInput = document.getElementById('citySearchInput');
+            searchInput.value = '';
+            searchInput.focus();
+
+            let searchTimeout;
+            searchInput.oninput = function() {
+                clearTimeout(searchTimeout);
+                const query = this.value.trim();
+                if (query.length < 2) {
+                    document.getElementById('searchResultsBlock').style.display = 'none';
+                    document.getElementById('popularCitiesBlock').style.display = 'block';
+                    return;
+                }
+                searchTimeout = setTimeout(() => {
+                    if (typeof HH_API !== 'undefined') {
+                        HH_API.searchCities(query, (cities) => {
+                            const resultsBlock = document.getElementById('searchResultsBlock');
+                            const resultsList = document.getElementById('searchResultsList');
+                            if (cities.length === 0) {
+                                resultsList.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">Ничего не найдено</div>';
+                            } else {
+                                resultsList.innerHTML = cities.map(city => {
+                                    const cityName = city.split(' (')[0];
+                                    return `<div onclick="selectCity('${city.replace(/'/g, "\\'")}')" style="padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #f0f0f0;"><span style="font-weight: 500;">${cityName}</span></div>`;
+                                }).join('');
+                            }
+                            resultsBlock.style.display = 'block';
+                            document.getElementById('popularCitiesBlock').style.display = 'none';
+                        });
+                    }
+                }, 300);
+            };
+            modal.style.display = 'flex';
+        }
+
+        function closeCityModal() {
+            const modal = document.getElementById('citySelectModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function selectCity(city) {
+            const cityName = city.split(' (')[0];
+            const citySpan = document.getElementById('selectedCity');
+            if (citySpan) citySpan.textContent = cityName;
+            localStorage.setItem('selectedCity', cityName);
+            closeCityModal();
+        }
+
+        document.getElementById('citySelector').addEventListener('click', openCityModal);
+
+        const savedCity = localStorage.getItem('selectedCity');
+        if (savedCity) {
+            const citySpan = document.getElementById('selectedCity');
+            if (citySpan) citySpan.textContent = savedCity;
+        }
+
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('citySelectModal');
+            if (modal && modal.style.display === 'flex' && e.target === modal) {
+                closeCityModal();
+            }
+            const userDropdown = document.getElementById('userDropdown');
+            const userAvatar = document.querySelector('.user-avatar');
+            if (userDropdown && userAvatar && !userAvatar.contains(e.target)) {
+                userDropdown.classList.remove('show');
+            }
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeCityModal();
+        });
+
+        function toggleUserMenu(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('userDropdown');
+            if (dropdown) dropdown.classList.toggle('show');
+        }
+
+        function logout() {
+            window.location.href = '/api/logout';
+        }
+
+        // Добавьте в код страницы
+        async function loadUserCity() {
+            try {
+                const response = await fetch('/api/user/profile', { credentials: 'same-origin' });
+                if (response.ok) {
+                    const user = await response.json();
+                    if (user.contact_info && user.contact_info.city) {
+                        document.getElementById('selectedCity').textContent = user.contact_info.city;
+                        localStorage.setItem('selectedCity', user.contact_info.city);
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки города:', error);
+            }
+        }
+
+        // Вызвать после загрузки страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.currentUser && window.currentUser.id) {
+                loadUserCity();
+            }
+        });
+
+        // Загрузка при открытии страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAuditLogs();
             const userAvatarContainer = document.getElementById('userAvatarContainer');
             if (userAvatarContainer && window.currentUser?.avatar_url) {
                 userAvatarContainer.innerHTML = `<img src="${window.currentUser.avatar_url}" alt="Avatar" class="user-avatar-img">`;
@@ -639,5 +749,4 @@
         });
     </script>
 </body>
-
 </html>

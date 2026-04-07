@@ -9,7 +9,7 @@ from fastapi.security import OAuth2PasswordBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, func, desc, text
+from sqlalchemy import or_, and_, func, desc, text, String
 from sqlalchemy.orm.attributes import flag_modified
 from passlib.context import CryptContext
 from pathlib import Path
@@ -3091,37 +3091,59 @@ async def get_audit_logs(
         db: Session = Depends(get_db_with_audit)
 ):
     """Получить аудит логи с фильтрацией (только для admin)"""
-    print(f"=== ЗАПРОС АУДИТ-ЛОГА ===")
-    print(f"Пользователь: {current_user}")
-    print(f"Страница: {page}, на странице: {per_page}, поиск: {search}")
-
     if not current_user or current_user.user_type != 'admin':
-        print("❌ Доступ запрещён")
         raise HTTPException(status_code=403, detail="Только для администраторов")
 
     try:
-        # Базовый запрос
+        # Приводим к int
+        page = int(page) if page else 1
+        per_page = int(per_page) if per_page else 50
+
         query = db.query(AuditLog).join(User, AuditLog.user_id == User.user_id, isouter=True)
 
-        # Поиск
-        if search:
-            search_filter = or_(
-                AuditLog.action.ilike(f"%{search}%"),
-                AuditLog.entity_type.ilike(f"%{search}%"),
-                User.email.ilike(f"%{search}%"),
-                User.full_name.ilike(f"%{search}%"),
-                AuditLog.details.cast(db.String).ilike(f"%{search}%")
-            )
-            query = query.filter(search_filter)
+        # Маппинг русских слов на английские действия
+        action_map = {
+            "добавление": "INSERT",
+            "изменение": "UPDATE",
+            "удаление": "DELETE",
+            "добавил": "INSERT",
+            "изменил": "UPDATE",
+            "удалил": "DELETE",
+            "блокировка": "TOGGLE_BLOCK",
+            "заблокировал": "TOGGLE_BLOCK"
+        }
 
-        # Пагинация
+        if search:
+            search_lower = search.lower().strip()
+            search_term = f"%{search}%"
+
+            filters = [
+                AuditLog.action.ilike(search_term),
+                AuditLog.entity_type.ilike(search_term),
+                func.coalesce(User.email, '').ilike(search_term),
+                func.coalesce(User.full_name, '').ilike(search_term)
+            ]
+
+            # Добавляем маппинг русских слов
+            if search_lower in action_map:
+                filters.append(AuditLog.action == action_map[search_lower])
+
+            # Поиск по entity_name (через подзапрос, чтобы не ломать пагинацию)
+            # Для простоты - ищем по ID, а entity_name вычисляется позже
+
+            query = query.filter(or_(*filters))
+
         total = query.count()
-        print(f"Всего записей: {total}")
+
+        # Пагинация с защитой от выхода за границы
+        total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+        if page > total_pages and total_pages > 0:
+            page = total_pages
+        if page < 1:
+            page = 1
 
         logs = query.order_by(AuditLog.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
-        print(f"Загружено записей: {len(logs)}")
 
-        # Формируем результат
         result = []
         for log in logs:
             entity_name = get_entity_name(db, log.entity_type, log.entity_id)
@@ -3146,19 +3168,15 @@ async def get_audit_logs(
                 "details": log.details
             })
 
-        response_data = {
+        return {
             "logs": result,
             "total": total,
             "page": page,
             "per_page": per_page,
-            "total_pages": (total + per_page - 1) // per_page
+            "total_pages": total_pages
         }
-
-        print(f"✅ Успешно сформирован ответ с {len(result)} записями")
-        return response_data
-
     except Exception as e:
-        print(f"❌ Ошибка при загрузке аудит-лога: {e}")
+        print(f"Ошибка в аудит-логе: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -3260,6 +3278,12 @@ def format_value_for_display(value) -> str:
 
 def format_changes_for_display(details: Optional[dict]) -> str:
     """Форматирует изменения для отображения в таблице аудит-лога"""
+    if isinstance(details, str):
+        try:
+            details = json.loads(details)
+        except:
+            return "—"
+
     if not details:
         return "—"
 

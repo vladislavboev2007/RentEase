@@ -4644,3 +4644,81 @@ input, textarea, select, button, .btn, .btn-primary, .btn-secondary, .btn-danger
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 123, 255, 0.2);
 }
+
+/* ==================== ВЫПАДАЮЩИЕ МЕНЮ ==================== */
+
+.nav-item {
+    position: relative;
+    display: inline-block;
+}
+
+.nav-link {
+    padding: 8px 16px;
+    cursor: pointer;
+    color: white;
+    font-weight: 500;
+    transition: all 0.3s;
+    border-radius: 8px;
+}
+
+.nav-link:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.arrow {
+    font-size: 10px;
+    margin-left: 5px;
+    transition: transform 0.3s;
+}
+
+.nav-item:hover .arrow {
+    transform: rotate(180deg);
+}
+
+.nav-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 220px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.nav-item:hover .nav-dropdown {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    text-decoration: none;
+    color: #212529 !important;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.dropdown-item:hover {
+    background: #f8f9fa;
+    padding-left: 22px;
+}
+
+.dropdown-icon {
+    font-size: 18px;
+    width: 24px;
+}
+
+.dropdown-text {
+    font-size: 14px;
+    font-weight: 500;
+}
+

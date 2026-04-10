@@ -535,6 +535,81 @@ def send_agent_notification(email: str, full_name: str, is_agent: bool) -> bool:
 
     return sender.send_email(email, subject, html_content, text_content)
 
+
+def send_application_status_notification(to_email: str, full_name: str, status: str, property_title: str,
+                                         comment: str = None):
+    subject = f"Заявка на {property_title} - {status}"
+    if status == 'approved':
+        html = f"<p>Здравствуйте, {full_name}!</p><p>Ваша заявка на объект «{property_title}» одобрена.</p>"
+        if comment:
+            html += f"<p>Комментарий: {comment}</p>"
+        html += "<p>Договор будет сформирован автоматически.</p>"
+    else:  # rejected
+        html = f"<p>Здравствуйте, {full_name}!</p><p>Ваша заявка на объект «{property_title}» отклонена.</p>"
+        if comment:
+            html += f"<p>Причина: {comment}</p>"
+
+    sender = YandexMailSender()
+    sender.send_email(to_email, subject, html)
+
+
+def send_contract_signed_notification(to_email: str, full_name: str, contract_number: str, property_title: str,
+                                      is_owner: bool = False):
+    """
+    Отправка уведомления о подписании договора
+    is_owner: True - для собственника, False - для арендатора
+    """
+    if is_owner:
+        subject = f"Арендатор подписал договор {contract_number}"
+        html = f"""
+        <p>Здравствуйте, {full_name}!</p>
+        <p>Арендатор подписал договор <strong>{contract_number}</strong> на объект «{property_title}».</p>
+        <p>После вашей подписи договор вступит в силу.</p>
+        <p><a href="https://rentease.ru/my/contracts">Перейти к договорам</a></p>
+        """
+    else:
+        subject = f"Собственник подписал договор {contract_number}"
+        html = f"""
+        <p>Здравствуйте, {full_name}!</p>
+        <p>Собственник подписал договор <strong>{contract_number}</strong> на объект «{property_title}».</p>
+        <p>Договор вступил в силу.</p>
+        <p><a href="https://rentease.ru/my/contracts">Перейти к договорам</a></p>
+        """
+
+    sender = YandexMailSender()
+    sender.send_email(to_email, subject, html)
+
+
+def send_contract_fully_signed_notification(to_email: str, full_name: str, contract_number: str, property_title: str):
+    """
+    Отправка уведомления о полном подписании договора (обеими сторонами)
+    """
+    subject = f"Договор {contract_number} полностью подписан"
+    html = f"""
+    <p>Здравствуйте, {full_name}!</p>
+    <p>Договор <strong>{contract_number}</strong> на объект «{property_title}» полностью подписан обеими сторонами.</p>
+    <p>Вы можете скачать договор и акт приёма-передачи в личном кабинете.</p>
+    <p><a href="https://rentease.ru/my/contracts">Скачать документы</a></p>
+    """
+
+    sender = YandexMailSender()
+    sender.send_email(to_email, subject, html)
+
+
+def send_contract_cancelled_notification(to_email: str, full_name: str, contract_number: str, property_title: str):
+    """
+    Отправка уведомления об отмене договора
+    """
+    subject = f"Договор {contract_number} отменён"
+    html = f"""
+    <p>Здравствуйте, {full_name}!</p>
+    <p>Договор <strong>{contract_number}</strong> на объект «{property_title}» был отменён.</p>
+    <p>Если у вас есть вопросы, свяжитесь с поддержкой.</p>
+    """
+
+    sender = YandexMailSender()
+    sender.send_email(to_email, subject, html)
+
 # Пример использования
 if __name__ == "__main__":
     # Тестирование

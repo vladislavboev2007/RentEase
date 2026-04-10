@@ -218,17 +218,14 @@
 
             <!-- Кнопки действий -->
             <div class="modal-actions" style="display: flex; gap: 10px; margin-top: 25px;">
-                <button type="button" class="btn-secondary" onclick="closeModal('propertyEditModal')"
-                        style="flex: 1; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; font-weight: 600; cursor: pointer;">
-                    Отмена
-                </button>
-                <button type="button" class="btn-warning" onclick="submitPropertyForm('draft')"
-                        style="flex: 1; padding: 12px; background: #ffc107; color: #212529; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                <button type="button" class="btn-warning hide-btn">
                     💾 Сохранить как черновик
                 </button>
-                <button type="button" class="btn-primary" onclick="submitPropertyForm('active')"
-                        style="flex: 1; padding: 12px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                <button type="button" class="btn-primary hide-btn">
                     📢 Опубликовать
+                </button>
+                <button type="button" class="btn-archive hide-btn" style="background: #6c757d; color: white; transition: all 0.3s ease !important; cursor: pointer !important;">
+                    📦 Поместить в архив
                 </button>
             </div>
         </form>

@@ -3579,50 +3579,130 @@ function showAddPropertyModal() {
     allPhotos = [];
     deletedPhotoIds = [];
 
-    // Обновляем счетчик и отображение
     updatePhotoCounter();
     renderPhotos();
 
-    // В режиме создания показываем все кнопки
-    const cancelBtn = document.querySelector('#propertyEditForm .btn-secondary');
-    const draftBtn = document.querySelector('#propertyEditForm .btn-warning');
-    const publishBtn = document.querySelector('#propertyEditForm .btn-primary');
-
-    if (cancelBtn && draftBtn && publishBtn) {
-        draftBtn.style.display = 'block';
-        draftBtn.textContent = '💾 Сохранить как черновик';
-        draftBtn.onclick = () => submitPropertyForm('draft');
-
-        publishBtn.textContent = '📢 Опубликовать';
-        publishBtn.onclick = () => submitPropertyForm('active');
-
-        publishBtn.style.display = 'block';
-        cancelBtn.style.display = 'block';
-    }
+    // ✅ Вызываем функцию для нового объекта
+    updatePropertyEditButtonsForEditing(null, true);  // isNew = true
 
     openModal('propertyEditModal');
 }
 
 // Функция для обновления кнопок в зависимости от статуса
-function updatePropertyEditButtonsForEditing(currentStatus) {
-    const cancelBtn = document.querySelector('#propertyEditForm .btn-secondary');
+function updatePropertyEditButtonsForEditing(currentStatus, isNew = false) {
     const draftBtn = document.querySelector('#propertyEditForm .btn-warning');
     const publishBtn = document.querySelector('#propertyEditForm .btn-primary');
+    const archiveBtn = document.querySelector('#propertyEditForm .btn-archive');
 
-    if (!cancelBtn || !draftBtn || !publishBtn) return;
+    // Сначала удаляем все классы показа и добавляем класс скрытия
+    if (draftBtn) {
+        draftBtn.classList.remove('show-btn');
+        draftBtn.classList.add('hide-btn');
+    }
+    if (publishBtn) {
+        publishBtn.classList.remove('show-btn');
+        publishBtn.classList.add('hide-btn');
+    }
+    if (archiveBtn) {
+        archiveBtn.classList.remove('show-btn');
+        archiveBtn.classList.add('hide-btn');
+    }
 
-    if (currentStatus === 'active' || currentStatus === 'rented') {
-        draftBtn.style.display = 'none';
-        publishBtn.textContent = '💾 Сохранить изменения';
-        publishBtn.onclick = () => submitPropertyForm(currentStatus);
-        cancelBtn.style.display = 'block';
+    if (isNew) {
+        // Новый объект: показываем черновик и публикацию
+        if (draftBtn) {
+            draftBtn.classList.remove('hide-btn');
+            draftBtn.classList.add('show-btn');
+            draftBtn.textContent = '💾 Сохранить как черновик';
+            draftBtn.onclick = () => submitPropertyForm('draft');
+        }
+        if (publishBtn) {
+            publishBtn.classList.remove('hide-btn');
+            publishBtn.classList.add('show-btn');
+            publishBtn.textContent = '📢 Опубликовать';
+            publishBtn.onclick = () => submitPropertyForm('active');
+        }
     } else {
-        draftBtn.style.display = 'block';
-        draftBtn.textContent = '💾 Обновить черновик';
-        draftBtn.onclick = () => submitPropertyForm('draft');
-        publishBtn.textContent = '📢 Опубликовать';
-        publishBtn.onclick = () => submitPropertyForm('active');
-        cancelBtn.style.display = 'block';
+        // Редактирование существующего объекта
+        switch(currentStatus) {
+            case 'draft':
+                if (draftBtn) {
+                    draftBtn.classList.remove('hide-btn');
+                    draftBtn.classList.add('show-btn');
+                    draftBtn.textContent = '💾 Обновить черновик';
+                    draftBtn.onclick = () => submitPropertyForm('draft');
+                }
+                if (publishBtn) {
+                    publishBtn.classList.remove('hide-btn');
+                    publishBtn.classList.add('show-btn');
+                    publishBtn.textContent = '📢 Опубликовать';
+                    publishBtn.onclick = () => submitPropertyForm('active');
+                }
+                break;
+
+            case 'active':
+                if (publishBtn) {
+                    publishBtn.classList.remove('hide-btn');
+                    publishBtn.classList.add('show-btn');
+                    publishBtn.textContent = '💾 Сохранить изменения';
+                    publishBtn.onclick = () => submitPropertyForm('active');
+                }
+                if (archiveBtn) {
+                    archiveBtn.classList.remove('hide-btn');
+                    archiveBtn.classList.add('show-btn');
+                    archiveBtn.textContent = '📦 Поместить в архив';
+                    archiveBtn.onclick = () => archiveProperty();
+                }
+                break;
+
+            case 'archived':
+                if (publishBtn) {
+                    publishBtn.classList.remove('hide-btn');
+                    publishBtn.classList.add('show-btn');
+                    publishBtn.textContent = '🔄 Восстановить из архива';
+                    publishBtn.onclick = () => submitPropertyForm('active');
+                }
+                break;
+
+            default:
+                // rented, blocked и др. — ничего не показываем
+                break;
+        }
+    }
+
+    console.log('✅ Кнопки настроены, статус:', currentStatus, 'isNew:', isNew);
+}
+
+// Функция для архивации объекта
+async function archiveProperty() {
+    const propertyId = document.getElementById('propertyEditForm').dataset.propertyId;
+    if (!propertyId) return;
+
+    if (!confirm('Поместить объект в архив? Он будет скрыт из каталога, но не удалён.')) return;
+
+    try {
+        const response = await fetch(`/api/properties/${propertyId}/archive`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Ошибка архивации');
+        }
+
+        showNotification('Объект помещён в архив', 'success');
+        closeModal('propertyEditModal');
+
+        // Обновляем список объектов
+        if (document.getElementById('myPropertiesModal').style.display === 'flex') {
+            loadMyProperties();
+        }
+
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showNotification(error.message, 'error');
     }
 }
 
@@ -3667,7 +3747,7 @@ async function editProperty(propertyId) {
 
         document.getElementById('propertyEditForm').dataset.propertyId = propertyId;
         document.getElementById('propertyEditTitle').textContent = 'Редактирование объекта';
-        updatePropertyEditButtonsForEditing(prop.status);
+        updatePropertyEditButtonsForEditing(prop.status, false);
         openModal('propertyEditModal');
 
     } catch (error) {

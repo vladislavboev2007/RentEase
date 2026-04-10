@@ -43,7 +43,7 @@ import shutil
 import io
 import tempfile
 from apscheduler.schedulers.background import BackgroundScheduler
-from smtp import send_registration_code, send_recovery_code
+from smtp import send_registration_code, send_recovery_code, send_contract_signed_notification, send_contract_fully_signed_notification, send_application_status_notification, send_contract_cancelled_notification
 from database import SessionLocal, User, Property, PropertyPhoto, Application, Contract, Message, AuditLog
 from schemas import (
     UserRegisterStep1, UserRegisterStep2, UserRegisterStep3,
@@ -1891,6 +1891,28 @@ async def update_property(
             detail=f"Ошибка сервера: {str(e)}"
         )
 
+@app.patch("/api/properties/{property_id}/archive")
+async def archive_property(
+        property_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db_with_audit)
+):
+    prop = db.query(Property).filter(Property.property_id == property_id).first()
+    if not prop:
+        raise HTTPException(404, "Объект не найден")
+
+    # Только владелец или агент
+    if prop.owner_id != current_user.user_id:
+        raise HTTPException(403, "Нет прав")
+
+    # Запрещаем архивацию, если объект заблокирован или сдан
+    if prop.status in ('blocked', 'rented'):
+        raise HTTPException(400, "Нельзя архивировать объект, который заблокирован или уже сдан")
+
+    prop.status = 'archived'
+    db.commit()
+    return {"success": True}
+
 @app.delete("/api/properties/{property_id}")
 async def delete_property(
     property_id: int,
@@ -2308,6 +2330,25 @@ async def respond_application(
             pass
 
     db.commit()
+
+    # Отправка email
+    if status == 'approved':
+        send_application_status_notification(
+            to_email=app.tenant.email,
+            full_name=app.tenant.full_name,
+            status='approved',
+            property_title=property.title,
+            comment=answer
+        )
+    elif status == 'rejected':
+        send_application_status_notification(
+            to_email=app.tenant.email,
+            full_name=app.tenant.full_name,
+            status='rejected',
+            property_title=property.title,
+            comment=answer
+        )
+
     db.refresh(app)
 
     return {"success": True}
@@ -2599,6 +2640,7 @@ async def get_contract(contract_id: int, current_user: User = Depends(get_curren
 @app.post("/api/contracts/{contract_id}/sign")
 async def sign_contract(contract_id: int, current_user: User = Depends(get_current_user),
                         db: Session = Depends(get_db_with_audit)):
+    """Подписание договора электронной подписью"""
     if not current_user:
         raise HTTPException(status_code=401, detail="Не авторизован")
 
@@ -2607,27 +2649,65 @@ async def sign_contract(contract_id: int, current_user: User = Depends(get_curre
         raise HTTPException(404, "Договор не найден")
 
     app = contract.application
-    if not app:
-        raise HTTPException(404, "Связанная заявка не найдена")
-
     property = app.property
-    if not property:
-        raise HTTPException(404, "Объект недвижимости не найден")
+    tenant = db.query(User).filter(User.user_id == app.tenant_id).first()
+    owner = db.query(User).filter(User.user_id == property.owner_id).first()
 
-    # Определяем, кто подписывает
+    contract_number = f"Д-{contract.contract_id}"
+    old_tenant_signed = contract.tenant_signed
+    old_owner_signed = contract.owner_signed
+
+    # Определение стороны подписания
     if current_user.user_id == app.tenant_id:
         if contract.tenant_signed:
             raise HTTPException(400, "Вы уже подписали этот договор")
         contract.tenant_signed = True
-        # Если есть поле с датой подписания
+        db.commit()
+
+        # ===== EMAIL СОБСТВЕННИКУ (арендатор подписал) =====
+        send_contract_signed_notification(
+            to_email=owner.email,
+            full_name=owner.full_name or owner.email,
+            contract_number=contract_number,
+            property_title=property.title,
+            is_owner=True
+        )
+
     elif current_user.user_id == property.owner_id:
         if contract.owner_signed:
             raise HTTPException(400, "Вы уже подписали этот договор")
         contract.owner_signed = True
+        db.commit()
+
+        # ===== EMAIL АРЕНДАТОРУ (собственник подписал) =====
+        send_contract_signed_notification(
+            to_email=tenant.email,
+            full_name=tenant.full_name or tenant.email,
+            contract_number=contract_number,
+            property_title=property.title,
+            is_owner=False
+        )
     else:
         raise HTTPException(403, "Вы не являетесь стороной договора")
 
-    db.commit()
+    # Если обе стороны подписали → полное подписание
+    if contract.tenant_signed and contract.owner_signed:
+        contract.signing_status = 'signed'
+        db.commit()
+
+        # ===== EMAIL ОБЕИМ СТОРОНАМ о полном подписании =====
+        send_contract_fully_signed_notification(
+            to_email=tenant.email,
+            full_name=tenant.full_name or tenant.email,
+            contract_number=contract_number,
+            property_title=property.title
+        )
+        send_contract_fully_signed_notification(
+            to_email=owner.email,
+            full_name=owner.full_name or owner.email,
+            contract_number=contract_number,
+            property_title=property.title
+        )
 
     return {"success": True}
 
@@ -2672,6 +2752,20 @@ async def cancel_contract(
     )
     db.add(notification)
     db.commit()
+
+    # ===== EMAIL АРЕНДАТОРУ и СОБСТВЕННИКУ об отмене договора =====
+    send_contract_cancelled_notification(
+        to_email=tenant.email,
+        full_name=tenant.full_name or tenant.email,
+        contract_number=contract_number,
+        property_title=property.title
+    )
+    send_contract_cancelled_notification(
+        to_email=owner.email,
+        full_name=owner.full_name or owner.email,
+        contract_number=contract_number,
+        property_title=property.title
+    )
 
     return {"success": True}
 
@@ -3081,6 +3175,120 @@ async def rejection_reasons(
 
 # ==================== АУДИТ ЛОГ ====================
 
+def format_changes_for_display(details):
+    """Форматирует изменения для отображения в таблице аудит-лога"""
+    import json
+
+    # ===== ФИКС: Если details - строка, парсим в JSON =====
+    if isinstance(details, str):
+        try:
+            details = json.loads(details)
+        except (json.JSONDecodeError, TypeError):
+            return "—"
+    # ===================================================
+
+    if not details:
+        return "—"
+
+    # Прямой доступ к changes
+    changes = details.get('changes')
+    if not changes:
+        return "—"
+
+    changes_list = []
+
+    # Карта понятных названий полей
+    field_names = {
+        'title': 'Название',
+        'description': 'Описание',
+        'address': 'Адрес',
+        'city': 'Город',
+        'price': 'Цена',
+        'area': 'Площадь',
+        'rooms': 'Комнаты',
+        'status': 'Статус',
+        'user_type': 'Тип пользователя',
+        'full_name': 'ФИО',
+        'email': 'Email',
+        'phone': 'Телефон',
+        'is_active': 'Активность',
+        'interval_pay': 'Интервал оплаты',
+        'property_type': 'Тип недвижимости',
+        'desired_date': 'Желаемая дата',
+        'duration_days': 'Длительность',
+        'answer': 'Ответ',
+        'responded_at': 'Дата ответа',
+        'signing_status': 'Статус подписания',
+        'total_amount': 'Сумма',
+        'start_date': 'Дата начала',
+        'end_date': 'Дата окончания',
+        'tenant_signed': 'Подпись арендатора',
+        'owner_signed': 'Подпись собственника',
+        'content': 'Содержание',
+        'is_read': 'Прочитано',
+        'contact_info': 'Контактная информация',
+        'avatar_url': 'Аватар'
+    }
+
+    for field, values in changes.items():
+        field_display = field_names.get(field, field)
+
+        # ===== ФИКС: values может быть строкой =====
+        if isinstance(values, str):
+            try:
+                values = json.loads(values)
+            except:
+                continue
+
+        if isinstance(values, dict):
+            old_val = values.get('old')
+            new_val = values.get('new')
+        else:
+            continue
+        # ==========================================
+
+        old_str = format_value_for_display(old_val)
+        new_str = format_value_for_display(new_val)
+
+        # Для JSONB полей (contact_info) показываем конкретные изменения
+        if field == 'contact_info' and isinstance(new_val, dict) and isinstance(old_val, dict):
+            changed_fields = []
+            for key in set(old_val.keys()) | set(new_val.keys()):
+                old_part = old_val.get(key)
+                new_part = new_val.get(key)
+                if old_part != new_part:
+                    key_display = field_names.get(key, key)
+                    old_part_str = format_value_for_display(old_part)
+                    new_part_str = format_value_for_display(new_part)
+                    changed_fields.append(f"{key_display}: {old_part_str} → {new_part_str}")
+
+            if changed_fields:
+                changes_list.append(f"{field_display}: " + ", ".join(changed_fields))
+        else:
+            if old_str and new_str and old_str != new_str:
+                changes_list.append(f"{field_display}: {old_str} → {new_str}")
+            elif new_str and (not old_str or old_str == '—'):
+                changes_list.append(f"{field_display}: {new_str}")
+
+    return ", ".join(changes_list) if changes_list else "—"
+
+
+def format_value_for_display(value) -> str:
+    """Форматирует значение для отображения"""
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "Да" if value else "Нет"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        return f"{{...}} ({len(value)} полей)"
+    if isinstance(value, str):
+        if len(value) > 50:
+            return value[:47] + "..."
+        return value
+    return str(value)
+
 @app.get("/api/admin/audit-logs")
 async def get_audit_logs(
         request: Request,
@@ -3101,22 +3309,48 @@ async def get_audit_logs(
 
         query = db.query(AuditLog).join(User, AuditLog.user_id == User.user_id, isouter=True)
 
-        # Маппинг русских слов на английские действия
+        # ===== МАППИНГ РУССКИХ СЛОВ НА АНГЛИЙСКИЕ =====
         action_map = {
             "добавление": "INSERT",
-            "изменение": "UPDATE",
-            "удаление": "DELETE",
             "добавил": "INSERT",
+            "создание": "INSERT",
+            "создал": "INSERT",
+            "изменение": "UPDATE",
             "изменил": "UPDATE",
+            "обновление": "UPDATE",
+            "обновил": "UPDATE",
+            "редактирование": "UPDATE",
+            "удаление": "DELETE",
             "удалил": "DELETE",
             "блокировка": "TOGGLE_BLOCK",
-            "заблокировал": "TOGGLE_BLOCK"
+            "заблокировал": "TOGGLE_BLOCK",
+            "разблокировка": "TOGGLE_BLOCK",
+            "разблокировал": "TOGGLE_BLOCK"
+        }
+
+        entity_map = {
+            "пользователь": "users",
+            "пользователи": "users",
+            "юзер": "users",
+            "объект": "properties",
+            "объекты": "properties",
+            "недвижимость": "properties",
+            "заявка": "applications",
+            "заявки": "applications",
+            "договор": "contracts",
+            "договоры": "contracts",
+            "сообщение": "messages",
+            "сообщения": "messages",
+            "чат": "messages",
+            "система": None,  # Система — это user_id = NULL, нужно отдельно
+            "системный": None
         }
 
         if search:
             search_lower = search.lower().strip()
             search_term = f"%{search}%"
 
+            # Базовые фильтры
             filters = [
                 AuditLog.action.ilike(search_term),
                 AuditLog.entity_type.ilike(search_term),
@@ -3124,12 +3358,17 @@ async def get_audit_logs(
                 func.coalesce(User.full_name, '').ilike(search_term)
             ]
 
-            # Добавляем маппинг русских слов
+            # Добавляем фильтр по русскому действию
             if search_lower in action_map:
                 filters.append(AuditLog.action == action_map[search_lower])
 
-            # Поиск по entity_name (через подзапрос, чтобы не ломать пагинацию)
-            # Для простоты - ищем по ID, а entity_name вычисляется позже
+            # Добавляем фильтр по русскому типу объекта
+            if search_lower in entity_map and entity_map[search_lower] is not None:
+                filters.append(AuditLog.entity_type == entity_map[search_lower])
+
+            # Специальная обработка для "система" (user_id IS NULL)
+            if search_lower == "система" or search_lower == "системный":
+                filters.append(AuditLog.user_id.is_(None))
 
             query = query.filter(or_(*filters))
 
@@ -3257,114 +3496,6 @@ def get_entity_name(db: Session, entity_type: str, entity_id: Optional[int]) -> 
         print(f"Ошибка получения имени объекта: {e}")
 
     return ""
-
-def format_value_for_display(value) -> str:
-    """Форматирует значение для отображения"""
-    if value is None:
-        return "—"
-    if isinstance(value, bool):
-        return "Да" if value else "Нет"
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, dict):
-        # Для словарей показываем количество изменённых полей
-        return f"{{...}} ({len(value)} полей)"
-    if isinstance(value, str):
-        # Ограничиваем длину строки
-        if len(value) > 100:
-            return value[:47] + "..."
-        return value
-    return str(value)
-
-def format_changes_for_display(details: Optional[dict]) -> str:
-    """Форматирует изменения для отображения в таблице аудит-лога"""
-    if isinstance(details, str):
-        try:
-            details = json.loads(details)
-        except:
-            return "—"
-
-    if not details:
-        return "—"
-
-    # Прямой доступ к changes
-    changes = details.get('changes')
-    if not changes:
-        return "—"
-
-    changes_list = []
-
-    # Карта понятных названий полей
-    field_names = {
-        'title': 'Название',
-        'description': 'Описание',
-        'address': 'Адрес',
-        'city': 'Город',
-        'price': 'Цена',
-        'area': 'Площадь',
-        'rooms': 'Комнаты',
-        'status': 'Статус',
-        'user_type': 'Тип пользователя',
-        'full_name': 'ФИО',
-        'email': 'Email',
-        'phone': 'Телефон',
-        'is_active': 'Активность',
-        'interval_pay': 'Интервал оплаты',
-        'property_type': 'Тип недвижимости',
-        'desired_date': 'Желаемая дата',
-        'duration_days': 'Длительность',
-        'answer': 'Ответ',
-        'responded_at': 'Дата ответа',
-        'signing_status': 'Статус подписания',
-        'total_amount': 'Сумма',
-        'start_date': 'Дата начала',
-        'end_date': 'Дата окончания',
-        'tenant_signed': 'Подпись арендатора',
-        'owner_signed': 'Подпись собственника',
-        'content': 'Содержание',
-        'is_read': 'Прочитано',
-        'contact_info': 'Контактная информация',
-        'avatar_url': 'Аватар'
-    }
-
-    for field, values in changes.items():
-        # Получаем человеко-читаемое название поля
-        field_display = field_names.get(field, field)
-
-        # Получаем старое и новое значение
-        old_val = values.get('old')
-        new_val = values.get('new')
-
-        # Форматируем для отображения
-        old_str = format_value_for_display(old_val)
-        new_str = format_value_for_display(new_val)
-
-        # Для JSONB полей (contact_info) показываем конкретные изменения
-        if field == 'contact_info' and isinstance(new_val, dict) and isinstance(old_val, dict):
-            # Находим только изменившиеся поля внутри contact_info
-            changed_fields = []
-            for key in set(old_val.keys()) | set(new_val.keys()):
-                old_part = old_val.get(key)
-                new_part = new_val.get(key)
-                if old_part != new_part:
-                    key_display = field_names.get(key, key)
-                    old_part_str = format_value_for_display(old_part)
-                    new_part_str = format_value_for_display(new_part)
-                    changed_fields.append(f"{key_display}: {old_part_str} → {new_part_str}")
-
-            if changed_fields:
-                changes_list.append(f"{field_display}: " + ", ".join(changed_fields))
-            else:
-                changes_list.append(f"{field_display}: {old_str} → {new_str}")
-        else:
-            # Обычные поля
-            if old_str and new_str and old_str != new_str:
-                changes_list.append(f"{field_display}: {old_str} → {new_str}")
-            elif new_str and (not old_str or old_str == 'None'):
-                changes_list.append(f"{field_display}: {new_str}")
-
-    return ", ".join(changes_list) if changes_list else "—"
-
 
 def get_field_display(field: str) -> str:
     """Возвращает человеко-читаемое название поля"""

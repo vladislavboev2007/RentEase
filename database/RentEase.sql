@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict to8QUmIO0uaFxpalm5gWbUJYuIwSfET4LUIMSBSUXG5gabRMEqM73eB0PBvzosR
+\restrict aywm3wtLDoy5pUPyGB05W7kjeBmGZoYSY4eEoadcmqDV7R61emraEyr6UHK1ZAY
 
 -- Dumped from database version 18.1
 -- Dumped by pg_dump version 18.1
 
--- Started on 2026-03-24 23:24:09
+-- Started on 2026-04-10 22:49:52
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -22,7 +22,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- TOC entry 250 (class 1255 OID 90264)
+-- TOC entry 249 (class 1255 OID 90264)
 -- Name: audit_log_delete(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -80,7 +80,7 @@ $$;
 ALTER FUNCTION public.audit_log_delete() OWNER TO postgres;
 
 --
--- TOC entry 248 (class 1255 OID 90262)
+-- TOC entry 247 (class 1255 OID 90262)
 -- Name: audit_log_insert(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -139,7 +139,7 @@ $$;
 ALTER FUNCTION public.audit_log_insert() OWNER TO postgres;
 
 --
--- TOC entry 249 (class 1255 OID 90263)
+-- TOC entry 248 (class 1255 OID 90263)
 -- Name: audit_log_update(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -217,7 +217,7 @@ $$;
 ALTER FUNCTION public.audit_log_update() OWNER TO postgres;
 
 --
--- TOC entry 258 (class 1255 OID 82019)
+-- TOC entry 259 (class 1255 OID 82019)
 -- Name: create_contract_on_approval(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -275,7 +275,9 @@ BEGIN
 
         -- Обновляем время ответа
         NEW.responded_at := NOW();
-        
+        -- Блокируем объект от других заявок
+    	UPDATE properties SET status = 'blocked' WHERE property_id = NEW.property_id;
+		
         RAISE NOTICE '✅ Договор создан для заявки %, ID договора: %', NEW.application_id, v_new_contract_id;
     END IF;
     
@@ -285,6 +287,75 @@ $$;
 
 
 ALTER FUNCTION public.create_contract_on_approval() OWNER TO postgres;
+
+--
+-- TOC entry 258 (class 1255 OID 106989)
+-- Name: delete_user_completely(integer); Type: PROCEDURE; Schema: public; Owner: postgres
+--
+
+CREATE PROCEDURE public.delete_user_completely(IN p_user_id integer)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_messages_count INTEGER;
+    v_applications_count INTEGER;
+    v_contracts_count INTEGER;
+    v_properties_count INTEGER;
+    v_audit_count INTEGER;
+BEGIN
+    -- Проверяем существование пользователя
+    SELECT EXISTS(SELECT 1 FROM users WHERE user_id = p_user_id) INTO v_user_exists;
+    
+    IF NOT v_user_exists THEN
+        RAISE NOTICE '❌ Пользователь с ID % не найден', p_user_id;
+        RETURN;
+    END IF;
+    
+    -- Подсчитываем количество удаляемых записей
+    SELECT COUNT(*) INTO v_messages_count FROM messages WHERE from_user_id = p_user_id OR to_user_id = p_user_id;
+    SELECT COUNT(*) INTO v_applications_count FROM applications WHERE tenant_id = p_user_id;
+    SELECT COUNT(*) INTO v_contracts_count FROM contracts 
+        WHERE application_id IN (SELECT application_id FROM applications WHERE tenant_id = p_user_id);
+    SELECT COUNT(*) INTO v_properties_count FROM properties WHERE owner_id = p_user_id;
+    SELECT COUNT(*) INTO v_audit_count FROM audit_logs WHERE user_id = p_user_id;
+    
+    RAISE NOTICE '📊 Будет удалено: сообщений: %, заявок: %, договоров: %, объектов: %, аудит-записей: %', 
+                 v_messages_count, v_applications_count, v_contracts_count, v_properties_count, v_audit_count;
+    
+    -- Удаляем сообщения
+    DELETE FROM messages WHERE from_user_id = p_user_id OR to_user_id = p_user_id;
+    RAISE NOTICE '✅ Удалено сообщений: %', v_messages_count;
+    
+    -- Удаляем договоры
+    DELETE FROM contracts 
+    WHERE application_id IN (SELECT application_id FROM applications WHERE tenant_id = p_user_id);
+    RAISE NOTICE '✅ Удалено договоров: %', v_contracts_count;
+    
+    -- Удаляем заявки
+    DELETE FROM applications WHERE tenant_id = p_user_id;
+    RAISE NOTICE '✅ Удалено заявок: %', v_applications_count;
+    
+    -- Удаляем объекты (property_photos удалятся по CASCADE)
+    DELETE FROM properties WHERE owner_id = p_user_id;
+    RAISE NOTICE '✅ Удалено объектов: %', v_properties_count;
+    
+    -- Удаляем аудит-логи
+    DELETE FROM audit_logs WHERE user_id = p_user_id;
+    RAISE NOTICE '✅ Удалено аудит-записей: %', v_audit_count;
+    
+    -- Удаляем пользователя
+    DELETE FROM users WHERE user_id = p_user_id;
+    RAISE NOTICE '✅ Пользователь с ID % полностью удалён', p_user_id;
+    
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE '❌ Ошибка при удалении пользователя: %', SQLERRM;
+    RAISE;
+END;
+$$;
+
+
+ALTER PROCEDURE public.delete_user_completely(IN p_user_id integer) OWNER TO postgres;
 
 --
 -- TOC entry 251 (class 1255 OID 49248)
@@ -591,10 +662,9 @@ BEGIN
         VALUES (NULL, v_owner_id,
                 '**Договор ' || v_contract_number || ' отменён** на объект "' || v_property_title || '"',
                 FALSE, NOW());
-
-        -- Возвращаем статус объекта на 'active' если нужно
-        -- UPDATE properties SET status = 'active' 
-        -- WHERE property_id = (SELECT property_id FROM applications WHERE application_id = NEW.application_id);
+				
+        UPDATE properties SET status = 'active' 
+        WHERE property_id = (SELECT property_id FROM applications WHERE application_id = NEW.application_id);
     END IF;
     RETURN NEW;
 END;
@@ -863,7 +933,7 @@ $$;
 ALTER FUNCTION public.send_report_to_admins(p_property_id integer, p_user_id integer, p_reason character varying, p_description text, p_is_anonymous boolean) OWNER TO postgres;
 
 --
--- TOC entry 247 (class 1255 OID 90243)
+-- TOC entry 250 (class 1255 OID 90243)
 -- Name: set_current_user_id(integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -953,7 +1023,7 @@ CREATE SEQUENCE public.applications_application_id_seq
 ALTER SEQUENCE public.applications_application_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5049 (class 0 OID 0)
+-- TOC entry 5050 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: applications_application_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -996,7 +1066,7 @@ CREATE SEQUENCE public.audit_logs_log_id_seq
 ALTER SEQUENCE public.audit_logs_log_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5050 (class 0 OID 0)
+-- TOC entry 5051 (class 0 OID 0)
 -- Dependencies: 231
 -- Name: audit_logs_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1042,7 +1112,7 @@ CREATE SEQUENCE public.contracts_contract_id_seq
 ALTER SEQUENCE public.contracts_contract_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5051 (class 0 OID 0)
+-- TOC entry 5052 (class 0 OID 0)
 -- Dependencies: 227
 -- Name: contracts_contract_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1084,7 +1154,7 @@ CREATE SEQUENCE public.messages_message_id_seq
 ALTER SEQUENCE public.messages_message_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5052 (class 0 OID 0)
+-- TOC entry 5053 (class 0 OID 0)
 -- Dependencies: 229
 -- Name: messages_message_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1113,7 +1183,7 @@ CREATE TABLE public.properties (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT properties_interval_pay_check CHECK (((interval_pay)::text = ANY ((ARRAY['once'::character varying, 'week'::character varying, 'month'::character varying])::text[]))),
     CONSTRAINT properties_property_type_check CHECK (((property_type)::text = ANY ((ARRAY['apartment'::character varying, 'house'::character varying, 'commercial'::character varying])::text[]))),
-    CONSTRAINT properties_status_check CHECK (((status)::text = ANY ((ARRAY['draft'::character varying, 'active'::character varying, 'rented'::character varying, 'archived'::character varying])::text[])))
+    CONSTRAINT properties_status_check CHECK (((status)::text = ANY ((ARRAY['draft'::character varying, 'active'::character varying, 'blocked'::character varying, 'rented'::character varying, 'archived'::character varying])::text[])))
 );
 
 
@@ -1136,7 +1206,7 @@ CREATE SEQUENCE public.properties_property_id_seq
 ALTER SEQUENCE public.properties_property_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5053 (class 0 OID 0)
+-- TOC entry 5054 (class 0 OID 0)
 -- Dependencies: 221
 -- Name: properties_property_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1177,7 +1247,7 @@ CREATE SEQUENCE public.property_photos_photo_id_seq
 ALTER SEQUENCE public.property_photos_photo_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5054 (class 0 OID 0)
+-- TOC entry 5055 (class 0 OID 0)
 -- Dependencies: 223
 -- Name: property_photos_photo_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1223,7 +1293,7 @@ CREATE SEQUENCE public.users_user_id_seq
 ALTER SEQUENCE public.users_user_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5055 (class 0 OID 0)
+-- TOC entry 5056 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_user_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1232,7 +1302,7 @@ ALTER SEQUENCE public.users_user_id_seq OWNED BY public.users.user_id;
 
 
 --
--- TOC entry 4809 (class 2604 OID 32841)
+-- TOC entry 4810 (class 2604 OID 32841)
 -- Name: applications application_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1240,7 +1310,7 @@ ALTER TABLE ONLY public.applications ALTER COLUMN application_id SET DEFAULT nex
 
 
 --
--- TOC entry 4820 (class 2604 OID 32933)
+-- TOC entry 4821 (class 2604 OID 32933)
 -- Name: audit_logs log_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1248,7 +1318,7 @@ ALTER TABLE ONLY public.audit_logs ALTER COLUMN log_id SET DEFAULT nextval('publ
 
 
 --
--- TOC entry 4812 (class 2604 OID 32871)
+-- TOC entry 4813 (class 2604 OID 32871)
 -- Name: contracts contract_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1256,7 +1326,7 @@ ALTER TABLE ONLY public.contracts ALTER COLUMN contract_id SET DEFAULT nextval('
 
 
 --
--- TOC entry 4817 (class 2604 OID 32910)
+-- TOC entry 4818 (class 2604 OID 32910)
 -- Name: messages message_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1264,7 +1334,7 @@ ALTER TABLE ONLY public.messages ALTER COLUMN message_id SET DEFAULT nextval('pu
 
 
 --
--- TOC entry 4804 (class 2604 OID 32792)
+-- TOC entry 4805 (class 2604 OID 32792)
 -- Name: properties property_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1272,7 +1342,7 @@ ALTER TABLE ONLY public.properties ALTER COLUMN property_id SET DEFAULT nextval(
 
 
 --
--- TOC entry 4807 (class 2604 OID 32822)
+-- TOC entry 4808 (class 2604 OID 32822)
 -- Name: property_photos photo_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1280,7 +1350,7 @@ ALTER TABLE ONLY public.property_photos ALTER COLUMN photo_id SET DEFAULT nextva
 
 
 --
--- TOC entry 4800 (class 2604 OID 32773)
+-- TOC entry 4801 (class 2604 OID 32773)
 -- Name: users user_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1288,7 +1358,7 @@ ALTER TABLE ONLY public.users ALTER COLUMN user_id SET DEFAULT nextval('public.u
 
 
 --
--- TOC entry 5037 (class 0 OID 32838)
+-- TOC entry 5038 (class 0 OID 32838)
 -- Dependencies: 226
 -- Data for Name: applications; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1372,7 +1442,6 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 352	163	9	Нужна дополнительная информация	2025-10-29	209	Добро пожаловать! Жду на подписание	rejected	2025-10-15 00:00:00	2025-10-16 00:00:00
 354	2	18	Хочу посмотреть объект в ближайшее время	2025-11-07	480	К сожалению, объект уже сдан	rejected	2025-10-24 00:00:00	2025-10-30 00:00:00
 355	129	19	Нужна дополнительная информация	2025-12-09	351	Можем встретиться для обсуждения	rejected	2025-11-25 00:00:00	2025-12-01 00:00:00
-356	130	16	Хочу посмотреть объект в ближайшее время	2025-11-29	407	Можем встретиться для обсуждения	approved	2025-11-15 00:00:00	2025-11-20 00:00:00
 357	161	15	Нужна дополнительная информация	2025-11-15	271	Добро пожаловать! Жду на подписание	approved	2025-11-01 00:00:00	2025-11-07 00:00:00
 358	5	17	Интересует аренда на длительный срок	2025-12-06	519	\N	pending	2025-11-22 00:00:00	\N
 359	133	11	Нужна дополнительная информация	2025-11-25	236	Можем встретиться для обсуждения	rejected	2025-11-11 00:00:00	2025-11-16 00:00:00
@@ -1394,6 +1463,7 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 140	133	9	Мне нужно заселиться	2026-03-15	140	\N	pending	2026-03-09 09:24:57.84671	2026-03-09 13:45:00
 353	149	17	Интересует аренда на длительный срок	2026-03-21	180	По коммунальным причинам перенес уменьшил кол-во дней.	approved	2025-10-04 00:00:00	2026-03-15 21:04:53.018707
 141	129	9	Как можно скорее	2026-03-19	365	\N	approved	2026-03-09 19:17:20.68289	2026-03-10 09:17:20
+356	130	16	Хочу посмотреть объект в ближайшее время	2025-11-29	407	Можем встретиться для обсуждения	approved	2025-11-15 00:00:00	2025-11-20 00:00:00
 176	147	17	Планирую отдых летом, интересует аренда на курортный сезон	2025-08-24	100	Объект свободен на эти даты, жду подтверждения	approved	2025-03-30 00:00:00	2025-03-17 00:00:00
 361	140	16	Нужна дополнительная информация	2025-12-04	452	К сожалению, объект уже сдан	approved	2025-11-20 00:00:00	2025-11-22 00:00:00
 178	2	13	Срочно требуется жилье	2025-06-13	365	Можем заключить договор	approved	2025-05-16 00:00:00	2025-05-26 00:00:00
@@ -1411,7 +1481,6 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 372	2	7	Интересует аренда на длительный срок	2026-02-06	183	Добро пожаловать! Жду на подписание	approved	2026-01-23 00:00:00	2026-01-24 00:00:00
 373	166	17	Хочу посмотреть объект в ближайшее время	2026-02-01	459	\N	pending	2026-01-18 00:00:00	\N
 192	4	19	Срочно требуется жилье	2025-06-23	365	Можем заключить договор	approved	2025-05-05 00:00:00	2025-05-23 00:00:00
-374	149	19	Отличный вариант, готов обсудить условия	2026-01-29	213	\N	pending	2026-01-15 00:00:00	\N
 375	6	19	Нужна дополнительная информация	2026-02-06	347	Можем встретиться для обсуждения	approved	2026-01-23 00:00:00	2026-01-29 00:00:00
 197	139	19	Хотим снять на лето	2025-07-26	71	Подтверждаю бронь	approved	2025-06-22 00:00:00	2025-07-16 00:00:00
 198	145	17	Хотим снять на лето	2025-08-21	108	Подтверждаю бронь	approved	2025-07-11 00:00:00	2025-07-12 00:00:00
@@ -1469,8 +1538,10 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 393	155	15	Отличный вариант, готов обсудить условия	2026-03-27	233	Можем встретиться для обсуждения	approved	2026-03-13 00:00:00	2026-03-16 00:00:00
 394	1	6	Тест	2026-03-14	365	\N	pending	2026-03-14 19:01:53.808364	\N
 254	5	17	Нужна квартира срочно	2026-02-25	365	Можем встретиться на неделе	approved	2026-01-29 00:00:00	2026-01-20 00:00:00
+402	158	25	Нужно оперативное одобрение	2026-04-09	180	Хорошо! Я поняла ваше предложение	approved	2026-03-27 22:02:40.92516	2026-03-27 22:04:23.19202
 263	6	6	Планирую переезд	2026-03-07	365	\N	cancelled	2026-02-03 00:00:00	\N
 265	4	6	Планирую переезд	2026-03-20	365	Созвонимся для уточнения	approved	2026-02-05 00:00:00	2026-02-14 00:00:00
+457	2	1	\N	\N	\N	\N	pending	2026-04-10 20:48:33.195602	\N
 271	3	7	Срочный поиск жилья	2026-03-22	365	Жду вас на просмотр	approved	2026-03-08 00:00:00	2026-03-06 00:00:00
 124	1	6	Здравствуйте! Хотел бы посмотреть квартиру в ближайшие выходные	2026-03-10	365	Добрый вечер извините что я вас задержал! Поэтому завтра заселитесь	approved	2026-02-20 10:30:00	2026-03-09 20:29:24.042456
 273	5	6	Срочный поиск жилья	2026-03-16	365	Жду вас на просмотр	approved	2026-03-02 00:00:00	2026-03-10 00:00:00
@@ -1489,12 +1560,39 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 137	3	7	А дом у озера на лето ещё свободен?	2026-06-15	90	Уже сдан	rejected	2026-02-16 14:30:00	2026-02-17 08:45:00
 138	5	9	Рассматриваю коммерческое помещение в Новосибирске	2026-04-01	365	\N	cancelled	2026-02-24 12:10:00	2026-02-25 13:45:00
 395	149	9	Арендуем четко!	2026-05-09	90	\N	approved	2026-03-14 19:32:58.087737	2026-03-14 19:35:16.674374
-401	158	24	Быстрее!	2026-04-09	365	Хорошо! Спасибо	approved	2026-03-24 23:10:41.946118	2026-03-24 23:11:44.515434
+403	152	25		2026-05-09	56	\N	pending	2026-04-09 22:30:23.81453	\N
+458	146	6	Хочу арендовать апартаменты у моря	2025-04-15	90	Одобрено	approved	2025-04-01 00:00:00	2025-04-05 00:00:00
+459	146	7	Интересует аренда на лето	2025-06-01	120	Одобрено	approved	2025-04-10 00:00:00	2025-04-12 00:00:00
+460	149	11	Хочу снять коттедж	2025-05-20	180	Одобрено	approved	2025-05-05 00:00:00	2025-05-08 00:00:00
+461	149	13	Интересует долгосрочная аренда	2025-06-15	365	Одобрено	approved	2025-05-15 00:00:00	2025-05-18 00:00:00
+462	152	15	Хочу снять дом с участком	2025-06-25	90	Отклонено	rejected	2025-06-01 00:00:00	2025-06-03 00:00:00
+463	152	16	Интересует дом	2025-07-01	120	Одобрено	approved	2025-06-10 00:00:00	2025-06-12 00:00:00
+464	150	17	Хочу снять квартиру в центре	2025-07-10	90	Одобрено	approved	2025-07-01 00:00:00	2025-07-03 00:00:00
+465	150	18	Интересует аренда	2025-08-01	180	Отклонено	rejected	2025-07-15 00:00:00	2025-07-17 00:00:00
+466	151	19	Хочу снять новостройку	2025-08-15	90	Одобрено	approved	2025-08-01 00:00:00	2025-08-04 00:00:00
+467	151	11	Интересует квартира	2025-09-01	120	Одобрено	approved	2025-08-15 00:00:00	2025-08-18 00:00:00
+468	146	15	Хочу арендовать апартаменты	2025-09-15	60	Одобрено	approved	2025-09-01 00:00:00	2025-09-03 00:00:00
+469	146	17	Интересует море	2025-10-01	30	Отклонено	rejected	2025-09-10 00:00:00	2025-09-12 00:00:00
+470	149	18	Хочу снять коттедж с бассейном	2025-10-15	90	Одобрено	approved	2025-10-01 00:00:00	2025-10-04 00:00:00
+471	149	19	Интересует элитное жилье	2025-11-01	180	Одобрено	approved	2025-10-10 00:00:00	2025-10-13 00:00:00
+472	152	6	Хочу снять дом	2025-11-15	60	Отклонено	rejected	2025-11-01 00:00:00	2025-11-03 00:00:00
+473	152	7	Интересует участок	2025-12-01	90	Одобрено	approved	2025-11-10 00:00:00	2025-11-13 00:00:00
+474	150	9	Хочу снять квартиру на новый год	2025-12-25	14	Одобрено	approved	2025-12-01 00:00:00	2025-12-03 00:00:00
+475	150	11	Интересует квартира	2026-01-10	30	Отклонено	rejected	2025-12-10 00:00:00	2025-12-12 00:00:00
+476	151	13	Хочу снять новостройку	2026-01-20	90	Одобрено	approved	2026-01-01 00:00:00	2026-01-04 00:00:00
+477	151	15	Интересует квартира	2026-02-01	120	Одобрено	approved	2026-01-10 00:00:00	2026-01-13 00:00:00
+478	146	16	Хочу арендовать апартаменты	2026-02-15	60	Отклонено	rejected	2026-02-01 00:00:00	2026-02-03 00:00:00
+479	146	17	Интересует море	2026-03-01	90	Одобрено	approved	2026-02-10 00:00:00	2026-02-13 00:00:00
+480	149	18	Хочу снять коттедж	2026-03-15	90	Одобрено	approved	2026-03-01 00:00:00	2026-03-04 00:00:00
+481	149	19	Интересует бассейн	2026-04-01	180	Одобрено	approved	2026-03-10 00:00:00	2026-03-13 00:00:00
+482	150	6	Хочу снять квартиру	2026-04-15	90	Одобрено	approved	2026-04-01 00:00:00	2026-04-04 00:00:00
+483	150	7	Интересует центр	2026-05-01	120	Отклонено	rejected	2026-04-10 00:00:00	2026-04-13 00:00:00
+374	149	19	Отличный вариант, готов обсудить условия	2026-04-13	200	Извините, я кол-во дней уменьшила	approved	2026-01-15 00:00:00	2026-04-10 22:35:02.832176
 \.
 
 
 --
--- TOC entry 5043 (class 0 OID 32930)
+-- TOC entry 5044 (class 0 OID 32930)
 -- Dependencies: 232
 -- Data for Name: audit_logs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1603,6 +1701,8 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 100	\N	INSERT	messages	251	{"table": "messages", "action": "INSERT", "new_data": {"content": "✅ **Заявка одобрена** на объект \\"Таунхаус\\"", "is_read": false, "created_at": "2026-03-14T20:27:01.682142", "message_id": 251, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:27:01.682142
 101	\N	INSERT	messages	252	{"table": "messages", "action": "INSERT", "new_data": {"content": "✅ **Заявка одобрена** на объект \\"Таунхаус\\"", "is_read": false, "created_at": "2026-03-14T20:27:01.682142", "message_id": 252, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:27:01.682142
 102	\N	UPDATE	applications	141	{"table": "applications", "changes": {"status": {"new": "approved", "old": "pending"}}, "old_data": {"answer": null, "status": "pending", "message": "Как можно скорее", "tenant_id": 9, "created_at": "2026-03-09T19:17:20.68289", "property_id": 129, "desired_date": "2026-03-19", "responded_at": "2026-03-10T09:17:20", "duration_days": 365, "application_id": 141}}	2026-03-14 20:27:01.682142
+601	\N	INSERT	users	54	{"table": "users", "action": "INSERT", "new_data": {"email": "artem.kuznetsov@mail.ru", "user_id": 54, "full_name": "Кузнецов Артем Дмитриевич", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"city": "Москва", "phone": "+7 (916) 111-22-33", "birth_date": "1995-03-15"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 20:49:17.624276
+602	\N	INSERT	users	55	{"table": "users", "action": "INSERT", "new_data": {"email": "isvishu@gmail.com", "user_id": 55, "full_name": "Шувалова Виктория Сергеевна", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"city": "Казань", "phone": "+7 (917) 222-33-44", "birth_date": "1992-07-22"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 20:49:17.624276
 105	\N	INSERT	messages	253	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Договор отменён** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:34:30.943048", "message_id": 253, "to_user_id": 9, "from_user_id": null}}	2026-03-14 20:34:30.943048
 106	\N	INSERT	messages	254	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Договор отменён** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-14T20:34:30.943048", "message_id": 254, "to_user_id": 12, "from_user_id": null}}	2026-03-14 20:34:30.943048
 107	\N	UPDATE	contracts	95	{"table": "contracts", "changes": {"signing_status": {"new": "cancelled", "old": "pending"}}, "old_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": true, "total_amount": 750000.00, "tenant_signed": false, "application_id": 395, "signing_status": "pending"}}	2026-03-14 20:34:30.943048
@@ -1646,6 +1746,18 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 145	\N	INSERT	messages	265	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка approved** на объект 'Коттедж с бассейном'. Ответ: По коммунальным причинам перенес уменьшил кол-во дней.", "is_read": false, "created_at": "2026-03-15T21:04:53.044705", "message_id": 265, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:04:53.042128
 146	\N	DELETE	messages	265	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "**Заявка approved** на объект 'Коттедж с бассейном'. Ответ: По коммунальным причинам перенес уменьшил кол-во дней.", "is_read": false, "created_at": "2026-03-15T21:04:53.044705", "message_id": 265, "to_user_id": 17, "from_user_id": null}}	2026-03-15 21:07:39.24178
 147	\N	DELETE	messages	248	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "**Заявка approved** на объект 'Коттедж с бассейном'. ", "is_read": true, "created_at": "2026-03-14T19:35:16.768746", "message_id": 248, "to_user_id": 9, "from_user_id": null}}	2026-03-15 21:07:39.24178
+603	\N	INSERT	users	56	{"table": "users", "action": "INSERT", "new_data": {"email": "mikhail.sokolov@mail.ru", "user_id": 56, "full_name": "Соколов Михаил Петрович", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"city": "Санкт-Петербург", "phone": "+7 (918) 333-44-55", "birth_date": "1988-11-08"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 20:49:17.624276
+604	\N	INSERT	users	57	{"table": "users", "action": "INSERT", "new_data": {"email": "anna.morozova@mail.ru", "user_id": 57, "full_name": "Морозова Анна Сергеевна", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"city": "Екатеринбург", "phone": "+7 (919) 444-55-66", "birth_date": "1998-01-30"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 20:49:17.624276
+605	\N	INSERT	users	58	{"table": "users", "action": "INSERT", "new_data": {"email": "dmitry.volkov@mail.ru", "user_id": 58, "full_name": "Волков Дмитрий Алексеевич", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"city": "Краснодар", "phone": "+7 (920) 555-66-77", "birth_date": "1993-05-12"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 20:49:17.624276
+606	\N	INSERT	users	59	{"table": "users", "action": "INSERT", "new_data": {"email": "dccfeke@mail.ru", "user_id": 59, "full_name": "Долгих Мария Ярославовна", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"city": "Орехово-Зуево", "phone": "+7 (921) 666-77-88", "birth_date": "1990-09-25"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 20:49:17.624276
+607	\N	INSERT	users	60	{"table": "users", "action": "INSERT", "new_data": {"email": "ivan.egorov@mail.ru", "user_id": 60, "full_name": "Егоров Иван Павлович", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"city": "Ликино-Дулёво", "phone": "+7 (922) 777-88-99", "birth_date": "1996-12-03"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 20:49:17.624276
+608	\N	INSERT	users	61	{"table": "users", "action": "INSERT", "new_data": {"email": "maria.timofeeva@mail.ru", "user_id": 61, "full_name": "Тимофеева Мария Константиновна", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"city": "Москва", "phone": "+7 (923) 888-99-00", "birth_date": "1994-04-18"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 20:49:17.624276
+609	\N	INSERT	users	62	{"table": "users", "action": "INSERT", "new_data": {"email": "property.owner.kazan@mail.ru", "user_id": 62, "full_name": "Сергеев Андрей Викторович", "is_active": true, "user_type": "owner", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"inn": "123456789012", "city": "Казань", "phone": "+7 (987) 111-22-33", "passport": "1234567890"}, "password_hash": "43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9"}}	2026-04-10 20:49:17.624276
+610	\N	INSERT	users	63	{"table": "users", "action": "INSERT", "new_data": {"email": "property.owner.spb@mail.ru", "user_id": 63, "full_name": "Михайлова Екатерина Дмитриевна", "is_active": true, "user_type": "owner", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"inn": "234567890123", "city": "Санкт-Петербург", "phone": "+7 (987) 222-33-44", "passport": "2345678901"}, "password_hash": "43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9"}}	2026-04-10 20:49:17.624276
+611	\N	INSERT	users	64	{"table": "users", "action": "INSERT", "new_data": {"email": "property.owner.ekb@mail.ru", "user_id": 64, "full_name": "Козлов Максим Юрьевич", "is_active": true, "user_type": "owner", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"inn": "345678901234", "city": "Екатеринбург", "phone": "+7 (987) 333-44-55", "passport": "3456789012"}, "password_hash": "43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9"}}	2026-04-10 20:49:17.624276
+612	\N	INSERT	users	65	{"table": "users", "action": "INSERT", "new_data": {"email": "property.owner.krasnodar@mail.ru", "user_id": 65, "full_name": "Новикова Татьяна Владимировна", "is_active": true, "user_type": "owner", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"inn": "456789012345", "city": "Краснодар", "phone": "+7 (987) 444-55-66", "passport": "4567890123"}, "password_hash": "43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9"}}	2026-04-10 20:49:17.624276
+613	\N	INSERT	users	66	{"table": "users", "action": "INSERT", "new_data": {"email": "property.owner.likino@mail.ru", "user_id": 66, "full_name": "Морозов Илья Сергеевич", "is_active": true, "user_type": "owner", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"inn": "567890123456", "city": "Ликино-Дулёво", "phone": "+7 (987) 555-66-77", "passport": "5678901234"}, "password_hash": "43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9"}}	2026-04-10 20:49:17.624276
+614	\N	INSERT	users	67	{"table": "users", "action": "INSERT", "new_data": {"email": "agent.nemtyreva@yandex.ru", "user_id": 67, "full_name": "Немтырёва Ксения Антоновна", "is_active": true, "user_type": "agent", "avatar_url": null, "created_at": "2026-04-10T20:49:17.624276", "contact_info": {"city": "Москва", "phone": "+7 (968) 111-22-33"}, "password_hash": "f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647"}}	2026-04-10 20:49:17.624276
 148	\N	INSERT	messages	266	{"table": "messages", "action": "INSERT", "new_data": {"content": "✍️ **Арендатор подписал договор** Д-97: Феоктистов Глеб Юрьевич подписал договор на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:08:19.622137", "message_id": 266, "to_user_id": 12, "from_user_id": null}}	2026-03-15 21:08:19.622137
 149	\N	UPDATE	contracts	97	{"table": "contracts", "changes": {"tenant_signed": {"new": true, "old": false}, "signing_status": {"new": "pending", "old": "draft"}}, "old_data": {"end_date": "2026-09-17", "created_at": "2026-03-15T21:04:53.015646", "start_date": "2026-03-21", "contract_id": 97, "owner_signed": false, "total_amount": 1500000.00, "tenant_signed": false, "application_id": 353, "signing_status": "draft"}}	2026-03-15 21:08:19.622137
 150	\N	INSERT	messages	267	{"table": "messages", "action": "INSERT", "new_data": {"content": "кк", "is_read": false, "created_at": "2026-03-15T18:09:27.436444", "message_id": 267, "to_user_id": 17, "from_user_id": 12}}	2026-03-15 21:09:27.435704
@@ -1664,6 +1776,16 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 163	\N	UPDATE	messages	270	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "✅ **Договор полностью подписан** Д-97 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-03-15T21:17:17.719383", "message_id": 270, "to_user_id": 12, "from_user_id": null}}	2026-03-15 21:52:58.242355
 186	\N	UPDATE	messages	271	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**НОВАЯ ЖАЛОБА НА ОБЪЕКТ**\\n\\n**Отправитель:** Анонимный пользователь\\n**Объект:** Квартира в центре (ID: 150)\\n**Причина:** Мошенничество\\n**Описание:** Деньги ворует\\n\\n📅 Дата: 2026-03-22 19:52:10.560431+03", "is_read": false, "created_at": "2026-03-22T19:52:10.560431", "message_id": 271, "to_user_id": 1, "from_user_id": null}}	2026-03-22 19:55:46.379332
 164	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Донецк", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулёво", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулёво", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 21:59:42.174753
+615	\N	INSERT	properties	240	{"table": "properties", "action": "INSERT", "new_data": {"area": 120.00, "city": "Москва", "price": 150000.00, "rooms": 3, "title": "Премиум квартира в центре Москвы", "status": "active", "address": "ул. Тверская, д. 15, кв. 45", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Элитная квартира в историческом центре. Дизайнерский ремонт, панорамные окна, все коммуникации.", "property_id": 240, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+616	\N	INSERT	properties	241	{"table": "properties", "action": "INSERT", "new_data": {"area": 28.00, "city": "Москва", "price": 55000.00, "rooms": 1, "title": "Студия возле метро", "status": "active", "address": "ул. Арбат, д. 10", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютная студия в 3 минутах от метро. Подходит для одного человека или пары.", "property_id": 241, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+617	\N	INSERT	properties	242	{"table": "properties", "action": "INSERT", "new_data": {"area": 180.00, "city": "Москва", "price": 250000.00, "rooms": 4, "title": "Дом в Новой Москве", "status": "active", "address": "пос. Коммунарка, ул. Центральная, д. 5", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Современный таунхаус в экологически чистом районе. Своя парковка, участок 6 соток.", "property_id": 242, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:49:17.624276
+618	\N	INSERT	properties	243	{"table": "properties", "action": "INSERT", "new_data": {"area": 85.00, "city": "Москва", "price": 200000.00, "rooms": 3, "title": "Бизнес-центр офис", "status": "active", "address": "ул. Правды, д. 26", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Офисное помещение в деловом центре Москвы. Полная отделка, кондиционирование.", "property_id": 243, "interval_pay": "month", "property_type": "commercial"}}	2026-04-10 20:49:17.624276
+619	\N	INSERT	properties	244	{"table": "properties", "action": "INSERT", "new_data": {"area": 65.00, "city": "Москва", "price": 95000.00, "rooms": 2, "title": "Квартира с видом на город", "status": "active", "address": "пр-т Вернадского, д. 45, кв. 78", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Светлая квартира на высоком этаже. Отличный ремонт, бытовая техника.", "property_id": 244, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+620	\N	INSERT	properties	245	{"table": "properties", "action": "INSERT", "new_data": {"area": 95.00, "city": "Москва", "price": 180000.00, "rooms": 2, "title": "Лофт в центре", "status": "active", "address": "ул. Мясницкая, д. 30", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Стильный лофт для творческих людей. Высокие потолки, панорамные окна.", "property_id": 245, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+621	\N	INSERT	properties	246	{"table": "properties", "action": "INSERT", "new_data": {"area": 52.00, "city": "Москва", "price": 75000.00, "rooms": 2, "title": "Квартира на ВДНХ", "status": "active", "address": "ул. Космонавтов, д. 12, кв. 34", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютная квартира рядом с ВДНХ. Развитая инфраструктура, транспортная доступность.", "property_id": 246, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+622	\N	INSERT	properties	247	{"table": "properties", "action": "INSERT", "new_data": {"area": 220.00, "city": "Москва", "price": 350000.00, "rooms": 5, "title": "Дом в Строгино", "status": "active", "address": "ул. Исаковского, д. 8", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Коттедж с участком в престижном районе. Своя инфраструктура, охрана.", "property_id": 247, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:49:17.624276
+623	\N	INSERT	properties	248	{"table": "properties", "action": "INSERT", "new_data": {"area": 68.00, "city": "Санкт-Петербург", "price": 85000.00, "rooms": 2, "title": "Квартира у Финского залива", "status": "active", "address": "ул. Савушкина, д. 115, кв. 45", "owner_id": 3, "created_at": "2026-04-10T20:49:17.624276", "description": "Прекрасный вид на залив. Новый дом, современная планировка.", "property_id": 248, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+624	\N	INSERT	properties	249	{"table": "properties", "action": "INSERT", "new_data": {"area": 160.00, "city": "Санкт-Петербург", "price": 300000.00, "rooms": 4, "title": "Дом в Комарово", "status": "active", "address": "пос. Комарово, ул. Лесная, д. 10", "owner_id": 3, "created_at": "2026-04-10T20:49:17.624276", "description": "Элитный дом в курортном районе. Участок 15 соток, лес рядом.", "property_id": 249, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:49:17.624276
 165	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Донецк", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Донецк", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 21:59:59.047157
 166	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Куровское  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 22:03:56.870232
 167	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Куровское  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Куровское  (Московская область)", "phone": "+79066784781", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-03-15 22:04:04.034013
@@ -1693,8 +1815,24 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 197	\N	UPDATE	properties	150	{"table": "properties", "changes": {"address": {"new": "ул. Ленина, д. 56, кв. 34", "old": "ул. Ленина, д. 85, кв. 34"}}, "old_data": {"area": 54.00, "city": "Орехово-Зуево", "price": 28000.00, "rooms": 2, "title": "Квартира в центре", "status": "active", "address": "ул. Ленина, д. 85, кв. 34", "owner_id": 4, "created_at": "2026-03-10T20:27:37.442124", "description": "Хорошая квартира в центре города, развитая инфраструктура", "property_id": 150, "interval_pay": "month", "property_type": "apartment"}}	2026-03-22 20:07:26.819692
 198	\N	UPDATE	properties	145	{"table": "properties", "changes": {"area": {"new": 550.00, "old": 150.00}, "price": {"new": 210000.00, "old": 200000.00}, "rooms": {"new": 6, "old": 4}}, "old_data": {"area": 150.00, "city": "Сочи", "price": 200000.00, "rooms": 4, "title": "Дом в Красной Поляне", "status": "active", "address": "Красная Поляна, ул. Горная, д. 5", "owner_id": 5, "created_at": "2026-03-10T20:27:37.442124", "description": "Шале в горах, камин, отличный вид на горнолыжные трассы", "property_id": 145, "interval_pay": "month", "property_type": "house"}}	2026-03-22 20:15:09.0691
 199	\N	UPDATE	properties	139	{"table": "properties", "changes": {"title": {"new": "Дом из Сваты-4", "old": "Дом у моря"}}, "old_data": {"area": 120.00, "city": "Ялта", "price": 150000.00, "rooms": 3, "title": "Дом у моря", "status": "active", "address": "пос. Массандра, ул. Виноградная, д. 25", "owner_id": 5, "created_at": "2026-03-10T20:27:37.442124", "description": "Двухэтажный дом с собственной террасой и видом на Чёрное море", "property_id": 139, "interval_pay": "month", "property_type": "house"}}	2026-03-22 20:34:10.459377
+625	\N	INSERT	properties	250	{"table": "properties", "action": "INSERT", "new_data": {"area": 30.00, "city": "Санкт-Петербург", "price": 50000.00, "rooms": 1, "title": "Студия на Петроградке", "status": "active", "address": "ул. Ленина, д. 45", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Маленькая уютная студия в историческом районе.", "property_id": 250, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+626	\N	INSERT	properties	251	{"table": "properties", "action": "INSERT", "new_data": {"area": 55.00, "city": "Санкт-Петербург", "price": 95000.00, "rooms": 2, "title": "Офис на Васильевском", "status": "active", "address": "Средний пр-т, д. 85", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Помещение под офис на Васильевском острове. Хорошая транспортная доступность.", "property_id": 251, "interval_pay": "month", "property_type": "commercial"}}	2026-04-10 20:49:17.624276
+627	\N	INSERT	properties	252	{"table": "properties", "action": "INSERT", "new_data": {"area": 48.00, "city": "Санкт-Петербург", "price": 65000.00, "rooms": 2, "title": "Квартира у метро", "status": "active", "address": "ул. Восстания, д. 22, кв. 12", "owner_id": 3, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютная квартира в 2 минутах от метро. Вся необходимая мебель.", "property_id": 252, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+628	\N	INSERT	properties	253	{"table": "properties", "action": "INSERT", "new_data": {"area": 72.00, "city": "Казань", "price": 55000.00, "rooms": 2, "title": "Квартира в центре Казани", "status": "active", "address": "ул. Баумана, д. 20, кв. 45", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Современная квартира в новостройке. Панорамные окна, дизайнерский ремонт.", "property_id": 253, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+629	\N	INSERT	properties	254	{"table": "properties", "action": "INSERT", "new_data": {"area": 120.00, "city": "Казань", "price": 90000.00, "rooms": 3, "title": "Дом в посёлке", "status": "active", "address": "пос. Столбище, ул. Дачная, д. 8", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютный дом с участком. Идеально для семьи с детьми.", "property_id": 254, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:49:17.624276
 190	\N	UPDATE	messages	273	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**НОВАЯ ЖАЛОБА НА ОБЪЕКТ**\\n\\n**Отправитель:** Соловьёва Юлия Сергеевна\\n**Объект:** Квартира в центре (ID: 150)\\n**Причина:** Фальшивый объект\\n**Описание:** вапрааааоао\\n\\n📅 Дата: 2026-03-22 19:56:45.960561+03", "is_read": false, "created_at": "2026-03-22T19:56:45.960561", "message_id": 273, "to_user_id": 1, "from_user_id": 12}}	2026-03-22 19:56:51.572465
 196	\N	UPDATE	messages	275	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "НОВАЯ ЖАЛОБА НА ОБЪЕКТ\\n\\nОтправитель: Соловьёва Юлия Сергеевна\\nОбъект: Квартира в центре (ID: 150)\\nПричина: Фальшивый объект\\nОписание: апаввпвпрп\\n\\nДата: 2026-03-22 20:00:33.787603+03", "is_read": false, "created_at": "2026-03-22T20:00:33.787603", "message_id": 275, "to_user_id": 1, "from_user_id": 12}}	2026-03-22 20:00:41.274562
+630	\N	INSERT	properties	255	{"table": "properties", "action": "INSERT", "new_data": {"area": 35.00, "city": "Казань", "price": 40000.00, "rooms": 1, "title": "Студия у Кремля", "status": "active", "address": "ул. Кремлёвская, д. 15", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Студия в историческом центре, вид на Кремль.", "property_id": 255, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+631	\N	INSERT	properties	256	{"table": "properties", "action": "INSERT", "new_data": {"area": 70.00, "city": "Казань", "price": 60000.00, "rooms": 2, "title": "Коммерческое помещение", "status": "active", "address": "пр-т Победы, д. 100", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Помещение на первом этаже жилого дома. Под магазин или офис.", "property_id": 256, "interval_pay": "month", "property_type": "commercial"}}	2026-04-10 20:49:17.624276
+632	\N	INSERT	properties	257	{"table": "properties", "action": "INSERT", "new_data": {"area": 85.00, "city": "Казань", "price": 70000.00, "rooms": 3, "title": "Квартира в новостройке", "status": "active", "address": "ул. Чистопольская, д. 45, кв. 78", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Просторная квартира с отделкой. Сдан в эксплуатацию в 2025 году.", "property_id": 257, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+633	\N	INSERT	properties	258	{"table": "properties", "action": "INSERT", "new_data": {"area": 68.00, "city": "Екатеринбург", "price": 45000.00, "rooms": 2, "title": "Квартира в центре Екатеринбурга", "status": "active", "address": "ул. Ленина, д. 35, кв. 45", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Просторная квартира с отличным ремонтом. Вся необходимая техника.", "property_id": 258, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+634	\N	INSERT	properties	259	{"table": "properties", "action": "INSERT", "new_data": {"area": 140.00, "city": "Екатеринбург", "price": 120000.00, "rooms": 4, "title": "Дом в лесном массиве", "status": "active", "address": "ул. Лесная, д. 15", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Частный дом в экологически чистом районе. Участок 10 соток.", "property_id": 259, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:49:17.624276
+635	\N	INSERT	properties	260	{"table": "properties", "action": "INSERT", "new_data": {"area": 32.00, "city": "Екатеринбург", "price": 28000.00, "rooms": 1, "title": "Студия у парка", "status": "active", "address": "ул. 8 Марта, д. 50", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютная студия в шаговой доступности от парка.", "property_id": 260, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+636	\N	INSERT	properties	261	{"table": "properties", "action": "INSERT", "new_data": {"area": 45.00, "city": "Екатеринбург", "price": 35000.00, "rooms": 1, "title": "Офис в центре", "status": "active", "address": "пр-т Ленина, д. 25", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Офисное помещение в деловом центре города.", "property_id": 261, "interval_pay": "month", "property_type": "commercial"}}	2026-04-10 20:49:17.624276
+637	\N	INSERT	properties	262	{"table": "properties", "action": "INSERT", "new_data": {"area": 62.00, "city": "Краснодар", "price": 42000.00, "rooms": 2, "title": "Квартира в центре Краснодара", "status": "active", "address": "ул. Красная, д. 50, кв. 25", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Современная квартира с дизайнерским ремонтом.", "property_id": 262, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+638	\N	INSERT	properties	263	{"table": "properties", "action": "INSERT", "new_data": {"area": 110.00, "city": "Краснодар", "price": 80000.00, "rooms": 3, "title": "Дом в пригороде", "status": "active", "address": "ст. Елизаветинская, ул. Садовая, д. 10", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютный дом с большим участком. Сад, баня, гараж.", "property_id": 263, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:49:17.624276
+639	\N	INSERT	properties	264	{"table": "properties", "action": "INSERT", "new_data": {"area": 28.00, "city": "Краснодар", "price": 25000.00, "rooms": 1, "title": "Студия у парка", "status": "active", "address": "ул. Стасова, д. 25", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютная студия в новостройке рядом с парком.", "property_id": 264, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+640	\N	INSERT	properties	265	{"table": "properties", "action": "INSERT", "new_data": {"area": 60.00, "city": "Краснодар", "price": 50000.00, "rooms": 2, "title": "Коммерческое помещение", "status": "active", "address": "ул. Северная, д. 100", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Помещение свободного назначения в центре города.", "property_id": 265, "interval_pay": "month", "property_type": "commercial"}}	2026-04-10 20:49:17.624276
 193	\N	UPDATE	messages	274	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "НОВАЯ ЖАЛОБА НА ОБЪЕКТ\\n\\nОтправитель: Анонимный пользователь\\nОбъект: Квартира в центре (ID: 150)\\nПричина: Недостоверные фотографии\\nОписание: Нет никаких фоток\\n\\nДата: 2026-03-22 20:00:07.112512+03", "is_read": false, "created_at": "2026-03-22T20:00:07.112512", "message_id": 274, "to_user_id": 1, "from_user_id": null}}	2026-03-22 20:00:22.878301
 194	\N	INSERT	messages	275	{"table": "messages", "action": "INSERT", "new_data": {"content": "НОВАЯ ЖАЛОБА НА ОБЪЕКТ\\n\\nОтправитель: Соловьёва Юлия Сергеевна\\nОбъект: Квартира в центре (ID: 150)\\nПричина: Фальшивый объект\\nОписание: апаввпвпрп\\n\\nДата: 2026-03-22 20:00:33.787603+03", "is_read": false, "created_at": "2026-03-22T20:00:33.787603", "message_id": 275, "to_user_id": 1, "from_user_id": 12}}	2026-03-22 20:00:33.787603
 195	12	REPORT	property	150	{"reason": "fake", "description": "апаввпвпрп", "is_anonymous": false}	2026-03-22 20:00:33.787603
@@ -1754,10 +1892,45 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 278	\N	INSERT	messages	296	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Боев Владислав Максимович на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-24T22:31:08.798542", "message_id": 296, "to_user_id": 12, "from_user_id": null}}	2026-03-24 22:31:08.798542
 253	\N	UPDATE	properties	158	{"table": "properties", "changes": {"address": {"new": "ул. 1 Мая, 2", "old": "ул. Кирова, д. 3"}}, "old_data": {"area": 40.00, "city": "Ликино-Дулёво", "price": 25000.00, "rooms": 1, "title": "Коммерческое помещение ЛиАЗ", "status": "active", "address": "ул. Кирова, д. 3", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Помещение на 1-ом этаже отдельно стоящего здания свободного назначения . возможно под офис (офис + склад), пункт выдачи или склад, магазин, мастерская\\r\\nОтдельный вход с улицы.", "property_id": 158, "interval_pay": "month", "property_type": "commercial"}}	2026-03-24 21:00:29.453905
 256	\N	UPDATE	properties	156	{"table": "properties", "changes": {"area": {"new": 33.00, "old": 45.00}}, "old_data": {"area": 45.00, "city": "Ликино-Дулёво", "price": 20000.00, "rooms": 1, "title": "Квартира рядом с заводом", "status": "active", "address": "ул. Ленина, д. 15, кв. 42", "owner_id": 4, "created_at": "2026-03-10T20:27:37.442124", "description": "Аренда 1-комнатной квартиры площадью 33 м² расположенной по адресу Орехово-Зуево, 6в, снять за 20 000 руб. в месяц\\r\\nСдам 1-на комнатную квартиру В Московской области, городе Ликино-Дулево на улице Ленина дом 6В.\\r\\n?Квартира расположена на 3 этаже 5-ти этажного дома.\\r\\n?Есть вся необходимая для проживания мебель и техника.\\r\\n?Сдаётся на долгий срок порядочным и платежеспособным людям.\\r\\n?Более подробную информацию и актуальность объявления можно узнать по телефону", "property_id": 156, "interval_pay": "month", "property_type": "apartment"}}	2026-03-24 21:05:35.689626
+641	\N	INSERT	properties	266	{"table": "properties", "action": "INSERT", "new_data": {"area": 65.00, "city": "Орехово-Зуево", "price": 23000.00, "rooms": 2, "title": "Квартира в центре Орехово-Зуево", "status": "active", "address": "ул. Ленина, д. 30, кв. 15", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Просторная квартира с отличным ремонтом. Рядом школа и садик.", "property_id": 266, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+642	\N	INSERT	properties	267	{"table": "properties", "action": "INSERT", "new_data": {"area": 90.00, "city": "Орехово-Зуево", "price": 35000.00, "rooms": 3, "title": "Дом в Орехово-Зуево", "status": "active", "address": "ул. Садовая, д. 8", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютный дом с участком, гаражом и баней.", "property_id": 267, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:49:17.624276
+643	\N	INSERT	properties	268	{"table": "properties", "action": "INSERT", "new_data": {"area": 30.00, "city": "Орехово-Зуево", "price": 18000.00, "rooms": 1, "title": "Студия в новостройке", "status": "active", "address": "ул. Горького, д. 15", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Современная студия с отделкой. Подходит для молодой пары.", "property_id": 268, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+644	\N	INSERT	properties	269	{"table": "properties", "action": "INSERT", "new_data": {"area": 48.00, "city": "Орехово-Зуево", "price": 20000.00, "rooms": 2, "title": "Квартира у вокзала", "status": "active", "address": "ул. Вокзальная, д. 10, кв. 45", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Удобная квартира рядом с ж/д вокзалом. Хорошая транспортная доступность.", "property_id": 269, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+645	\N	INSERT	properties	270	{"table": "properties", "action": "INSERT", "new_data": {"area": 52.00, "city": "Ликино-Дулёво", "price": 19000.00, "rooms": 2, "title": "Квартира в Ликино-Дулёво", "status": "active", "address": "ул. Калинина, д. 20, кв. 8", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютная квартира с хорошим ремонтом. Рядом магазины и остановки.", "property_id": 270, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:49:17.624276
+646	\N	INSERT	properties	271	{"table": "properties", "action": "INSERT", "new_data": {"area": 70.00, "city": "Ликино-Дулёво", "price": 25000.00, "rooms": 2, "title": "Дом в Ликино-Дулёво", "status": "active", "address": "ул. Заводская, д. 5", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Частный дом с участком. Идеально для загородного проживания.", "property_id": 271, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:49:17.624276
+647	\N	INSERT	applications	458	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу арендовать апартаменты у моря", "tenant_id": 6, "created_at": "2025-04-01T00:00:00", "property_id": 146, "desired_date": "2025-04-15", "responded_at": "2025-04-05T00:00:00", "duration_days": 90, "application_id": 458}}	2026-04-10 20:49:17.624276
+648	\N	INSERT	messages	371	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Тестовый пользователь на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 371, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+649	\N	INSERT	applications	459	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Интересует аренда на лето", "tenant_id": 7, "created_at": "2025-04-10T00:00:00", "property_id": 146, "desired_date": "2025-06-01", "responded_at": "2025-04-12T00:00:00", "duration_days": 120, "application_id": 459}}	2026-04-10 20:49:17.624276
+650	\N	INSERT	messages	372	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Мария Васильева на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 372, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
 254	\N	UPDATE	properties	158	{"table": "properties", "changes": {"area": {"new": 51.00, "old": 40.00}}, "old_data": {"area": 40.00, "city": "Ликино-Дулёво", "price": 25000.00, "rooms": 1, "title": "Коммерческое помещение ЛиАЗ", "status": "active", "address": "ул. 1 Мая, 2", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Помещение на 1-ом этаже отдельно стоящего здания свободного назначения . возможно под офис (офис + склад), пункт выдачи или склад, магазин, мастерская\\r\\nОтдельный вход с улицы.", "property_id": 158, "interval_pay": "month", "property_type": "commercial"}}	2026-03-24 21:03:00.197799
 258	\N	UPDATE	properties	166	{"table": "properties", "changes": {"area": {"new": 50.00, "old": 85.00}, "rooms": {"new": 1, "old": 3}, "description": {"new": "Cдaм пoд кoворкинг вecь салон крaсoты или места паpикмaхepa и мacтepа маникюра.\\r\\n\\r\\nMеcта пoд нoгтевыx мacтерoв, парикмaxepов и визажиста.\\r\\n\\r\\nЕcть oтдельнoе пoмещениe под склaд, преднaзначaлcя для склaдиpования обopудования, тoвара.\\r\\n\\r\\nЕсть peсeпшен, 4 места под мастера маникюра с установленными вытяжками Vеrаksо в столах, 1 место под визажиста и 2 места под парикмахера.\\r\\nЕсть диван для гостей, вешалка, телевизор, очиститель воздуха, зеркало в полный рост.\\r\\nЕсть лаборатория для мастера по волосам.\\r\\n\\r\\nТакже есть под общий ЛОФТ стиль 2 ограждающих стенки для потенциального мастера педикюра, но еще не успели поставить.\\r\\n\\r\\nНа этаже есть 2 туалета.\\r\\n\\r\\nВ здании есть Магнит и Магнит косметик.\\r\\nА также спортивный клуб “Медведь».", "old": "Помещение в деловом центре"}}, "old_data": {"area": 85.00, "city": "Сочи", "price": 90000.00, "rooms": 3, "title": "Офис в Сочи", "status": "active", "address": "ул. Конституции, д. 10", "owner_id": 18, "created_at": "2026-03-10T20:27:37.442124", "description": "Помещение в деловом центре", "property_id": 166, "interval_pay": "month", "property_type": "commercial"}}	2026-03-24 21:13:43.163843
+651	\N	INSERT	applications	460	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу снять коттедж", "tenant_id": 11, "created_at": "2025-05-05T00:00:00", "property_id": 149, "desired_date": "2025-05-20", "responded_at": "2025-05-08T00:00:00", "duration_days": 180, "application_id": 460}}	2026-04-10 20:49:17.624276
+652	\N	INSERT	messages	373	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от myname на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 373, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+653	\N	INSERT	applications	461	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Интересует долгосрочная аренда", "tenant_id": 13, "created_at": "2025-05-15T00:00:00", "property_id": 149, "desired_date": "2025-06-15", "responded_at": "2025-05-18T00:00:00", "duration_days": 365, "application_id": 461}}	2026-04-10 20:49:17.624276
+654	\N	INSERT	messages	374	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Чувага Роман Думитрувич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 374, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+655	\N	INSERT	applications	462	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Отклонено", "status": "rejected", "message": "Хочу снять дом с участком", "tenant_id": 15, "created_at": "2025-06-01T00:00:00", "property_id": 152, "desired_date": "2025-06-25", "responded_at": "2025-06-03T00:00:00", "duration_days": 90, "application_id": 462}}	2026-04-10 20:49:17.624276
+656	\N	INSERT	messages	375	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Крючкова Оксана Вячеславовна на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 375, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+657	\N	INSERT	applications	463	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Интересует дом", "tenant_id": 16, "created_at": "2025-06-10T00:00:00", "property_id": 152, "desired_date": "2025-07-01", "responded_at": "2025-06-12T00:00:00", "duration_days": 120, "application_id": 463}}	2026-04-10 20:49:17.624276
+658	\N	INSERT	messages	376	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Мазанов Илья Алексеевич на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 376, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+659	\N	INSERT	applications	464	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу снять квартиру в центре", "tenant_id": 17, "created_at": "2025-07-01T00:00:00", "property_id": 150, "desired_date": "2025-07-10", "responded_at": "2025-07-03T00:00:00", "duration_days": 90, "application_id": 464}}	2026-04-10 20:49:17.624276
+660	\N	INSERT	messages	377	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Феоктистов Глеб Юрьевич на объект \\"Квартира в центре\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 377, "to_user_id": 4, "from_user_id": null}}	2026-04-10 20:49:17.624276
+661	\N	INSERT	applications	465	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Отклонено", "status": "rejected", "message": "Интересует аренда", "tenant_id": 18, "created_at": "2025-07-15T00:00:00", "property_id": 150, "desired_date": "2025-08-01", "responded_at": "2025-07-17T00:00:00", "duration_days": 180, "application_id": 465}}	2026-04-10 20:49:17.624276
 255	\N	UPDATE	properties	156	{"table": "properties", "changes": {"price": {"new": 20000.00, "old": 18000.00}, "rooms": {"new": 1, "old": 2}, "description": {"new": "Аренда 1-комнатной квартиры площадью 33 м² расположенной по адресу Орехово-Зуево, 6в, снять за 20 000 руб. в месяц\\r\\nСдам 1-на комнатную квартиру В Московской области, городе Ликино-Дулево на улице Ленина дом 6В.\\r\\n?Квартира расположена на 3 этаже 5-ти этажного дома.\\r\\n?Есть вся необходимая для проживания мебель и техника.\\r\\n?Сдаётся на долгий срок порядочным и платежеспособным людям.\\r\\n?Более подробную информацию и актуальность объявления можно узнать по телефону", "old": "Удобная квартира для рабочих"}}, "old_data": {"area": 45.00, "city": "Ликино-Дулёво", "price": 18000.00, "rooms": 2, "title": "Квартира рядом с заводом", "status": "active", "address": "ул. Ленина, д. 15, кв. 42", "owner_id": 4, "created_at": "2026-03-10T20:27:37.442124", "description": "Удобная квартира для рабочих", "property_id": 156, "interval_pay": "month", "property_type": "apartment"}}	2026-03-24 21:05:26.514463
 260	1	TOGGLE_AGENT	user	18	{"changes": {"new_type": "agent", "old_type": "tenant"}}	2026-03-24 18:14:43.341479
+662	\N	INSERT	messages	378	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Трунин Данила Сергеевич на объект \\"Квартира в центре\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 378, "to_user_id": 4, "from_user_id": null}}	2026-04-10 20:49:17.624276
+663	\N	INSERT	applications	466	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу снять новостройку", "tenant_id": 19, "created_at": "2025-08-01T00:00:00", "property_id": 151, "desired_date": "2025-08-15", "responded_at": "2025-08-04T00:00:00", "duration_days": 90, "application_id": 466}}	2026-04-10 20:49:17.624276
+664	\N	INSERT	messages	379	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Ткаченко Дмитрий Евгеньевич на объект \\"Новостройка\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 379, "to_user_id": 5, "from_user_id": null}}	2026-04-10 20:49:17.624276
+665	\N	INSERT	applications	467	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Интересует квартира", "tenant_id": 11, "created_at": "2025-08-15T00:00:00", "property_id": 151, "desired_date": "2025-09-01", "responded_at": "2025-08-18T00:00:00", "duration_days": 120, "application_id": 467}}	2026-04-10 20:49:17.624276
+666	\N	INSERT	messages	380	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от myname на объект \\"Новостройка\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 380, "to_user_id": 5, "from_user_id": null}}	2026-04-10 20:49:17.624276
+667	\N	INSERT	applications	468	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу арендовать апартаменты", "tenant_id": 15, "created_at": "2025-09-01T00:00:00", "property_id": 146, "desired_date": "2025-09-15", "responded_at": "2025-09-03T00:00:00", "duration_days": 60, "application_id": 468}}	2026-04-10 20:49:17.624276
+668	\N	INSERT	messages	381	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Крючкова Оксана Вячеславовна на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 381, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+669	\N	INSERT	applications	469	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Отклонено", "status": "rejected", "message": "Интересует море", "tenant_id": 17, "created_at": "2025-09-10T00:00:00", "property_id": 146, "desired_date": "2025-10-01", "responded_at": "2025-09-12T00:00:00", "duration_days": 30, "application_id": 469}}	2026-04-10 20:49:17.624276
+670	\N	INSERT	messages	382	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Феоктистов Глеб Юрьевич на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 382, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+671	\N	INSERT	applications	470	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу снять коттедж с бассейном", "tenant_id": 18, "created_at": "2025-10-01T00:00:00", "property_id": 149, "desired_date": "2025-10-15", "responded_at": "2025-10-04T00:00:00", "duration_days": 90, "application_id": 470}}	2026-04-10 20:49:17.624276
+672	\N	INSERT	messages	383	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Трунин Данила Сергеевич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 383, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+673	\N	INSERT	applications	471	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Интересует элитное жилье", "tenant_id": 19, "created_at": "2025-10-10T00:00:00", "property_id": 149, "desired_date": "2025-11-01", "responded_at": "2025-10-13T00:00:00", "duration_days": 180, "application_id": 471}}	2026-04-10 20:49:17.624276
+674	\N	INSERT	messages	384	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Ткаченко Дмитрий Евгеньевич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 384, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+675	\N	INSERT	applications	472	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Отклонено", "status": "rejected", "message": "Хочу снять дом", "tenant_id": 6, "created_at": "2025-11-01T00:00:00", "property_id": 152, "desired_date": "2025-11-15", "responded_at": "2025-11-03T00:00:00", "duration_days": 60, "application_id": 472}}	2026-04-10 20:49:17.624276
 257	\N	UPDATE	properties	167	{"table": "properties", "changes": {"area": {"new": 33.00, "old": 30.00}, "description": {"new": "Сдаем 1-комнатную квартиру площадью 33 м² расположенную по адресу Орехово-Зуево, 14б, снять за 20 000 руб. в месяц\\r\\nСдам 1-на комнатную квартиру В Московской области, городе Орехово-Зуево на улице Козлова дом 14Б.\\r\\n?Квартира расположена на 1 этаже 5-ти этажного кирпичного дома.\\r\\n?Есть вся необходимая для проживания мебель и техника.\\r\\n?Сдаётся на долгий срок порядочным и платежеспособным людям.\\r\\n?Более подробную информацию и актуальность объявления можно узнать по телефону", "old": "Студия для молодой семьи"}}, "old_data": {"area": 30.00, "city": "Орехово-Зуево", "price": 20000.00, "rooms": 1, "title": "Квартира в Орехово-Зуево", "status": "active", "address": "ул. Козлова, д. 20", "owner_id": 18, "created_at": "2026-03-10T20:27:37.442124", "description": "Студия для молодой семьи", "property_id": 167, "interval_pay": "month", "property_type": "apartment"}}	2026-03-24 21:08:34.360962
 259	\N	UPDATE	users	18	{"table": "users", "changes": {"user_type": {"new": "agent", "old": "tenant"}}, "old_data": {"email": "trunin.danila@mail.ru", "user_id": 18, "full_name": "Трунин Данила Сергеевич", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-10T20:22:23.818207", "contact_info": {"city": "Москва", "phone": "+7 (915) 456-78-90"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-03-24 21:14:43.334352
 261	\N	INSERT	messages	290	{"table": "messages", "action": "INSERT", "new_data": {"content": "привет", "is_read": false, "created_at": "2026-03-24T19:08:43.824993", "message_id": 290, "to_user_id": 12, "from_user_id": 4}}	2026-03-24 22:08:43.823355
@@ -1780,12 +1953,18 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 280	\N	UPDATE	applications	397	{"table": "applications", "changes": {"answer": {"new": "Ок хорошо! Спасибо за вашу заявку! Вы заселитесь в определенный вам срок.", "old": null}, "status": {"new": "approved", "old": "pending"}, "responded_at": {"new": "2026-03-24T22:34:35.275476", "old": null}}, "old_data": {"answer": null, "status": "pending", "message": "Нужно заселиться своевременно.", "tenant_id": 22, "created_at": "2026-03-24T22:31:08.842457", "property_id": 158, "desired_date": "2026-04-09", "responded_at": null, "duration_days": 180, "application_id": 397}}	2026-03-24 22:34:35.271181
 281	\N	UPDATE	messages	296	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Боев Владислав Максимович на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-24T22:31:08.798542", "message_id": 296, "to_user_id": 12, "from_user_id": null}}	2026-03-24 22:34:40.318411
 282	\N	UPDATE	messages	297	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Заявка одобрена** на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-24T22:34:35.271181", "message_id": 297, "to_user_id": 22, "from_user_id": null}}	2026-03-24 22:36:08.216163
+676	\N	INSERT	messages	385	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Тестовый пользователь на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 385, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
 284	\N	DELETE	applications	397	{"table": "applications", "action": "DELETE", "deleted_data": {"answer": "Ок хорошо! Спасибо за вашу заявку! Вы заселитесь в определенный вам срок.", "status": "approved", "message": "Нужно заселиться своевременно.", "tenant_id": 22, "created_at": "2026-03-24T22:31:08.842457", "property_id": 158, "desired_date": "2026-04-09", "responded_at": "2026-03-24T22:34:35.275476", "duration_days": 180, "application_id": 397}}	2026-03-24 22:44:35.839736
+677	\N	INSERT	applications	473	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Интересует участок", "tenant_id": 7, "created_at": "2025-11-10T00:00:00", "property_id": 152, "desired_date": "2025-12-01", "responded_at": "2025-11-13T00:00:00", "duration_days": 90, "application_id": 473}}	2026-04-10 20:49:17.624276
+678	\N	INSERT	messages	386	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Мария Васильева на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 386, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+679	\N	INSERT	applications	474	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу снять квартиру на новый год", "tenant_id": 9, "created_at": "2025-12-01T00:00:00", "property_id": 150, "desired_date": "2025-12-25", "responded_at": "2025-12-03T00:00:00", "duration_days": 14, "application_id": 474}}	2026-04-10 20:49:17.624276
 288	\N	DELETE	messages	297	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "**Заявка одобрена** на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": true, "created_at": "2026-03-24T22:34:35.271181", "message_id": 297, "to_user_id": 22, "from_user_id": null}}	2026-03-24 22:45:43.371448
 289	\N	DELETE	users	22	{"table": "users", "action": "DELETE", "deleted_data": {"email": "itsvladik@mail.ru", "user_id": 22, "full_name": "Боев Владислав Максимович", "is_active": true, "user_type": "tenant", "avatar_url": "/static/uploads/avatars/cd39e374475a48fdaa36b34fcf15619e.jpg", "created_at": "2026-03-24T22:29:57.395651", "contact_info": {"inn": "1234567890", "city": "Ликино-Дулево ", "phone": "+79275767409", "passport": "1234098730", "birth_date": "2007-01-02"}, "password_hash": "99b8677f838fbaf31af989882d2a66a19c44a3dbcc30726638fa4bd8708c53dd"}}	2026-03-24 22:46:00.877199
 290	\N	INSERT	contracts	98	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-06-28", "created_at": "2026-03-24T22:46:49.952681", "start_date": "2026-03-30", "contract_id": 98, "owner_signed": false, "total_amount": 105000.00, "tenant_signed": false, "application_id": 340, "signing_status": "draft"}}	2026-03-24 22:46:49.952681
 291	\N	INSERT	messages	298	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка одобрена** на объект \\"Дом в тихом районе\\". Теперь подпишите договор на данный объект.", "is_read": false, "created_at": "2026-03-24T22:46:49.952681", "message_id": 298, "to_user_id": 17, "from_user_id": null}}	2026-03-24 22:46:49.952681
 292	\N	UPDATE	applications	340	{"table": "applications", "changes": {"answer": {"new": "Вы опоздали!", "old": null}, "status": {"new": "approved", "old": "pending"}, "desired_date": {"new": "2026-03-30", "old": "2025-09-26"}, "responded_at": {"new": "2026-03-24T22:46:49.954857", "old": null}, "duration_days": {"new": 90, "old": 516}}, "old_data": {"answer": null, "status": "pending", "message": "Хочу посмотреть объект в ближайшее время", "tenant_id": 17, "created_at": "2025-09-12T00:00:00", "property_id": 155, "desired_date": "2025-09-26", "responded_at": null, "duration_days": 516, "application_id": 340}}	2026-03-24 22:46:49.952681
+680	\N	INSERT	messages	387	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Боев Владислав Максимович на объект \\"Квартира в центре\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 387, "to_user_id": 4, "from_user_id": null}}	2026-04-10 20:49:17.624276
+681	\N	INSERT	applications	475	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Отклонено", "status": "rejected", "message": "Интересует квартира", "tenant_id": 11, "created_at": "2025-12-10T00:00:00", "property_id": 150, "desired_date": "2026-01-10", "responded_at": "2025-12-12T00:00:00", "duration_days": 30, "application_id": 475}}	2026-04-10 20:49:17.624276
 293	\N	UPDATE	messages	298	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Заявка одобрена** на объект \\"Дом в тихом районе\\". Теперь подпишите договор на данный объект.", "is_read": false, "created_at": "2026-03-24T22:46:49.952681", "message_id": 298, "to_user_id": 17, "from_user_id": null}}	2026-03-24 22:49:25.166707
 294	\N	INSERT	users	23	{"table": "users", "action": "INSERT", "new_data": {"email": "itsvladik@mail.ru", "user_id": 23, "full_name": "Боев Владислав Максимович", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-24T22:51:15.483786", "contact_info": {"inn": "1234567890", "phone": "+79256780912", "passport": "1234567890"}, "password_hash": "99b8677f838fbaf31af989882d2a66a19c44a3dbcc30726638fa4bd8708c53dd"}}	2026-03-24 22:51:15.486691
 295	\N	UPDATE	users	23	{"table": "users", "changes": {"avatar_url": {"new": "/static/uploads/avatars/9b20aa89e0104033bdf8b264299b0d3d.jpg", "old": null}}, "old_data": {"email": "itsvladik@mail.ru", "user_id": 23, "full_name": "Боев Владислав Максимович", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-24T22:51:15.483786", "contact_info": {"inn": "1234567890", "phone": "+79256780912", "passport": "1234567890"}, "password_hash": "99b8677f838fbaf31af989882d2a66a19c44a3dbcc30726638fa4bd8708c53dd"}}	2026-03-24 22:51:15.501142
@@ -1823,15 +2002,153 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 328	\N	INSERT	messages	306	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Арендатор Боев Владислав Максимович подписал договор** Д-100 на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-24T23:12:14.952387", "message_id": 306, "to_user_id": 12, "from_user_id": null}}	2026-03-24 23:12:14.952387
 329	\N	UPDATE	contracts	100	{"table": "contracts", "changes": {"tenant_signed": {"new": true, "old": false}, "signing_status": {"new": "signed", "old": "pending"}}, "old_data": {"end_date": "2027-04-09", "created_at": "2026-03-24T23:11:44.512702", "start_date": "2026-04-09", "contract_id": 100, "owner_signed": true, "total_amount": 325000.00, "tenant_signed": false, "application_id": 401, "signing_status": "pending"}}	2026-03-24 23:12:14.952387
 331	\N	INSERT	messages	307	{"table": "messages", "action": "INSERT", "new_data": {"content": "Спасибо за оперативное одобрение!", "is_read": false, "created_at": "2026-03-24T20:14:24.688206", "message_id": 307, "to_user_id": 12, "from_user_id": 24}}	2026-03-24 23:14:24.685971
+682	\N	INSERT	messages	388	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от myname на объект \\"Квартира в центре\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 388, "to_user_id": 4, "from_user_id": null}}	2026-04-10 20:49:17.624276
+683	\N	INSERT	applications	476	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу снять новостройку", "tenant_id": 13, "created_at": "2026-01-01T00:00:00", "property_id": 151, "desired_date": "2026-01-20", "responded_at": "2026-01-04T00:00:00", "duration_days": 90, "application_id": 476}}	2026-04-10 20:49:17.624276
+684	\N	INSERT	messages	389	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Чувага Роман Думитрувич на объект \\"Новостройка\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 389, "to_user_id": 5, "from_user_id": null}}	2026-04-10 20:49:17.624276
+685	\N	INSERT	applications	477	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Интересует квартира", "tenant_id": 15, "created_at": "2026-01-10T00:00:00", "property_id": 151, "desired_date": "2026-02-01", "responded_at": "2026-01-13T00:00:00", "duration_days": 120, "application_id": 477}}	2026-04-10 20:49:17.624276
+686	\N	INSERT	messages	390	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Крючкова Оксана Вячеславовна на объект \\"Новостройка\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 390, "to_user_id": 5, "from_user_id": null}}	2026-04-10 20:49:17.624276
+687	\N	INSERT	applications	478	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Отклонено", "status": "rejected", "message": "Хочу арендовать апартаменты", "tenant_id": 16, "created_at": "2026-02-01T00:00:00", "property_id": 146, "desired_date": "2026-02-15", "responded_at": "2026-02-03T00:00:00", "duration_days": 60, "application_id": 478}}	2026-04-10 20:49:17.624276
+688	\N	INSERT	messages	391	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Мазанов Илья Алексеевич на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 391, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+689	\N	INSERT	applications	479	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Интересует море", "tenant_id": 17, "created_at": "2026-02-10T00:00:00", "property_id": 146, "desired_date": "2026-03-01", "responded_at": "2026-02-13T00:00:00", "duration_days": 90, "application_id": 479}}	2026-04-10 20:49:17.624276
+690	\N	INSERT	messages	392	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Феоктистов Глеб Юрьевич на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 392, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+691	\N	INSERT	applications	480	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу снять коттедж", "tenant_id": 18, "created_at": "2026-03-01T00:00:00", "property_id": 149, "desired_date": "2026-03-15", "responded_at": "2026-03-04T00:00:00", "duration_days": 90, "application_id": 480}}	2026-04-10 20:49:17.624276
+692	\N	INSERT	messages	393	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Трунин Данила Сергеевич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 393, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
+693	\N	INSERT	applications	481	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Интересует бассейн", "tenant_id": 19, "created_at": "2026-03-10T00:00:00", "property_id": 149, "desired_date": "2026-04-01", "responded_at": "2026-03-13T00:00:00", "duration_days": 180, "application_id": 481}}	2026-04-10 20:49:17.624276
+694	\N	INSERT	messages	394	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Ткаченко Дмитрий Евгеньевич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 394, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:49:17.624276
 326	\N	UPDATE	messages	304	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Заявка одобрена** на объект \\"Коммерческое помещение ЛиАЗ\\". Теперь подпишите договор на данный объект.", "is_read": false, "created_at": "2026-03-24T23:11:44.512702", "message_id": 304, "to_user_id": 24, "from_user_id": null}}	2026-03-24 23:12:09.291768
 327	\N	UPDATE	messages	305	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-100 на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-24T23:11:58.084857", "message_id": 305, "to_user_id": 24, "from_user_id": null}}	2026-03-24 23:12:09.291768
 330	\N	UPDATE	messages	306	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Арендатор Боев Владислав Максимович подписал договор** Д-100 на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-24T23:12:14.952387", "message_id": 306, "to_user_id": 12, "from_user_id": null}}	2026-03-24 23:12:56.352586
 332	\N	UPDATE	messages	307	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "Спасибо за оперативное одобрение!", "is_read": false, "created_at": "2026-03-24T20:14:24.688206", "message_id": 307, "to_user_id": 12, "from_user_id": 24}}	2026-03-24 23:14:38.922145
+334	\N	UPDATE	properties	149	{"table": "properties", "changes": {"status": {"new": "draft", "old": "rented"}}, "old_data": {"area": 200.00, "city": "Геленджик", "price": 250000.00, "rooms": 5, "title": "Коттедж с бассейном", "status": "rented", "address": "с. Кабардинка, ул. Морская, д. 7", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Элитный коттедж с закрытой территорией и бассейном", "property_id": 149, "interval_pay": "month", "property_type": "house"}}	2026-03-27 20:46:43.052607
+335	\N	UPDATE	properties	149	{"table": "properties", "changes": {"status": {"new": "active", "old": "draft"}}, "old_data": {"area": 200.00, "city": "Геленджик", "price": 250000.00, "rooms": 5, "title": "Коттедж с бассейном", "status": "draft", "address": "с. Кабардинка, ул. Морская, д. 7", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Элитный коттедж с закрытой территорией и бассейном", "property_id": 149, "interval_pay": "month", "property_type": "house"}}	2026-03-27 20:46:47.861065
+695	\N	INSERT	applications	482	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Одобрено", "status": "approved", "message": "Хочу снять квартиру", "tenant_id": 6, "created_at": "2026-04-01T00:00:00", "property_id": 150, "desired_date": "2026-04-15", "responded_at": "2026-04-04T00:00:00", "duration_days": 90, "application_id": 482}}	2026-04-10 20:49:17.624276
+337	\N	DELETE	messages	304	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "**Заявка одобрена** на объект \\"Коммерческое помещение ЛиАЗ\\". Теперь подпишите договор на данный объект.", "is_read": true, "created_at": "2026-03-24T23:11:44.512702", "message_id": 304, "to_user_id": 24, "from_user_id": null}}	2026-03-27 21:18:36.991021
+338	\N	DELETE	messages	305	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-100 на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": true, "created_at": "2026-03-24T23:11:58.084857", "message_id": 305, "to_user_id": 24, "from_user_id": null}}	2026-03-27 21:18:36.991021
+339	\N	DELETE	messages	307	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "Спасибо за оперативное одобрение!", "is_read": true, "created_at": "2026-03-24T20:14:24.688206", "message_id": 307, "to_user_id": 12, "from_user_id": 24}}	2026-03-27 21:18:36.991021
+340	\N	DELETE	messages	308	{"table": "messages", "action": "DELETE", "deleted_data": {"content": "Не за что!", "is_read": false, "created_at": "2026-03-24T20:14:45.392742", "message_id": 308, "to_user_id": 24, "from_user_id": 12}}	2026-03-27 21:18:36.991021
+341	\N	DELETE	contracts	100	{"table": "contracts", "action": "DELETE", "deleted_data": {"end_date": "2027-04-09", "created_at": "2026-03-24T23:11:44.512702", "start_date": "2026-04-09", "contract_id": 100, "owner_signed": true, "total_amount": 325000.00, "tenant_signed": true, "application_id": 401, "signing_status": "signed"}}	2026-03-27 21:18:36.991021
+342	\N	DELETE	applications	401	{"table": "applications", "action": "DELETE", "deleted_data": {"answer": "Хорошо! Спасибо", "status": "approved", "message": "Быстрее!", "tenant_id": 24, "created_at": "2026-03-24T23:10:41.946118", "property_id": 158, "desired_date": "2026-04-09", "responded_at": "2026-03-24T23:11:44.515434", "duration_days": 365, "application_id": 401}}	2026-03-27 21:18:36.991021
+343	\N	DELETE	users	24	{"table": "users", "action": "DELETE", "deleted_data": {"email": "itsvladik@mail.ru", "user_id": 24, "full_name": "Боев Владислав Максимович", "is_active": true, "user_type": "tenant", "avatar_url": "/static/uploads/avatars/95ae76f77fb24244bbc2c00f487250ee.jpg", "created_at": "2026-03-24T23:09:25.868861", "contact_info": {"inn": "4245343430", "city": "Ликино-Дулево ", "phone": "+79252034567", "passport": "1234567890", "birth_date": "2007-01-02"}, "password_hash": "99b8677f838fbaf31af989882d2a66a19c44a3dbcc30726638fa4bd8708c53dd"}}	2026-03-27 21:18:36.991021
+344	\N	INSERT	users	25	{"table": "users", "action": "INSERT", "new_data": {"email": "itsvladik@mail.ru", "user_id": 25, "full_name": "Боев Владислав Максимович", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-27T22:01:45.539274", "contact_info": {"inn": "1234567890", "phone": "+79267890023", "passport": "1234567890"}, "password_hash": "99b8677f838fbaf31af989882d2a66a19c44a3dbcc30726638fa4bd8708c53dd"}}	2026-03-27 22:01:45.542943
+349	\N	UPDATE	messages	309	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Боев Владислав Максимович на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-27T22:02:40.913157", "message_id": 309, "to_user_id": 12, "from_user_id": null}}	2026-03-27 22:04:01.201823
+345	\N	UPDATE	users	25	{"table": "users", "changes": {"avatar_url": {"new": "/static/uploads/avatars/3295d84691364b5b9ab9895bd273437d.jpg", "old": null}}, "old_data": {"email": "itsvladik@mail.ru", "user_id": 25, "full_name": "Боев Владислав Максимович", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-27T22:01:45.539274", "contact_info": {"inn": "1234567890", "phone": "+79267890023", "passport": "1234567890"}, "password_hash": "99b8677f838fbaf31af989882d2a66a19c44a3dbcc30726638fa4bd8708c53dd"}}	2026-03-27 22:01:45.592784
+346	\N	UPDATE	users	25	{"table": "users", "changes": {"contact_info": {"new": {"inn": "123456789012", "city": "Ликино-Дулево ", "phone": "+79267890023", "passport": "1234567890", "birth_date": "2007-01-02"}, "old": {"inn": "1234567890", "phone": "+79267890023", "passport": "1234567890"}}}, "old_data": {"email": "itsvladik@mail.ru", "user_id": 25, "full_name": "Боев Владислав Максимович", "is_active": true, "user_type": "tenant", "avatar_url": "/static/uploads/avatars/3295d84691364b5b9ab9895bd273437d.jpg", "created_at": "2026-03-27T22:01:45.539274", "contact_info": {"inn": "1234567890", "phone": "+79267890023", "passport": "1234567890"}, "password_hash": "99b8677f838fbaf31af989882d2a66a19c44a3dbcc30726638fa4bd8708c53dd"}}	2026-03-27 22:02:09.343073
+347	\N	INSERT	applications	402	{"table": "applications", "action": "INSERT", "new_data": {"answer": null, "status": "pending", "message": "Нужно оперативное одобрение", "tenant_id": 25, "created_at": "2026-03-27T22:02:40.92516", "property_id": 158, "desired_date": "2026-04-09", "responded_at": null, "duration_days": 180, "application_id": 402}}	2026-03-27 22:02:40.913157
+348	\N	INSERT	messages	309	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Боев Владислав Максимович на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-27T22:02:40.913157", "message_id": 309, "to_user_id": 12, "from_user_id": null}}	2026-03-27 22:02:40.913157
+353	\N	INSERT	messages	311	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-101 на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-27T22:04:37.397925", "message_id": 311, "to_user_id": 25, "from_user_id": null}}	2026-03-27 22:04:37.397925
+354	\N	UPDATE	contracts	101	{"table": "contracts", "changes": {"owner_signed": {"new": true, "old": false}, "signing_status": {"new": "pending", "old": "draft"}}, "old_data": {"end_date": "2026-10-06", "created_at": "2026-03-27T22:04:23.188632", "start_date": "2026-04-09", "contract_id": 101, "owner_signed": false, "total_amount": 150000.00, "tenant_signed": false, "application_id": 402, "signing_status": "draft"}}	2026-03-27 22:04:37.397925
+696	\N	INSERT	messages	395	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Тестовый пользователь на объект \\"Квартира в центре\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 395, "to_user_id": 4, "from_user_id": null}}	2026-04-10 20:49:17.624276
+697	\N	INSERT	applications	483	{"table": "applications", "action": "INSERT", "new_data": {"answer": "Отклонено", "status": "rejected", "message": "Интересует центр", "tenant_id": 7, "created_at": "2026-04-10T00:00:00", "property_id": 150, "desired_date": "2026-05-01", "responded_at": "2026-04-13T00:00:00", "duration_days": 120, "application_id": 483}}	2026-04-10 20:49:17.624276
+698	\N	INSERT	messages	396	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Мария Васильева на объект \\"Квартира в центре\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 396, "to_user_id": 4, "from_user_id": null}}	2026-04-10 20:49:17.624276
+699	\N	INSERT	contracts	138	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2025-07-14", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-04-15", "contract_id": 138, "owner_signed": true, "total_amount": 465000.00, "tenant_signed": true, "application_id": 458, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+700	\N	INSERT	contracts	139	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2025-09-28", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-06-01", "contract_id": 139, "owner_signed": true, "total_amount": 620000.00, "tenant_signed": true, "application_id": 459, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+701	\N	INSERT	contracts	140	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2025-11-15", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-05-20", "contract_id": 140, "owner_signed": true, "total_amount": 1500000.00, "tenant_signed": true, "application_id": 460, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+702	\N	INSERT	contracts	141	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-06-14", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-06-15", "contract_id": 141, "owner_signed": true, "total_amount": 3041750.00, "tenant_signed": true, "application_id": 461, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+703	\N	INSERT	contracts	142	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2025-10-28", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-07-01", "contract_id": 142, "owner_signed": true, "total_amount": 504000.00, "tenant_signed": true, "application_id": 462, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+704	\N	INSERT	contracts	143	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2025-10-07", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-07-10", "contract_id": 143, "owner_signed": true, "total_amount": 252000.00, "tenant_signed": true, "application_id": 463, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+705	\N	INSERT	contracts	144	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2025-11-12", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-08-15", "contract_id": 144, "owner_signed": true, "total_amount": 225000.00, "tenant_signed": true, "application_id": 464, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+706	\N	INSERT	contracts	145	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2025-12-29", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-09-01", "contract_id": 145, "owner_signed": true, "total_amount": 300000.00, "tenant_signed": true, "application_id": 465, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+350	\N	INSERT	contracts	101	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-10-06", "created_at": "2026-03-27T22:04:23.188632", "start_date": "2026-04-09", "contract_id": 101, "owner_signed": false, "total_amount": 150000.00, "tenant_signed": false, "application_id": 402, "signing_status": "draft"}}	2026-03-27 22:04:23.188632
+351	\N	INSERT	messages	310	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка одобрена** на объект \\"Коммерческое помещение ЛиАЗ\\". Теперь подпишите договор на данный объект.", "is_read": false, "created_at": "2026-03-27T22:04:23.188632", "message_id": 310, "to_user_id": 25, "from_user_id": null}}	2026-03-27 22:04:23.188632
+352	\N	UPDATE	applications	402	{"table": "applications", "changes": {"answer": {"new": "Хорошо! Я поняла ваше предложение", "old": null}, "status": {"new": "approved", "old": "pending"}, "responded_at": {"new": "2026-03-27T22:04:23.19202", "old": null}}, "old_data": {"answer": null, "status": "pending", "message": "Нужно оперативное одобрение", "tenant_id": 25, "created_at": "2026-03-27T22:02:40.92516", "property_id": 158, "desired_date": "2026-04-09", "responded_at": null, "duration_days": 180, "application_id": 402}}	2026-03-27 22:04:23.188632
+355	\N	UPDATE	messages	310	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Заявка одобрена** на объект \\"Коммерческое помещение ЛиАЗ\\". Теперь подпишите договор на данный объект.", "is_read": false, "created_at": "2026-03-27T22:04:23.188632", "message_id": 310, "to_user_id": 25, "from_user_id": null}}	2026-03-27 22:06:30.022988
+356	\N	UPDATE	messages	311	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-101 на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-27T22:04:37.397925", "message_id": 311, "to_user_id": 25, "from_user_id": null}}	2026-03-27 22:06:30.022988
+357	\N	INSERT	messages	312	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Арендатор Боев Владислав Максимович подписал договор** Д-101 на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-27T22:06:37.983033", "message_id": 312, "to_user_id": 12, "from_user_id": null}}	2026-03-27 22:06:37.983033
+358	\N	UPDATE	contracts	101	{"table": "contracts", "changes": {"tenant_signed": {"new": true, "old": false}, "signing_status": {"new": "signed", "old": "pending"}}, "old_data": {"end_date": "2026-10-06", "created_at": "2026-03-27T22:04:23.188632", "start_date": "2026-04-09", "contract_id": 101, "owner_signed": true, "total_amount": 150000.00, "tenant_signed": false, "application_id": 402, "signing_status": "pending"}}	2026-03-27 22:06:37.983033
+359	\N	UPDATE	messages	312	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Арендатор Боев Владислав Максимович подписал договор** Д-101 на объект \\"Коммерческое помещение ЛиАЗ\\"", "is_read": false, "created_at": "2026-03-27T22:06:37.983033", "message_id": 312, "to_user_id": 12, "from_user_id": null}}	2026-03-27 22:06:58.20374
+360	\N	INSERT	messages	313	{"table": "messages", "action": "INSERT", "new_data": {"content": "<img src=x onerror=alert('XSS')>", "is_read": false, "created_at": "2026-03-31T19:30:40.706979", "message_id": 313, "to_user_id": 4, "from_user_id": 12}}	2026-03-31 22:30:40.705023
+361	\N	INSERT	messages	314	{"table": "messages", "action": "INSERT", "new_data": {"content": "НОВАЯ ЖАЛОБА НА ОБЪЕКТ\\n\\nОтправитель: Соловьёва Юлия Сергеевна\\nОбъект: Квартира в центре (ID: 150)\\nПричина: Фальшивый объект\\nОписание: Нет объекта такого\\n\\nДата: 2026-04-01 20:36:02.350919+03", "is_read": false, "created_at": "2026-04-01T20:36:02.350919", "message_id": 314, "to_user_id": 1, "from_user_id": 12}}	2026-04-01 20:36:02.350919
+362	12	REPORT	property	150	{"reason": "fake", "description": "Нет объекта такого", "is_anonymous": false}	2026-04-01 20:36:02.350919
+363	\N	INSERT	messages	315	{"table": "messages", "action": "INSERT", "new_data": {"content": "НОВАЯ ЖАЛОБА НА ОБЪЕКТ\\n\\nОтправитель: Соловьёва Юлия Сергеевна\\nОбъект: Квартира в центре (ID: 150)\\nПричина: Фальшивый объект\\nОписание: Не соответствует действительности\\n\\nДата: 2026-04-01 20:36:31.665771+03", "is_read": false, "created_at": "2026-04-01T20:36:31.665771", "message_id": 315, "to_user_id": 1, "from_user_id": 12}}	2026-04-01 20:36:31.665771
+364	12	REPORT	property	150	{"reason": "fake", "description": "Не соответствует действительности", "is_anonymous": false}	2026-04-01 20:36:31.665771
+365	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Севастополь", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-04 15:49:22.135383
+366	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Севастополь", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Севастополь", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-04 15:49:33.688466
+367	\N	UPDATE	messages	314	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "НОВАЯ ЖАЛОБА НА ОБЪЕКТ\\n\\nОтправитель: Соловьёва Юлия Сергеевна\\nОбъект: Квартира в центре (ID: 150)\\nПричина: Фальшивый объект\\nОписание: Нет объекта такого\\n\\nДата: 2026-04-01 20:36:02.350919+03", "is_read": false, "created_at": "2026-04-01T20:36:02.350919", "message_id": 314, "to_user_id": 1, "from_user_id": 12}}	2026-04-04 21:04:39.285077
+368	\N	UPDATE	messages	315	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "НОВАЯ ЖАЛОБА НА ОБЪЕКТ\\n\\nОтправитель: Соловьёва Юлия Сергеевна\\nОбъект: Квартира в центре (ID: 150)\\nПричина: Фальшивый объект\\nОписание: Не соответствует действительности\\n\\nДата: 2026-04-01 20:36:31.665771+03", "is_read": false, "created_at": "2026-04-01T20:36:31.665771", "message_id": 315, "to_user_id": 1, "from_user_id": 12}}	2026-04-04 21:04:39.285077
+369	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-04 21:06:49.304183
+370	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-04 21:24:17.287243
+371	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-04 21:26:04.087721
+372	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-04 21:27:42.822721
+373	12	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-04 22:00:49.529838
+374	12	INSERT	messages	316	{"table": "messages", "action": "INSERT", "new_data": {"content": "Я слышу", "is_read": false, "created_at": "2026-04-04T19:13:00.992101", "message_id": 316, "to_user_id": 17, "from_user_id": 12}}	2026-04-04 22:13:00.98626
+375	12	UPDATE	properties	146	{"table": "properties", "changes": {"description": {"new": "Студия в первой линии от моря, отличный вариант для отдыха. Все для божественного удовольствия.", "old": "Студия в первой линии от моря, отличный вариант для отдыха"}}, "old_data": {"area": 35.00, "city": "Сочи", "price": 155000.00, "rooms": 1, "title": "Апартаменты у моря", "status": "active", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Студия в первой линии от моря, отличный вариант для отдыха", "property_id": 146, "interval_pay": "month", "property_type": "apartment"}}	2026-04-04 22:15:06.447426
+390	12	DELETE	properties	174	{"table": "properties", "action": "DELETE", "deleted_data": {"area": 33.00, "city": "пв", "price": 234.00, "rooms": 3, "title": "выапа", "status": "draft", "address": "апввпп", "owner_id": 12, "created_at": "2026-04-10T16:28:45.138642", "description": "вава", "property_id": 174, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 19:29:16.296112
+376	12	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789011", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-05 15:14:56.348834
+377	\N	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789011", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789011", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Орехово-Зуево", "phone": "+79066784783", "passport": "4621789011", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-05 15:19:58.042767
+378	1	UPDATE	users	1	{"table": "users", "changes": {"contact_info": {"new": {"inn": "2556647474", "city": "Орехово-Зуево", "phone": "+7 (999) 123-45-68", "passport": "1234567890", "birth_date": "2000-01-02"}, "old": {"inn": "2556647474", "city": "Орехово-Зуево", "phone": "+7 (999) 123-45-67", "passport": "1234567890", "birth_date": "2000-01-02"}}}, "old_data": {"email": "admin@rentease.ru", "user_id": 1, "full_name": "Администратор Системы", "is_active": true, "user_type": "admin", "avatar_url": "/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg", "created_at": "2026-02-13T21:58:34.325669", "contact_info": {"inn": "2556647474", "city": "Орехово-Зуево", "phone": "+7 (999) 123-45-67", "passport": "1234567890", "birth_date": "2000-01-02"}, "password_hash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"}}	2026-04-06 23:16:24.928511
+379	\N	UPDATE	properties	133	{"table": "properties", "changes": {"status": {"new": "rented", "old": "active"}}, "old_data": {"area": 200.00, "city": "д. Давыдово", "price": 85000.00, "rooms": 5, "title": "Дом с участком", "status": "active", "address": "ул. Полевая, д. 10", "owner_id": 4, "created_at": "2026-02-24T12:00:00", "description": "Коттедж 200м2 с участком 15 соток", "property_id": 133, "interval_pay": "month", "property_type": "house"}}	2026-04-09 22:29:53.971262
+380	25	INSERT	applications	403	{"table": "applications", "action": "INSERT", "new_data": {"answer": null, "status": "pending", "message": "", "tenant_id": 25, "created_at": "2026-04-09T22:30:23.81453", "property_id": 152, "desired_date": "2026-05-09", "responded_at": null, "duration_days": 56, "application_id": 403}}	2026-04-09 22:30:23.798337
+381	25	INSERT	messages	317	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Боев Владислав Максимович на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-09T22:30:23.798337", "message_id": 317, "to_user_id": 12, "from_user_id": null}}	2026-04-09 22:30:23.798337
+382	\N	UPDATE	properties	152	{"table": "properties", "changes": {"status": {"new": "rented", "old": "active"}}, "old_data": {"area": 95.00, "city": "Орехово-Зуево", "price": 18000.00, "rooms": 3, "title": "Дом с участком", "status": "active", "address": "ул. Садовая, д. 25", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Частный дом с большим участком", "property_id": 152, "interval_pay": "month", "property_type": "house"}}	2026-04-09 22:32:29.413039
+383	\N	UPDATE	properties	140	{"table": "properties", "changes": {"status": {"new": "archived", "old": "active"}}, "old_data": {"area": 32.00, "city": "Ялта", "price": 45000.00, "rooms": 1, "title": "Студия в новостройке", "status": "active", "address": "ул. Киевская, д. 45", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Уютная студия в новом ЖК с закрытой территорией", "property_id": 140, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 19:04:42.375369
+384	12	UPDATE	properties	140	{"table": "properties", "changes": {"status": {"new": "active", "old": "archived"}}, "old_data": {"area": 32.00, "city": "Ялта", "price": 45000.00, "rooms": 1, "title": "Студия в новостройке", "status": "archived", "address": "ул. Киевская, д. 45", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Уютная студия в новом ЖК с закрытой территорией", "property_id": 140, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 19:04:49.083674
+385	\N	UPDATE	properties	140	{"table": "properties", "changes": {"status": {"new": "archived", "old": "active"}}, "old_data": {"area": 32.00, "city": "Ялта", "price": 45000.00, "rooms": 1, "title": "Студия в новостройке", "status": "active", "address": "ул. Киевская, д. 45", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Уютная студия в новом ЖК с закрытой территорией", "property_id": 140, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 19:08:22.143493
+386	12	UPDATE	properties	140	{"table": "properties", "changes": {"status": {"new": "active", "old": "archived"}}, "old_data": {"area": 32.00, "city": "Ялта", "price": 45000.00, "rooms": 1, "title": "Студия в новостройке", "status": "archived", "address": "ул. Киевская, д. 45", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Уютная студия в новом ЖК с закрытой территорией", "property_id": 140, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 19:08:32.079536
+387	\N	UPDATE	messages	317	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Боев Владислав Максимович на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-09T22:30:23.798337", "message_id": 317, "to_user_id": 12, "from_user_id": null}}	2026-04-10 19:10:43.681605
+388	12	UPDATE	properties	143	{"table": "properties", "changes": {"price": {"new": 70010.00, "old": 70000.00}}, "old_data": {"area": 60.00, "city": "Севастополь", "price": 70000.00, "rooms": 2, "title": "Коммерческое помещение", "status": "active", "address": "пр. Нахимова, д. 12", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Помещение свободного назначения в центре города", "property_id": 143, "interval_pay": "month", "property_type": "commercial"}}	2026-04-10 19:22:38.530346
+389	12	INSERT	properties	174	{"table": "properties", "action": "INSERT", "new_data": {"area": 33.00, "city": "пв", "price": 234.00, "rooms": 3, "title": "выапа", "status": "draft", "address": "апввпп", "owner_id": 12, "created_at": "2026-04-10T16:28:45.138642", "description": "вава", "property_id": 174, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 19:28:45.077738
+393	12	UPDATE	properties	175	{"table": "properties", "changes": {"status": {"new": "active", "old": "draft"}}, "old_data": {"area": 35.00, "city": "Сочи", "price": 155002.00, "rooms": 1, "title": "Апартаменты у моря", "status": "draft", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:09:21.995787
+397	12	UPDATE	properties	175	{"table": "properties", "changes": {"status": {"new": "active", "old": "archived"}}, "old_data": {"area": 35.00, "city": "Сочи", "price": 155002.00, "rooms": 1, "title": "Апартаменты у моря", "status": "archived", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:09:41.596894
+707	\N	INSERT	contracts	146	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2025-11-13", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-09-15", "contract_id": 146, "owner_signed": true, "total_amount": 465000.00, "tenant_signed": true, "application_id": 466, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+708	\N	INSERT	contracts	147	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-01-12", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-10-15", "contract_id": 147, "owner_signed": true, "total_amount": 750000.00, "tenant_signed": true, "application_id": 467, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+709	\N	INSERT	contracts	148	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-04-29", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-11-01", "contract_id": 148, "owner_signed": true, "total_amount": 1500000.00, "tenant_signed": true, "application_id": 468, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+710	\N	INSERT	contracts	149	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-02-27", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-12-01", "contract_id": 149, "owner_signed": true, "total_amount": 450000.00, "tenant_signed": true, "application_id": 469, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+711	\N	INSERT	contracts	150	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-01-07", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2025-12-25", "contract_id": 150, "owner_signed": true, "total_amount": 350000.00, "tenant_signed": true, "application_id": 470, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+712	\N	INSERT	contracts	151	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-04-19", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2026-01-20", "contract_id": 151, "owner_signed": true, "total_amount": 225000.00, "tenant_signed": true, "application_id": 471, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+713	\N	INSERT	contracts	152	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-05-31", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2026-02-01", "contract_id": 152, "owner_signed": true, "total_amount": 300000.00, "tenant_signed": true, "application_id": 472, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+714	\N	INSERT	contracts	153	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-05-29", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2026-03-01", "contract_id": 153, "owner_signed": true, "total_amount": 465000.00, "tenant_signed": true, "application_id": 473, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+715	\N	INSERT	contracts	154	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-06-12", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2026-03-15", "contract_id": 154, "owner_signed": true, "total_amount": 750000.00, "tenant_signed": true, "application_id": 474, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+716	\N	INSERT	contracts	155	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-07-13", "created_at": "2026-04-10T20:49:17.624276", "start_date": "2026-04-15", "contract_id": 155, "owner_signed": true, "total_amount": 252000.00, "tenant_signed": true, "application_id": 475, "signing_status": "signed"}}	2026-04-10 20:49:17.624276
+391	12	INSERT	properties	175	{"table": "properties", "action": "INSERT", "new_data": {"area": 35.00, "city": "Сочи", "price": 155000.00, "rooms": 1, "title": "Апартаменты у моря", "status": "draft", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:09:04.131629
+717	\N	UPDATE	messages	371	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Тестовый пользователь на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 371, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+394	12	UPDATE	properties	175	{"table": "properties", "changes": {"status": {"new": "archived", "old": "active"}}, "old_data": {"area": 35.00, "city": "Сочи", "price": 155002.00, "rooms": 1, "title": "Апартаменты у моря", "status": "active", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:09:28.260939
+718	\N	UPDATE	messages	372	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Мария Васильева на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 372, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+719	\N	UPDATE	messages	373	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от myname на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 373, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+720	\N	UPDATE	messages	374	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Чувага Роман Думитрувич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 374, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+721	\N	UPDATE	messages	375	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Крючкова Оксана Вячеславовна на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 375, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+722	\N	UPDATE	messages	376	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Мазанов Илья Алексеевич на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 376, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+723	\N	UPDATE	messages	381	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Крючкова Оксана Вячеславовна на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 381, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+724	\N	UPDATE	messages	382	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Феоктистов Глеб Юрьевич на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 382, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+725	\N	UPDATE	messages	383	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Трунин Данила Сергеевич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 383, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+726	\N	UPDATE	messages	384	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Ткаченко Дмитрий Евгеньевич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 384, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+727	\N	UPDATE	messages	385	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Тестовый пользователь на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 385, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+728	\N	UPDATE	messages	386	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Мария Васильева на объект \\"Дом с участком\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 386, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+729	\N	UPDATE	messages	391	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Мазанов Илья Алексеевич на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 391, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+730	\N	UPDATE	messages	392	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Феоктистов Глеб Юрьевич на объект \\"Апартаменты у моря\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 392, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+731	\N	UPDATE	messages	393	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Трунин Данила Сергеевич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 393, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+392	12	UPDATE	properties	175	{"table": "properties", "changes": {"price": {"new": 155002.00, "old": 155000.00}}, "old_data": {"area": 35.00, "city": "Сочи", "price": 155000.00, "rooms": 1, "title": "Апартаменты у моря", "status": "draft", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:09:11.67038
+395	12	UPDATE	properties	175	{"table": "properties", "changes": {"status": {"new": "active", "old": "archived"}}, "old_data": {"area": 35.00, "city": "Сочи", "price": 155002.00, "rooms": 1, "title": "Апартаменты у моря", "status": "archived", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:09:31.163167
+732	\N	UPDATE	messages	394	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Ткаченко Дмитрий Евгеньевич на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T20:49:17.624276", "message_id": 394, "to_user_id": 12, "from_user_id": null}}	2026-04-10 20:50:03.154629
+398	12	UPDATE	properties	175	{"table": "properties", "changes": {"area": {"new": 33.00, "old": 35.00}}, "old_data": {"area": 35.00, "city": "Сочи", "price": 155002.00, "rooms": 1, "title": "Апартаменты у моря", "status": "active", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:09:47.400246
+400	12	DELETE	properties	175	{"table": "properties", "action": "DELETE", "deleted_data": {"area": 33.00, "city": "Сочи", "price": 155002.00, "rooms": 1, "title": "Апартаменты у моря", "status": "archived", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:10:23.340831
+396	12	UPDATE	properties	175	{"table": "properties", "changes": {"status": {"new": "archived", "old": "active"}}, "old_data": {"area": 35.00, "city": "Сочи", "price": 155002.00, "rooms": 1, "title": "Апартаменты у моря", "status": "active", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:09:34.165437
+399	12	UPDATE	properties	175	{"table": "properties", "changes": {"status": {"new": "archived", "old": "active"}}, "old_data": {"area": 33.00, "city": "Сочи", "price": 155002.00, "rooms": 1, "title": "Апартаменты у моря", "status": "active", "address": "ул. Курортный проспект, д. 110", "owner_id": 12, "created_at": "2026-04-10T17:09:04.197615", "description": "", "property_id": 175, "interval_pay": "month", "property_type": "apartment"}}	2026-04-10 20:10:14.770342
+401	\N	UPDATE	properties	129	{"table": "properties", "changes": {"status": {"new": "active", "old": "rented"}}, "old_data": {"area": 95.00, "city": "Авсюнино", "price": 65000.00, "rooms": 3, "title": "Таунхаус", "status": "rented", "address": "ул. Спортивная, д. 10", "owner_id": 2, "created_at": "2026-02-18T15:50:00", "description": "Двухуровневый таунхаус с террасой", "property_id": 129, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:29:41.980133
+402	\N	UPDATE	properties	152	{"table": "properties", "changes": {"status": {"new": "active", "old": "rented"}}, "old_data": {"area": 95.00, "city": "Орехово-Зуево", "price": 18000.00, "rooms": 3, "title": "Дом с участком", "status": "rented", "address": "ул. Садовая, д. 25", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Частный дом с большим участком", "property_id": 152, "interval_pay": "month", "property_type": "house"}}	2026-04-10 20:29:41.980133
+733	\N	UPDATE	users	17	{"table": "users", "changes": {"avatar_url": {"new": "/static/uploads/avatars/gleb.jfif", "old": null}}, "old_data": {"email": "feoktistov.gleb@mail.ru", "user_id": 17, "full_name": "Феоктистов Глеб Юрьевич", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-10T20:22:23.818207", "contact_info": {"city": "Москва", "phone": "+7 (903) 345-67-89", "birth_date": "2007-10-26"}, "password_hash": "405ffaf7e22ebe8ba27999b01b3cf095e870255abdd3d64b5387f0f649c4d15a"}}	2026-04-10 21:09:30.982341
+734	\N	UPDATE	users	15	{"table": "users", "changes": {"avatar_url": {"new": "/static/uploads/avatars/ksenia.jfif", "old": null}}, "old_data": {"email": "kruchkova.oksana@mail.ru", "user_id": 15, "full_name": "Крючкова Оксана Вячеславовна", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-10T20:22:23.818207", "contact_info": {"city": "Москва", "phone": "+7 (916) 123-45-67"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 21:11:43.693613
+735	\N	UPDATE	users	16	{"table": "users", "changes": {"avatar_url": {"new": "/static/uploads/avatars/ilya.jpg", "old": null}}, "old_data": {"email": "mazanov.ilya@mail.ru", "user_id": 16, "full_name": "Мазанов Илья Алексеевич", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-10T20:22:23.818207", "contact_info": {"city": "Москва", "phone": "+7 (925) 234-56-78"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 21:15:27.201659
+736	\N	UPDATE	messages	115	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "Договорились, напишите за час до прихода", "is_read": false, "created_at": "2025-06-16T14:37:14.951329", "message_id": 115, "to_user_id": 7, "from_user_id": 12}}	2026-04-10 21:17:18.808474
+738	12	INSERT	contracts	156	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-10-30", "created_at": "2026-04-10T22:35:02.826654", "start_date": "2026-04-13", "contract_id": 156, "owner_signed": false, "total_amount": 1750000.00, "tenant_signed": false, "application_id": 374, "signing_status": "draft"}}	2026-04-10 22:35:02.826654
+739	12	UPDATE	properties	149	{"table": "properties", "changes": {"status": {"new": "blocked", "old": "active"}}, "old_data": {"area": 200.00, "city": "Геленджик", "price": 250000.00, "rooms": 5, "title": "Коттедж с бассейном", "status": "active", "address": "с. Кабардинка, ул. Морская, д. 7", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Элитный коттедж с закрытой территорией и бассейном", "property_id": 149, "interval_pay": "month", "property_type": "house"}}	2026-04-10 22:35:02.826654
+740	12	INSERT	messages	397	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка одобрена** на объект \\"Коттедж с бассейном\\". Теперь подпишите договор на данный объект.", "is_read": false, "created_at": "2026-04-10T22:35:02.826654", "message_id": 397, "to_user_id": 19, "from_user_id": null}}	2026-04-10 22:35:02.826654
+741	12	UPDATE	applications	374	{"table": "applications", "changes": {"answer": {"new": "Извините, я кол-во дней уменьшила", "old": null}, "status": {"new": "approved", "old": "pending"}, "desired_date": {"new": "2026-04-13", "old": "2026-01-29"}, "responded_at": {"new": "2026-04-10T22:35:02.832176", "old": null}, "duration_days": {"new": 200, "old": 213}}, "old_data": {"answer": null, "status": "pending", "message": "Отличный вариант, готов обсудить условия", "tenant_id": 19, "created_at": "2026-01-15T00:00:00", "property_id": 149, "desired_date": "2026-01-29", "responded_at": null, "duration_days": 213, "application_id": 374}}	2026-04-10 22:35:02.826654
+747	19	INSERT	messages	399	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Арендатор Ткаченко Дмитрий Евгеньевич подписал договор** Д-156 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T22:48:26.388299", "message_id": 399, "to_user_id": 12, "from_user_id": null}}	2026-04-10 22:48:26.388299
+748	19	UPDATE	contracts	156	{"table": "contracts", "changes": {"tenant_signed": {"new": true, "old": false}, "signing_status": {"new": "signed", "old": "pending"}}, "old_data": {"end_date": "2026-10-30", "created_at": "2026-04-10T22:35:02.826654", "start_date": "2026-04-13", "contract_id": 156, "owner_signed": true, "total_amount": 1750000.00, "tenant_signed": false, "application_id": 374, "signing_status": "pending"}}	2026-04-10 22:48:26.388299
+737	\N	UPDATE	messages	185	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "Привет! Как дела?", "is_read": false, "created_at": "2026-01-04T18:39:26.638369", "message_id": 185, "to_user_id": 7, "from_user_id": 3}}	2026-04-10 21:17:27.312957
+742	12	INSERT	messages	398	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-156 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T22:39:01.950664", "message_id": 398, "to_user_id": 19, "from_user_id": null}}	2026-04-10 22:39:01.950664
+743	12	UPDATE	contracts	156	{"table": "contracts", "changes": {"owner_signed": {"new": true, "old": false}, "signing_status": {"new": "pending", "old": "draft"}}, "old_data": {"end_date": "2026-10-30", "created_at": "2026-04-10T22:35:02.826654", "start_date": "2026-04-13", "contract_id": 156, "owner_signed": false, "total_amount": 1750000.00, "tenant_signed": false, "application_id": 374, "signing_status": "draft"}}	2026-04-10 22:39:01.950664
+744	\N	UPDATE	applications	356	{"table": "applications", "changes": {"tenant_id": {"new": 15, "old": 16}}, "old_data": {"answer": "Можем встретиться для обсуждения", "status": "approved", "message": "Хочу посмотреть объект в ближайшее время", "tenant_id": 16, "created_at": "2025-11-15T00:00:00", "property_id": 130, "desired_date": "2025-11-29", "responded_at": "2025-11-20T00:00:00", "duration_days": 407, "application_id": 356}}	2026-04-10 22:46:51.39183
+745	\N	UPDATE	applications	356	{"table": "applications", "changes": {"tenant_id": {"new": 16, "old": 15}}, "old_data": {"answer": "Можем встретиться для обсуждения", "status": "approved", "message": "Хочу посмотреть объект в ближайшее время", "tenant_id": 15, "created_at": "2025-11-15T00:00:00", "property_id": 130, "desired_date": "2025-11-29", "responded_at": "2025-11-20T00:00:00", "duration_days": 407, "application_id": 356}}	2026-04-10 22:47:12.181925
+746	\N	UPDATE	applications	356	{"table": "applications", "changes": {"tenant_id": {"new": 15, "old": 16}}, "old_data": {"answer": "Можем встретиться для обсуждения", "status": "approved", "message": "Хочу посмотреть объект в ближайшее время", "tenant_id": 16, "created_at": "2025-11-15T00:00:00", "property_id": 130, "desired_date": "2025-11-29", "responded_at": "2025-11-20T00:00:00", "duration_days": 407, "application_id": 356}}	2026-04-10 22:48:20.869618
+749	\N	UPDATE	applications	356	{"table": "applications", "changes": {"tenant_id": {"new": 16, "old": 15}}, "old_data": {"answer": "Можем встретиться для обсуждения", "status": "approved", "message": "Хочу посмотреть объект в ближайшее время", "tenant_id": 15, "created_at": "2025-11-15T00:00:00", "property_id": 130, "desired_date": "2025-11-29", "responded_at": "2025-11-20T00:00:00", "duration_days": 407, "application_id": 356}}	2026-04-10 22:48:56.542957
+599	\N	INSERT	applications	457	{"table": "applications", "action": "INSERT", "new_data": {"answer": null, "status": "pending", "message": null, "tenant_id": 1, "created_at": "2026-04-10T20:48:33.195602", "property_id": 2, "desired_date": null, "responded_at": null, "duration_days": null, "application_id": 457}}	2026-04-10 20:48:33.195602
+600	\N	INSERT	messages	370	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Администратор Системы на объект \\"Студия в новостройке\\"", "is_read": false, "created_at": "2026-04-10T20:48:33.195602", "message_id": 370, "to_user_id": 2, "from_user_id": null}}	2026-04-10 20:48:33.195602
 \.
 
 
 --
--- TOC entry 5039 (class 0 OID 32868)
+-- TOC entry 5040 (class 0 OID 32868)
 -- Dependencies: 228
 -- Data for Name: contracts; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -1916,12 +2233,31 @@ COPY public.contracts (contract_id, application_id, start_date, end_date, total_
 95	395	2026-05-09	2026-08-07	750000.00	cancelled	2026-03-14 19:35:16.672442	f	t
 97	353	2026-03-21	2026-09-17	1500000.00	signed	2026-03-15 21:04:53.015646	t	t
 94	392	2026-03-18	2026-10-15	2000000.00	signed	2026-03-14 03:33:32.932517	t	t
-100	401	2026-04-09	2027-04-09	325000.00	signed	2026-03-24 23:11:44.512702	t	t
+101	402	2026-04-09	2026-10-06	150000.00	signed	2026-03-27 22:04:23.188632	t	t
+138	458	2025-04-15	2025-07-14	465000.00	signed	2026-04-10 20:49:17.624276	t	t
+139	459	2025-06-01	2025-09-28	620000.00	signed	2026-04-10 20:49:17.624276	t	t
+140	460	2025-05-20	2025-11-15	1500000.00	signed	2026-04-10 20:49:17.624276	t	t
+141	461	2025-06-15	2026-06-14	3041750.00	signed	2026-04-10 20:49:17.624276	t	t
+154	474	2026-03-15	2026-06-12	750000.00	signed	2026-04-10 20:49:17.624276	t	t
+155	475	2026-04-15	2026-07-13	252000.00	signed	2026-04-10 20:49:17.624276	t	t
+142	462	2025-07-01	2025-10-28	504000.00	signed	2026-06-10 20:49:17.624276	t	t
+143	463	2025-07-10	2025-10-07	252000.00	signed	2026-07-10 20:49:17.624276	t	t
+144	464	2025-08-15	2025-11-12	225000.00	signed	2026-08-10 20:49:17.624276	t	t
+145	465	2025-09-01	2025-12-29	300000.00	signed	2026-08-10 20:49:17.624276	t	t
+146	466	2025-09-15	2025-11-13	465000.00	signed	2026-09-10 20:49:17.624276	t	t
+147	467	2025-10-15	2026-01-12	750000.00	signed	2026-10-10 20:49:17.624276	t	t
+148	468	2025-11-01	2026-04-29	1500000.00	signed	2025-10-10 20:49:17.624276	t	t
+149	469	2025-12-01	2026-02-27	450000.00	signed	2025-11-18 20:49:17.624276	t	t
+150	470	2025-12-25	2026-01-07	350000.00	signed	2025-12-24 20:49:17.624276	t	t
+151	471	2026-01-20	2026-04-19	225000.00	signed	2026-01-10 20:49:17.624276	t	t
+152	472	2026-02-01	2026-05-31	300000.00	signed	2026-02-10 20:49:17.624276	t	t
+153	473	2026-03-01	2026-05-29	465000.00	signed	2026-02-10 20:49:17.624276	t	t
+156	374	2026-04-13	2026-10-30	1750000.00	signed	2026-04-10 22:35:02.826654	t	t
 \.
 
 
 --
--- TOC entry 5041 (class 0 OID 32907)
+-- TOC entry 5042 (class 0 OID 32907)
 -- Dependencies: 230
 -- Data for Name: messages; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -2023,6 +2359,7 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 100	6	4	Здравствуйте! Когда можно подъехать на просмотр?	t	2025-06-20 02:44:57.851905
 101	4	6	Да, жду вас завтра в 15:00	t	2025-06-21 17:46:08.670229
 102	4	6	Ваша заявка одобрена! Можем приступать к оформлению договора.	t	2025-06-18 01:33:25.794262
+115	12	7	Договорились, напишите за час до прихода	t	2025-06-16 14:37:14.951329
 104	12	16	Договорились, напишите за час до прихода	t	2025-07-07 11:31:18.851645
 105	12	16	Ваша заявка одобрена! Можем приступать к оформлению договора.	t	2025-07-05 06:22:25.89875
 106	11	5	Могу ли я внести предоплату?	t	2025-07-13 08:22:42.946882
@@ -2033,7 +2370,7 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 111	15	18	Здравствуйте! Когда можно подъехать на просмотр?	t	2025-07-11 06:42:55.217941
 112	18	15	Да, жду вас завтра в 15:00	t	2025-07-11 09:49:12.088047
 113	18	15	Ваша заявка одобрена! Можем приступать к оформлению договора.	t	2025-07-11 08:39:07.357911
-115	12	7	Договорились, напишите за час до прихода	f	2025-06-16 14:37:14.951329
+185	3	7	Привет! Как дела?	t	2026-01-04 18:39:26.638369
 116	12	7	Ваша заявка одобрена! Можем приступать к оформлению договора.	t	2025-06-17 05:40:15.550206
 114	7	12	Могу ли я внести предоплату?	t	2025-06-16 07:29:20.079121
 117	15	18	Здравствуйте! Когда можно подъехать на просмотр?	f	2025-07-17 00:01:20.597764
@@ -2102,7 +2439,6 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 127	6	4	Хочу уточнить детали перед подписанием	t	2026-03-02 14:52:24.819384
 183	15	11	Видел новый объект в нашем районе?	t	2025-09-19 22:52:40.965106
 184	9	6	Есть вопросы по документам, можешь помочь?	f	2025-10-30 20:21:20.489922
-185	3	7	Привет! Как дела?	f	2026-01-04 18:39:26.638369
 188	19	6	Посоветуй хорошего агента по недвижимости	f	2025-03-23 20:09:46.204338
 189	16	14	Привет! Как дела?	t	2026-01-03 01:12:44.76113
 190	4	7	Сколько сейчас стоит аренда в центре?	f	2025-05-29 16:21:45.855766
@@ -2209,30 +2545,90 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 299	\N	12	**Новая заявка** от Боев Владислав Максимович на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-24 22:52:50.348143
 301	\N	12	**Новая заявка** от Боев Владислав Максимович на объект "Коммерческое помещение"	t	2026-03-24 22:58:32.034721
 303	\N	12	**Новая заявка** от Боев Владислав Максимович на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-24 23:10:41.943096
-304	\N	24	**Заявка одобрена** на объект "Коммерческое помещение ЛиАЗ". Теперь подпишите договор на данный объект.	t	2026-03-24 23:11:44.512702
-305	\N	24	**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-100 на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-24 23:11:58.084857
 306	\N	12	**Арендатор Боев Владислав Максимович подписал договор** Д-100 на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-24 23:12:14.952387
-307	24	12	Спасибо за оперативное одобрение!	t	2026-03-24 20:14:24.688206
-308	12	24	Не за что!	f	2026-03-24 20:14:45.392742
+309	\N	12	**Новая заявка** от Боев Владислав Максимович на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-27 22:02:40.913157
+310	\N	25	**Заявка одобрена** на объект "Коммерческое помещение ЛиАЗ". Теперь подпишите договор на данный объект.	t	2026-03-27 22:04:23.188632
+311	\N	25	**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-101 на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-27 22:04:37.397925
+370	\N	2	**Новая заявка** от Администратор Системы на объект "Студия в новостройке"	f	2026-04-10 20:48:33.195602
+312	\N	12	**Арендатор Боев Владислав Максимович подписал договор** Д-101 на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-27 22:06:37.983033
+313	12	4	<img src=x onerror=alert('XSS')>	f	2026-03-31 19:30:40.706979
+314	12	1	НОВАЯ ЖАЛОБА НА ОБЪЕКТ\n\nОтправитель: Соловьёва Юлия Сергеевна\nОбъект: Квартира в центре (ID: 150)\nПричина: Фальшивый объект\nОписание: Нет объекта такого\n\nДата: 2026-04-01 20:36:02.350919+03	t	2026-04-01 20:36:02.350919
+315	12	1	НОВАЯ ЖАЛОБА НА ОБЪЕКТ\n\nОтправитель: Соловьёва Юлия Сергеевна\nОбъект: Квартира в центре (ID: 150)\nПричина: Фальшивый объект\nОписание: Не соответствует действительности\n\nДата: 2026-04-01 20:36:31.665771+03	t	2026-04-01 20:36:31.665771
+316	12	17	Я слышу	f	2026-04-04 19:13:00.992101
+317	\N	12	**Новая заявка** от Боев Владислав Максимович на объект "Дом с участком"	t	2026-04-09 22:30:23.798337
+377	\N	4	**Новая заявка** от Феоктистов Глеб Юрьевич на объект "Квартира в центре"	f	2026-04-10 20:49:17.624276
+378	\N	4	**Новая заявка** от Трунин Данила Сергеевич на объект "Квартира в центре"	f	2026-04-10 20:49:17.624276
+379	\N	5	**Новая заявка** от Ткаченко Дмитрий Евгеньевич на объект "Новостройка"	f	2026-04-10 20:49:17.624276
+380	\N	5	**Новая заявка** от myname на объект "Новостройка"	f	2026-04-10 20:49:17.624276
+373	\N	12	**Новая заявка** от myname на объект "Коттедж с бассейном"	t	2026-04-10 20:49:17.624276
+387	\N	4	**Новая заявка** от Боев Владислав Максимович на объект "Квартира в центре"	f	2026-04-10 20:49:17.624276
+388	\N	4	**Новая заявка** от myname на объект "Квартира в центре"	f	2026-04-10 20:49:17.624276
+389	\N	5	**Новая заявка** от Чувага Роман Думитрувич на объект "Новостройка"	f	2026-04-10 20:49:17.624276
+390	\N	5	**Новая заявка** от Крючкова Оксана Вячеславовна на объект "Новостройка"	f	2026-04-10 20:49:17.624276
+395	\N	4	**Новая заявка** от Тестовый пользователь на объект "Квартира в центре"	f	2026-04-10 20:49:17.624276
+396	\N	4	**Новая заявка** от Мария Васильева на объект "Квартира в центре"	f	2026-04-10 20:49:17.624276
+371	\N	12	**Новая заявка** от Тестовый пользователь на объект "Апартаменты у моря"	t	2026-04-10 20:49:17.624276
+372	\N	12	**Новая заявка** от Мария Васильева на объект "Апартаменты у моря"	t	2026-04-10 20:49:17.624276
+374	\N	12	**Новая заявка** от Чувага Роман Думитрувич на объект "Коттедж с бассейном"	t	2026-04-10 20:49:17.624276
+375	\N	12	**Новая заявка** от Крючкова Оксана Вячеславовна на объект "Дом с участком"	t	2026-04-10 20:49:17.624276
+376	\N	12	**Новая заявка** от Мазанов Илья Алексеевич на объект "Дом с участком"	t	2026-04-10 20:49:17.624276
+381	\N	12	**Новая заявка** от Крючкова Оксана Вячеславовна на объект "Апартаменты у моря"	t	2026-04-10 20:49:17.624276
+382	\N	12	**Новая заявка** от Феоктистов Глеб Юрьевич на объект "Апартаменты у моря"	t	2026-04-10 20:49:17.624276
+383	\N	12	**Новая заявка** от Трунин Данила Сергеевич на объект "Коттедж с бассейном"	t	2026-04-10 20:49:17.624276
+384	\N	12	**Новая заявка** от Ткаченко Дмитрий Евгеньевич на объект "Коттедж с бассейном"	t	2026-04-10 20:49:17.624276
+385	\N	12	**Новая заявка** от Тестовый пользователь на объект "Дом с участком"	t	2026-04-10 20:49:17.624276
+386	\N	12	**Новая заявка** от Мария Васильева на объект "Дом с участком"	t	2026-04-10 20:49:17.624276
+391	\N	12	**Новая заявка** от Мазанов Илья Алексеевич на объект "Апартаменты у моря"	t	2026-04-10 20:49:17.624276
+392	\N	12	**Новая заявка** от Феоктистов Глеб Юрьевич на объект "Апартаменты у моря"	t	2026-04-10 20:49:17.624276
+393	\N	12	**Новая заявка** от Трунин Данила Сергеевич на объект "Коттедж с бассейном"	t	2026-04-10 20:49:17.624276
+394	\N	12	**Новая заявка** от Ткаченко Дмитрий Евгеньевич на объект "Коттедж с бассейном"	t	2026-04-10 20:49:17.624276
+397	\N	19	**Заявка одобрена** на объект "Коттедж с бассейном". Теперь подпишите договор на данный объект.	f	2026-04-10 22:35:02.826654
+399	\N	12	**Арендатор Ткаченко Дмитрий Евгеньевич подписал договор** Д-156 на объект "Коттедж с бассейном"	f	2026-04-10 22:48:26.388299
+398	\N	19	**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-156 на объект "Коттедж с бассейном"	f	2026-04-10 22:39:01.950664
 \.
 
 
 --
--- TOC entry 5033 (class 0 OID 32789)
+-- TOC entry 5034 (class 0 OID 32789)
 -- Dependencies: 222
 -- Data for Name: properties; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.properties (property_id, owner_id, title, description, address, city, property_type, area, rooms, price, interval_pay, status, created_at) FROM stdin;
 6	5	Квартира у метро	Уютная квартира в 5 минутах от метро, хороший ремонт, есть мебель	ул. Гагарина, д. 7	Екатеринбург	apartment	55.00	2	38000.00	month	active	2026-02-13 21:58:34.420669
+240	2	Премиум квартира в центре Москвы	Элитная квартира в историческом центре. Дизайнерский ремонт, панорамные окна, все коммуникации.	ул. Тверская, д. 15, кв. 45	Москва	apartment	120.00	3	150000.00	month	active	2026-04-10 20:49:17.624276
+241	2	Студия возле метро	Уютная студия в 3 минутах от метро. Подходит для одного человека или пары.	ул. Арбат, д. 10	Москва	apartment	28.00	1	55000.00	month	active	2026-04-10 20:49:17.624276
+242	2	Дом в Новой Москве	Современный таунхаус в экологически чистом районе. Своя парковка, участок 6 соток.	пос. Коммунарка, ул. Центральная, д. 5	Москва	house	180.00	4	250000.00	month	active	2026-04-10 20:49:17.624276
+243	4	Бизнес-центр офис	Офисное помещение в деловом центре Москвы. Полная отделка, кондиционирование.	ул. Правды, д. 26	Москва	commercial	85.00	3	200000.00	month	active	2026-04-10 20:49:17.624276
+244	5	Квартира с видом на город	Светлая квартира на высоком этаже. Отличный ремонт, бытовая техника.	пр-т Вернадского, д. 45, кв. 78	Москва	apartment	65.00	2	95000.00	month	active	2026-04-10 20:49:17.624276
+245	2	Лофт в центре	Стильный лофт для творческих людей. Высокие потолки, панорамные окна.	ул. Мясницкая, д. 30	Москва	apartment	95.00	2	180000.00	month	active	2026-04-10 20:49:17.624276
+246	4	Квартира на ВДНХ	Уютная квартира рядом с ВДНХ. Развитая инфраструктура, транспортная доступность.	ул. Космонавтов, д. 12, кв. 34	Москва	apartment	52.00	2	75000.00	month	active	2026-04-10 20:49:17.624276
+247	5	Дом в Строгино	Коттедж с участком в престижном районе. Своя инфраструктура, охрана.	ул. Исаковского, д. 8	Москва	house	220.00	5	350000.00	month	active	2026-04-10 20:49:17.624276
 5	4	Коммерческое помещение	Помещение свободного назначения на первом этаже жилого дома	пр. Мира, д. 32	Новосибирск	house	85.00	2	60000.00	month	active	2026-02-13 21:58:34.420669
+248	3	Квартира у Финского залива	Прекрасный вид на залив. Новый дом, современная планировка.	ул. Савушкина, д. 115, кв. 45	Санкт-Петербург	apartment	68.00	2	85000.00	month	active	2026-04-10 20:49:17.624276
+249	3	Дом в Комарово	Элитный дом в курортном районе. Участок 15 соток, лес рядом.	пос. Комарово, ул. Лесная, д. 10	Санкт-Петербург	house	160.00	4	300000.00	month	active	2026-04-10 20:49:17.624276
+250	4	Студия на Петроградке	Маленькая уютная студия в историческом районе.	ул. Ленина, д. 45	Санкт-Петербург	apartment	30.00	1	50000.00	month	active	2026-04-10 20:49:17.624276
+251	4	Офис на Васильевском	Помещение под офис на Васильевском острове. Хорошая транспортная доступность.	Средний пр-т, д. 85	Санкт-Петербург	commercial	55.00	2	95000.00	month	active	2026-04-10 20:49:17.624276
+252	3	Квартира у метро	Уютная квартира в 2 минутах от метро. Вся необходимая мебель.	ул. Восстания, д. 22, кв. 12	Санкт-Петербург	apartment	48.00	2	65000.00	month	active	2026-04-10 20:49:17.624276
+253	5	Квартира в центре Казани	Современная квартира в новостройке. Панорамные окна, дизайнерский ремонт.	ул. Баумана, д. 20, кв. 45	Казань	apartment	72.00	2	55000.00	month	active	2026-04-10 20:49:17.624276
+254	5	Дом в посёлке	Уютный дом с участком. Идеально для семьи с детьми.	пос. Столбище, ул. Дачная, д. 8	Казань	house	120.00	3	90000.00	month	active	2026-04-10 20:49:17.624276
+255	5	Студия у Кремля	Студия в историческом центре, вид на Кремль.	ул. Кремлёвская, д. 15	Казань	apartment	35.00	1	40000.00	month	active	2026-04-10 20:49:17.624276
+256	2	Коммерческое помещение	Помещение на первом этаже жилого дома. Под магазин или офис.	пр-т Победы, д. 100	Казань	commercial	70.00	2	60000.00	month	active	2026-04-10 20:49:17.624276
+257	2	Квартира в новостройке	Просторная квартира с отделкой. Сдан в эксплуатацию в 2025 году.	ул. Чистопольская, д. 45, кв. 78	Казань	apartment	85.00	3	70000.00	month	active	2026-04-10 20:49:17.624276
+258	2	Квартира в центре Екатеринбурга	Просторная квартира с отличным ремонтом. Вся необходимая техника.	ул. Ленина, д. 35, кв. 45	Екатеринбург	apartment	68.00	2	45000.00	month	active	2026-04-10 20:49:17.624276
 2	2	Студия в новостройке	Современная студия с дизайнерским ремонтом, есть всё для комфортного проживания	ул. Ленина, д. 15	Москва	apartment	32.00	1	35000.00	month	rented	2026-02-13 21:58:34.38867
 3	3	Загородный дом у озера	Двухэтажный дом с участком, камин, сауна, отличное место для отдыха	пос. Репино, ул. Лесная, д. 5	Ленинградская область	house	150.00	4	120000.00	month	active	2026-02-13 21:58:34.41967
 4	3	Квартира на Невском	Квартира в историческом центре, высокие потолки, лепнина, паркет	Невский пр., д. 25, кв. 12	Санкт-Петербург	apartment	95.00	3	75000.00	week	active	2026-02-13 21:58:34.41967
 1	2	Уютная квартира в центре	Тест аудита	ул. Тверская, д. 10, кв. 45	Москва	apartment	65.50	2	45000.00	month	rented	2026-02-13 21:58:34.38867
 137	2	Коммерческое помещение	fgr	rdf	Орехово-Зуево	house	22.00	3	2222.00	month	active	2026-03-09 08:01:27.051473
-146	12	Апартаменты у моря	Студия в первой линии от моря, отличный вариант для отдыха	ул. Курортный проспект, д. 110	Сочи	apartment	35.00	1	155000.00	month	active	2026-03-10 20:27:37.442124
-133	4	Дом с участком	Коттедж 200м2 с участком 15 соток	ул. Полевая, д. 10	д. Давыдово	house	200.00	5	85000.00	month	active	2026-02-24 12:00:00
+259	2	Дом в лесном массиве	Частный дом в экологически чистом районе. Участок 10 соток.	ул. Лесная, д. 15	Екатеринбург	house	140.00	4	120000.00	month	active	2026-04-10 20:49:17.624276
+260	5	Студия у парка	Уютная студия в шаговой доступности от парка.	ул. 8 Марта, д. 50	Екатеринбург	apartment	32.00	1	28000.00	month	active	2026-04-10 20:49:17.624276
+261	5	Офис в центре	Офисное помещение в деловом центре города.	пр-т Ленина, д. 25	Екатеринбург	commercial	45.00	1	35000.00	month	active	2026-04-10 20:49:17.624276
+262	2	Квартира в центре Краснодара	Современная квартира с дизайнерским ремонтом.	ул. Красная, д. 50, кв. 25	Краснодар	apartment	62.00	2	42000.00	month	active	2026-04-10 20:49:17.624276
+263	2	Дом в пригороде	Уютный дом с большим участком. Сад, баня, гараж.	ст. Елизаветинская, ул. Садовая, д. 10	Краснодар	house	110.00	3	80000.00	month	active	2026-04-10 20:49:17.624276
+264	4	Студия у парка	Уютная студия в новостройке рядом с парком.	ул. Стасова, д. 25	Краснодар	apartment	28.00	1	25000.00	month	active	2026-04-10 20:49:17.624276
+265	4	Коммерческое помещение	Помещение свободного назначения в центре города.	ул. Северная, д. 100	Краснодар	commercial	60.00	2	50000.00	month	active	2026-04-10 20:49:17.624276
+152	12	Дом с участком	Частный дом с большим участком	ул. Садовая, д. 25	Орехово-Зуево	house	95.00	3	18000.00	month	active	2026-03-10 20:27:37.442124
 130	4	Офисное помещение	Офис в бизнес-центре	ул. Комсомольская, д. 1А	Ликино-Дулёво	commercial	66.00	2	45000.00	month	active	2026-02-20 09:00:00
 128	4	Квартира в новостройке	ЖК "Северное сияние", сдан в 2025	ул. Строителей, д. 3, кв. 78	Москва	apartment	48.00	2	42000.00	month	active	2026-02-15 11:40:00
 131	3	Квартира в центре	2-комнатная квартира с видом на парк	ул. Советская, д. 82, кв. 23	Куровское	apartment	52.00	2	32000.00	month	active	2026-02-22 14:15:00
@@ -2240,17 +2636,18 @@ COPY public.properties (property_id, owner_id, title, description, address, city
 145	5	Дом в Красной Поляне	Шале в горах, камин, отличный вид на горнолыжные трассы	Красная Поляна, ул. Горная, д. 5	Сочи	house	550.00	6	210000.00	month	active	2026-03-10 20:27:37.442124
 139	5	Дом из Сваты-4	Двухэтажный дом с собственной террасой и видом на Чёрное море	пос. Массандра, ул. Виноградная, д. 25	Ялта	house	120.00	3	150000.00	month	active	2026-03-10 20:27:37.442124
 138	4	Апартаменты с видом на море	Просторные апартаменты в центре Ялты, 5 минут до набережной, евроремонт, вся техника	ул. Набережная, д. 15, кв. 8	Ялта	apartment	75.50	2	85000.00	month	active	2026-03-10 20:27:37.442124
-140	12	Студия в новостройке	Уютная студия в новом ЖК с закрытой территорией	ул. Киевская, д. 45	Ялта	apartment	32.00	1	45000.00	month	active	2026-03-10 20:27:37.442124
 141	4	Квартира с видом на бухту	Шикарный вид на Севастопольскую бухту, центр города	ул. Ленина, д. 30, кв. 12	Севастополь	apartment	85.00	3	95000.00	month	active	2026-03-10 20:27:37.442124
-143	12	Коммерческое помещение	Помещение свободного назначения в центре города	пр. Нахимова, д. 12	Севастополь	commercial	60.00	2	70000.00	month	active	2026-03-10 20:27:37.442124
 147	4	Квартира с видом на море	Центр Геленджика, вид на бухту, новая мебель	ул. Революционная, д. 45	Геленджик	apartment	68.00	2	65000.00	month	active	2026-03-10 20:27:37.442124
 151	5	Новостройка	Квартира в новом доме с отделкой	ул. Стаханова, д. 12, кв. 78	Орехово-Зуево	apartment	42.00	1	25000.00	month	active	2026-03-10 20:27:37.442124
 173	2	ytry	hrhrhhrt	hthth	thth	apartment	0.00	0	0.00	month	draft	2026-03-13 18:22:17.07505
-129	2	Таунхаус	Двухуровневый таунхаус с террасой	ул. Спортивная, д. 10	Авсюнино	house	95.00	3	65000.00	month	rented	2026-02-18 15:50:00
-149	12	Коттедж с бассейном	Элитный коттедж с закрытой территорией и бассейном	с. Кабардинка, ул. Морская, д. 7	Геленджик	house	200.00	5	250000.00	month	rented	2026-03-10 20:27:37.442124
+146	12	Апартаменты у моря	Студия в первой линии от моря, отличный вариант для отдыха. Все для божественного удовольствия.	ул. Курортный проспект, д. 110	Сочи	apartment	35.00	1	155000.00	month	active	2026-03-10 20:27:37.442124
 150	4	Квартира в центре	Хорошая квартира в центре города, развитая инфраструктура	ул. Ленина, д. 56, кв. 34	Орехово-Зуево	apartment	54.00	2	28000.00	month	active	2026-03-10 20:27:37.442124
-152	12	Дом с участком	Частный дом с большим участком	ул. Садовая, д. 25	Орехово-Зуево	house	95.00	3	18000.00	month	active	2026-03-10 20:27:37.442124
+140	12	Студия в новостройке	Уютная студия в новом ЖК с закрытой территорией	ул. Киевская, д. 45	Ялта	apartment	32.00	1	45000.00	month	active	2026-03-10 20:27:37.442124
 142	5	Таунхаус в Камышовой бухте	Частный дом в экологически чистом районе Камышового шоссе в центре соснового леса. Инжир, абрикос, миндаль, черешня, гранат, грецкий орех на территории двухэтажного дома с бассейном. Есть возможность достроить баню, гостевой домик. Ремонт свежий, продажа по причине незапланированного переезда. Каменный гараж под газель, электричество день-ночь трехфазное 15 квт каждая фаза. Торг!	ул. Камышовое шоссе, д. 7	Севастополь	house	95.00	3	110000.00	month	active	2026-03-10 20:27:37.442124
+143	12	Коммерческое помещение	Помещение свободного назначения в центре города	пр. Нахимова, д. 12	Севастополь	commercial	60.00	2	70010.00	month	active	2026-03-10 20:27:37.442124
+133	4	Дом с участком	Коттедж 200м2 с участком 15 соток	ул. Полевая, д. 10	д. Давыдово	house	200.00	5	85000.00	month	rented	2026-02-24 12:00:00
+129	2	Таунхаус	Двухуровневый таунхаус с террасой	ул. Спортивная, д. 10	Авсюнино	house	95.00	3	65000.00	month	active	2026-02-18 15:50:00
+266	4	Квартира в центре Орехово-Зуево	Просторная квартира с отличным ремонтом. Рядом школа и садик.	ул. Ленина, д. 30, кв. 15	Орехово-Зуево	apartment	65.00	2	23000.00	month	active	2026-04-10 20:49:17.624276
 155	12	Дом в тихом районе	Дом с небольшим участком	ул. Заречная, д. 7	Куровское	house	70.00	2	35000.00	month	active	2026-03-10 20:27:37.442124
 157	5	Двухкомнатная квартира	Светлая квартира с балконом	ул. Октябрьская, д. 7, кв. 56	Ликино-Дулёво	apartment	52.00	2	20000.00	month	active	2026-03-10 20:27:37.442124
 159	4	Квартира в центре Дрезны	Хороший вариант для семьи	ул. Комсомольская, д. 12, кв. 8	Дрезна	apartment	48.00	2	17000.00	month	active	2026-03-10 20:27:37.442124
@@ -2259,19 +2656,25 @@ COPY public.properties (property_id, owner_id, title, description, address, city
 162	4	Дом в деревне	Дом для загородного отдыха	ул. Центральная, д. 18	Авсюнино	house	55.00	2	22000.00	month	active	2026-03-10 20:27:37.442124
 163	5	Квартира	Квартира в двухэтажном доме	ул. Школьная, д. 3, кв. 5	Авсюнино	apartment	40.00	2	13000.00	month	active	2026-03-10 20:27:37.442124
 165	18	Элитная квартира в центре Ялты	Премиум-класс, дизайнерский ремонт, панорамные окна	ул. Рузвельта, д. 5	Ялта	apartment	95.00	3	120000.00	month	active	2026-03-10 20:27:37.442124
+267	4	Дом в Орехово-Зуево	Уютный дом с участком, гаражом и баней.	ул. Садовая, д. 8	Орехово-Зуево	house	90.00	3	35000.00	month	active	2026-04-10 20:49:17.624276
 164	14	Дача	Дачный домик с участком	СНТ "Берёзка", уч. 25	Авсюнино	house	45.00	1	15000.00	month	active	2026-03-10 20:27:37.442124
 156	4	Квартира рядом с заводом	Аренда 1-комнатной квартиры площадью 33 м² расположенной по адресу Орехово-Зуево, 6в, снять за 20 000 руб. в месяц\r\nСдам 1-на комнатную квартиру В Московской области, городе Ликино-Дулево на улице Ленина дом 6В.\r\n?Квартира расположена на 3 этаже 5-ти этажного дома.\r\n?Есть вся необходимая для проживания мебель и техника.\r\n?Сдаётся на долгий срок порядочным и платежеспособным людям.\r\n?Более подробную информацию и актуальность объявления можно узнать по телефону	ул. Ленина, д. 15, кв. 42	Ликино-Дулёво	apartment	33.00	1	20000.00	month	active	2026-03-10 20:27:37.442124
 154	5	Студия	Маленькая уютная студия	ул. Советская, д. 45	Куровское	apartment	28.00	1	15000.00	month	active	2026-03-10 20:27:37.442124
 144	4	Квартира в центре Сочи	Апартаменты в центре Сочи!!!\r\n"Гранд Карат" — 15 этаж\r\nПродаются просторные апартаменты общей площадью 130 квадратных метров.\r\n\r\nЭто предложение для тех, кому важны статус, комфорт и настоящая городская жизнь в самом сердце курорта.  \r\nЛокация: Реальный центр города – всё рядом: \r\nНабережная.\r\nМорпорт.\r\nЛучшие рестораны и кафе.\r\nБутики, деловая, а так же курортная инфраструктура в шаговой доступности.\r\nИдеальное место как для собственного проживания, так и для премиальной аренды.  Апартаменты  продуманного пространства. \r\nВысокий этаж- много света и воздуха.\r\nДизайнерский проект и премиальные, качественные материалы в свою очередь подчёркивают статус и индивидуальность.\r\nЭлитный, статусный дом.\r\nЗакрытая территория, контроль доступа. \r\nЛифты и презентабельные холлы, достойное окружение соседей.	ул. Орджоникидзе, д. 20	Сочи	apartment	120.00	3	300000.00	month	active	2026-03-10 20:27:37.442124
 167	18	Квартира в Орехово-Зуево	Сдаем 1-комнатную квартиру площадью 33 м² расположенную по адресу Орехово-Зуево, 14б, снять за 20 000 руб. в месяц\r\nСдам 1-на комнатную квартиру В Московской области, городе Орехово-Зуево на улице Козлова дом 14Б.\r\n?Квартира расположена на 1 этаже 5-ти этажного кирпичного дома.\r\n?Есть вся необходимая для проживания мебель и техника.\r\n?Сдаётся на долгий срок порядочным и платежеспособным людям.\r\n?Более подробную информацию и актуальность объявления можно узнать по телефону	ул. Козлова, д. 20	Орехово-Зуево	apartment	33.00	1	20000.00	month	active	2026-03-10 20:27:37.442124
 158	12	Коммерческое помещение ЛиАЗ	Помещение на 1-ом этаже отдельно стоящего здания свободного назначения . возможно под офис (офис + склад), пункт выдачи или склад, магазин, мастерская\r\nОтдельный вход с улицы.	ул. 1 Мая, 2	Ликино-Дулёво	commercial	51.00	1	25000.00	month	active	2026-03-10 20:27:37.442124
+268	5	Студия в новостройке	Современная студия с отделкой. Подходит для молодой пары.	ул. Горького, д. 15	Орехово-Зуево	apartment	30.00	1	18000.00	month	active	2026-04-10 20:49:17.624276
+269	5	Квартира у вокзала	Удобная квартира рядом с ж/д вокзалом. Хорошая транспортная доступность.	ул. Вокзальная, д. 10, кв. 45	Орехово-Зуево	apartment	48.00	2	20000.00	month	active	2026-04-10 20:49:17.624276
+270	4	Квартира в Ликино-Дулёво	Уютная квартира с хорошим ремонтом. Рядом магазины и остановки.	ул. Калинина, д. 20, кв. 8	Ликино-Дулёво	apartment	52.00	2	19000.00	month	active	2026-04-10 20:49:17.624276
 153	4	Квартира улучшенной планировки	Сдаем 2-комн квартиру в самом ЦЕНТРЕ г. Куровское, ул. Вокзальная, д. 8\r\nКвартира улучшенной планировки, площадью 75,4 кв.м.\r\nБольшая кухня 15 кв.м., комнаты изолированные по 19 кв.м. Просторный холл 16 кв.м.\r\nС/у раздельный. В плитке, трубы поменяны.\r\nКвартира на 6 этаже, в блоке есть лифт. Свой отдельный тамбур.\r\nХорошее состоянии. Остается практически вся мебель и техника.\r\nОкна выходят на 2 стороны, по типу «распашонка».\r\nБалкон из комнаты, застклен.\r\nВ доме установлен счетчик на отопление, что позволяет экономить на ком.платежах.\r\nСоседи все приличные.\r\nКвартира не требует доп.вложений. Можно заезжать и жить.\r\nВсе в шаговой доступности дет.сады, школа, спортивный комплекс, супермаркеты, салон красоты и пр.\r\nДо ж.д. станции Куровская 5 минут пешком.	ул. Вокзальная, д. 8, кв. 15	Куровское	apartment	75.00	2	26000.00	month	active	2026-03-10 20:27:37.442124
 166	18	Офис в Сочи	Cдaм пoд кoворкинг вecь салон крaсoты или места паpикмaхepa и мacтepа маникюра.\r\n\r\nMеcта пoд нoгтевыx мacтерoв, парикмaxepов и визажиста.\r\n\r\nЕcть oтдельнoе пoмещениe под склaд, преднaзначaлcя для склaдиpования обopудования, тoвара.\r\n\r\nЕсть peсeпшен, 4 места под мастера маникюра с установленными вытяжками Vеrаksо в столах, 1 место под визажиста и 2 места под парикмахера.\r\nЕсть диван для гостей, вешалка, телевизор, очиститель воздуха, зеркало в полный рост.\r\nЕсть лаборатория для мастера по волосам.\r\n\r\nТакже есть под общий ЛОФТ стиль 2 ограждающих стенки для потенциального мастера педикюра, но еще не успели поставить.\r\n\r\nНа этаже есть 2 туалета.\r\n\r\nВ здании есть Магнит и Магнит косметик.\r\nА также спортивный клуб “Медведь».	ул. Конституции, д. 10	Сочи	commercial	50.00	1	90000.00	month	active	2026-03-10 20:27:37.442124
+271	4	Дом в Ликино-Дулёво	Частный дом с участком. Идеально для загородного проживания.	ул. Заводская, д. 5	Ликино-Дулёво	house	70.00	2	25000.00	month	active	2026-04-10 20:49:17.624276
+149	12	Коттедж с бассейном	Элитный коттедж с закрытой территорией и бассейном	с. Кабардинка, ул. Морская, д. 7	Геленджик	house	200.00	5	250000.00	month	blocked	2026-03-10 20:27:37.442124
 \.
 
 
 --
--- TOC entry 5035 (class 0 OID 32819)
+-- TOC entry 5036 (class 0 OID 32819)
 -- Dependencies: 224
 -- Data for Name: property_photos; Type: TABLE DATA; Schema: public; Owner: postgres
 --
@@ -2296,35 +2699,35 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 7	5	/static/uploads/properties/5/photo5.png	t	1
 8	5	/static/uploads/properties/5/photo3.png	f	2
 9	6	/static/uploads/properties/6/photo6.png	t	1
+35	149	/static/uploads/properties/149/600034e7c99f415aabd3c1eb84fe77d0.jpg	t	1
 33	137	/static/uploads/properties/137/d3342f97cbdb412bb5e1a55e2cc71b76.png	t	1
 34	164	/static/uploads/properties/164/ce95ae6747504292973c6ef778ae0a29.jpg	t	1
-35	149	/static/uploads/properties/149/600034e7c99f415aabd3c1eb84fe77d0.jpg	t	1
-36	149	/static/uploads/properties/149/71280af538184d64bc1af727dcb30e25.jfif	f	2
-39	146	/static/uploads/properties/146/982b82b82d8b4dc8bdec29ad7b10397b.jpg	t	1
 40	161	/static/uploads/properties/161/3d8184bf18dd48e69453ad04ff3cba2f.jpg	t	1
-41	140	/static/uploads/properties/140/a4d10838570148a99f3c94fc2d71bb3d.jpg	t	1
 38	152	/static/uploads/properties/152/2c9c0a095ac34a728e8a07119894a7e9.jpg	f	2
 47	155	/static/uploads/properties/155/90d90eccae1f4d0397cb53edf18cb960.jpg	t	1
 48	155	/static/uploads/properties/155/4e1a78a2eb28489598cbacc1440e136d.jpg	f	2
 49	155	/static/uploads/properties/155/a647f67f1f6a4155b6b4e84c9d2a5aca.jpg	f	3
 37	152	/static/uploads/properties/152/c9b546353a75416bb4c376e3ad343d2f.jpg	t	1
+46	143	/static/uploads/properties/143/cc6c2e24ea9e410aa56a4e8843c18dfd.jpg	t	1
 76	151	/static/uploads/properties/151/a0af2fb10cfb4469a8b862831098d2ef.jpg	f	2
+39	146	/static/uploads/properties/146/982b82b82d8b4dc8bdec29ad7b10397b.jpg	t	1
+41	140	/static/uploads/properties/140/a4d10838570148a99f3c94fc2d71bb3d.jpg	t	1
 74	150	/static/uploads/properties/150/d3c25efe01484c88bd717e44353851e9.jpg	f	3
 68	173	/static/uploads/properties/173/5acba3f12b3047349c94bb2e43384398.png	t	1
 1	1	/static/uploads/properties/1/photo1.png	f	3
 2	1	/static/uploads/properties/1/photo2.png	t	1
 51	1	/static/uploads/properties/1/92a812ce3e75436f9aef4a06de2602c5.jpg	f	2
+42	143	/static/uploads/properties/143/ff65695953eb4d4fa4e8394082979f71.jpg	f	4
+36	149	/static/uploads/properties/149/71280af538184d64bc1af727dcb30e25.jfif	f	2
 69	173	/static/uploads/properties/173/d136589710b048c39854ab8ef32a2142.png	f	2
 77	151	/static/uploads/properties/151/8f93e0ae620f4e5daf8d15c333563728.jpeg	f	3
 70	173	/static/uploads/properties/173/7622d730209b4157a3add6d5449c1d34.png	f	3
+43	143	/static/uploads/properties/143/ad2dee14b1f54012ae2448afadc9c0eb.jpg	f	3
+44	143	/static/uploads/properties/143/9cd9341368f54e4bbb1849c56d92755f.jpg	f	2
 73	150	/static/uploads/properties/150/243d10fc6849489dbf6a707a00071625.jpg	f	2
 23	129	/static/uploads/properties/129/87f76a43730e4419b0e5aaf492809a0a.jpg	f	2
 50	129	/static/uploads/properties/129/5d7d8f6c24394bcc9a3e3ff3131bc52e.jpg	f	3
 72	150	/static/uploads/properties/150/b768299ea4b7428f91d9ce32a6acf8ce.jpg	t	1
-42	143	/static/uploads/properties/143/ff65695953eb4d4fa4e8394082979f71.jpg	f	4
-43	143	/static/uploads/properties/143/ad2dee14b1f54012ae2448afadc9c0eb.jpg	f	3
-44	143	/static/uploads/properties/143/9cd9341368f54e4bbb1849c56d92755f.jpg	f	2
-46	143	/static/uploads/properties/143/cc6c2e24ea9e410aa56a4e8843c18dfd.jpg	t	1
 78	151	/static/uploads/properties/151/dc014a09fc4f4ad3a2bbdd288c439b62.jpg	f	4
 75	151	/static/uploads/properties/151/bb9609913a284732a96d6009166e07a0.jpg	t	1
 79	145	/static/uploads/properties/145/1a0ad7af02ae473ca9f190451806386d.jpg	t	1
@@ -2442,100 +2845,114 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 
 
 --
--- TOC entry 5031 (class 0 OID 32770)
+-- TOC entry 5032 (class 0 OID 32770)
 -- Dependencies: 220
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.users (user_id, email, password_hash, avatar_url, full_name, user_type, contact_info, is_active, created_at) FROM stdin;
-12	qmett1@gmail.com	bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e	/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg	Соловьёва Юлия Сергеевна	agent	{"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789012", "birth_date": "2007-01-02"}	t	2026-03-10 20:02:42.602234
+15	kruchkova.oksana@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	/static/uploads/avatars/ksenia.jfif	Крючкова Оксана Вячеславовна	tenant	{"city": "Москва", "phone": "+7 (916) 123-45-67"}	t	2026-03-10 20:22:23.818207
+12	qmett1@gmail.com	bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e	/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg	Соловьёва Юлия Сергеевна	agent	{"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789011", "birth_date": "2007-01-02"}	t	2026-03-10 20:02:42.602234
 11	myname@mail.ru	51bb9ba1a4744cf288c7ae72b5360e505ab9406e33b0e0871b5e969bc25b4fc5	/static/uploads/avatars/e4cb200e7e9e421c929c984cd2752e99.jpg	myname	tenant	{"phone": "+79256789011", "birth_date": "2000-01-02"}	t	2026-02-24 20:55:16.895943
 14	aquanomore@gmail.com	4d49ca0443be87f6eff65f63508ff8f27954eaa051df0fe1baa318179439b60c	/static/uploads/avatars/cc5b1d5043b042538ddb8ad6ae566afb.jpg	Марков Иван Александрович	tenant	{"inn": "2556647474", "city": "Авсюнино", "phone": "+79267890023", "passport": "7818478395", "birth_date": "2007-05-17"}	f	2026-03-10 20:14:15.429596
 9	vladislav.boev02@mail.ru	952957cd67e20c467107f126a4c760937c516fe5d373eae39b6ea39bc16ae273	/static/uploads/avatars/1f7bf80f63bf4694bb1f80d1e5faaaca.jpg	Боев Владислав Максимович	tenant	{"inn": "4245343436", "city": "Орехово-Зуево", "phone": "+79964959391", "passport": "1234567890", "birth_date": "2007-01-02", "blocked_at": "2026-03-21T20:18:22.453702", "blocked_by": 1, "block_reason": "fraud", "block_comment": "Вы заблокированы за подозрительную активность.", "block_duration": "30"}	f	2026-02-23 13:16:20.738342
-18	trunin.danila@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Трунин Данила Сергеевич	agent	{"city": "Москва", "phone": "+7 (915) 456-78-90"}	t	2026-03-10 20:22:23.818207
+16	mazanov.ilya@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	/static/uploads/avatars/ilya.jpg	Мазанов Илья Алексеевич	tenant	{"city": "Москва", "phone": "+7 (925) 234-56-78"}	t	2026-03-10 20:22:23.818207
 4	owner.elena@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	\N	Елена Смирнова	owner	{"phone": "+7 (999) 456-78-90"}	t	2026-02-13 21:58:34.368669
+1	admin@rentease.ru	240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9	/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg	Администратор Системы	admin	{"inn": "2556647474", "city": "Орехово-Зуево", "phone": "+7 (999) 123-45-68", "passport": "1234567890", "birth_date": "2000-01-02"}	t	2026-02-13 21:58:34.325669
 7	tenant.maria@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Мария Васильева	tenant	{"phone": "+7 (999) 789-01-23"}	t	2026-02-13 21:58:34.368669
-17	feoktistov.gleb@mail.ru	405ffaf7e22ebe8ba27999b01b3cf095e870255abdd3d64b5387f0f649c4d15a	\N	Феоктистов Глеб Юрьевич	tenant	{"city": "Москва", "phone": "+7 (903) 345-67-89", "birth_date": "2007-10-26"}	t	2026-03-10 20:22:23.818207
-1	admin@rentease.ru	240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9	/static/uploads/avatars/1fe7541a1df541f4a6abadc71e67463e.jpg	Администратор Системы	admin	{"inn": "2556647474", "city": "Орехово-Зуево", "phone": "+7 (999) 123-45-67", "passport": "1234567890", "birth_date": "2000-01-02"}	t	2026-02-13 21:58:34.325669
+19	tkachenko.dmitry@mail.ru	797d2087cc0cd9349b1074b8397fab073ee116456d454bf1a2744d51fd674514	\N	Ткаченко Дмитрий Евгеньевич	tenant	{"city": "Москва", "phone": "+7 (926) 567-89-01"}	t	2026-03-10 20:22:23.818207
 13	romanchuvaga@mail.ru	22187723de93e99653b064fd991a2b8e35179394044dc819bc1664196495a946	/static/uploads/avatars/e67a261db88e461ea08e0cce179dd922.jpg	Чувага Роман Думитрувич	tenant	{"inn": "4245343436", "city": "Давыдово", "phone": "+79673257035", "passport": "3354680123", "birth_date": "2007-08-11"}	t	2026-03-10 20:08:58.847439
 2	agent.anna@rentease.ru	f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647	\N	Анна Петрова	agent	{"phone": "+7 (969) 234-56-78", "birth_date": "2001-01-02"}	t	2026-02-13 21:58:34.368669
-16	mazanov.ilya@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Мазанов Илья Алексеевич	tenant	{"city": "Москва", "phone": "+7 (925) 234-56-78"}	t	2026-03-10 20:22:23.818207
 3	agent.ivan@rentease.ru	f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647	\N	Иван Сидоров	agent	{"city": "Орехово-Зуево", "phone": "+7 (999) 345-67-89", "passport": "1234567890"}	t	2026-02-13 21:58:34.368669
 5	owner.dmitry@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	/static/uploads/avatars/d3881d4a1a76457eaf2280bd44657341.jpg	Дмитрий Иванов	owner	{"phone": "+7 (999) 567-89-01"}	t	2026-02-13 21:58:34.368669
-19	tkachenko.dmitry@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Ткаченко Дмитрий Евгеньевич	tenant	{"city": "Москва", "phone": "+7 (926) 567-89-01"}	t	2026-03-10 20:22:23.818207
-15	kruchkova.oksana@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Крючкова Оксана Вячеславовна	tenant	{"city": "Москва", "phone": "+7 (916) 123-45-67"}	t	2026-03-10 20:22:23.818207
+18	trunin.danila@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Трунин Данила Сергеевич	agent	{"city": "Москва", "phone": "+7 (915) 456-78-90"}	t	2026-03-10 20:22:23.818207
+17	feoktistov.gleb@mail.ru	405ffaf7e22ebe8ba27999b01b3cf095e870255abdd3d64b5387f0f649c4d15a	/static/uploads/avatars/gleb.jfif	Феоктистов Глеб Юрьевич	tenant	{"city": "Москва", "phone": "+7 (903) 345-67-89", "birth_date": "2007-10-26"}	t	2026-03-10 20:22:23.818207
 6	tenant.alex@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Тестовый пользователь	tenant	{"phone": "+7 (999) 678-90-12"}	t	2026-02-13 21:58:34.368669
-20	drozhzhina.sofia@rentease.ru	f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647	\N	Дрожжина София Юрьевна	agent	{"city": "Москва", "phone": "+7 (968) 678-90-12"}	t	2026-03-10 20:22:23.818207
 21	taranenko@rentease.ru	3147bfca52087a3ec7fddaf5c41b61505257ae66a4df61ad6c40fdb424c622ea	/static/uploads/avatars/f730e34f54024682ac271e381da8a3e7.png	Тараненко Иван Сергеевич	tenant	{"inn": "2556647474", "passport": "5667778883"}	t	2026-03-15 18:27:54.989358
-24	itsvladik@mail.ru	99b8677f838fbaf31af989882d2a66a19c44a3dbcc30726638fa4bd8708c53dd	/static/uploads/avatars/95ae76f77fb24244bbc2c00f487250ee.jpg	Боев Владислав Максимович	tenant	{"inn": "4245343430", "city": "Ликино-Дулево ", "phone": "+79252034567", "passport": "1234567890", "birth_date": "2007-01-02"}	t	2026-03-24 23:09:25.868861
+20	drozhzhina.sofia@rentease.ru	f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647	\N	Дрожжина София Юрьевна	agent	{"city": "Москва", "phone": "+7 (968) 678-90-12"}	t	2026-03-10 20:22:23.818207
+25	itsvladik@mail.ru	99b8677f838fbaf31af989882d2a66a19c44a3dbcc30726638fa4bd8708c53dd	/static/uploads/avatars/3295d84691364b5b9ab9895bd273437d.jpg	Боев Владислав Максимович	tenant	{"inn": "123456789012", "city": "Ликино-Дулево ", "phone": "+79267890023", "passport": "1234567890", "birth_date": "2007-01-02"}	t	2026-03-27 22:01:45.539274
+54	artem.kuznetsov@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Кузнецов Артем Дмитриевич	tenant	{"city": "Москва", "phone": "+7 (916) 111-22-33", "birth_date": "1995-03-15"}	t	2026-04-10 20:49:17.624276
+55	isvishu@gmail.com	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Шувалова Виктория Сергеевна	tenant	{"city": "Казань", "phone": "+7 (917) 222-33-44", "birth_date": "1992-07-22"}	t	2026-04-10 20:49:17.624276
+56	mikhail.sokolov@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Соколов Михаил Петрович	tenant	{"city": "Санкт-Петербург", "phone": "+7 (918) 333-44-55", "birth_date": "1988-11-08"}	t	2026-04-10 20:49:17.624276
+57	anna.morozova@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Морозова Анна Сергеевна	tenant	{"city": "Екатеринбург", "phone": "+7 (919) 444-55-66", "birth_date": "1998-01-30"}	t	2026-04-10 20:49:17.624276
+58	dmitry.volkov@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Волков Дмитрий Алексеевич	tenant	{"city": "Краснодар", "phone": "+7 (920) 555-66-77", "birth_date": "1993-05-12"}	t	2026-04-10 20:49:17.624276
+59	dccfeke@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Долгих Мария Ярославовна	tenant	{"city": "Орехово-Зуево", "phone": "+7 (921) 666-77-88", "birth_date": "1990-09-25"}	t	2026-04-10 20:49:17.624276
+60	ivan.egorov@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Егоров Иван Павлович	tenant	{"city": "Ликино-Дулёво", "phone": "+7 (922) 777-88-99", "birth_date": "1996-12-03"}	t	2026-04-10 20:49:17.624276
+61	maria.timofeeva@mail.ru	b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33	\N	Тимофеева Мария Константиновна	tenant	{"city": "Москва", "phone": "+7 (923) 888-99-00", "birth_date": "1994-04-18"}	t	2026-04-10 20:49:17.624276
+62	property.owner.kazan@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	\N	Сергеев Андрей Викторович	owner	{"inn": "123456789012", "city": "Казань", "phone": "+7 (987) 111-22-33", "passport": "1234567890"}	t	2026-04-10 20:49:17.624276
+63	property.owner.spb@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	\N	Михайлова Екатерина Дмитриевна	owner	{"inn": "234567890123", "city": "Санкт-Петербург", "phone": "+7 (987) 222-33-44", "passport": "2345678901"}	t	2026-04-10 20:49:17.624276
+64	property.owner.ekb@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	\N	Козлов Максим Юрьевич	owner	{"inn": "345678901234", "city": "Екатеринбург", "phone": "+7 (987) 333-44-55", "passport": "3456789012"}	t	2026-04-10 20:49:17.624276
+65	property.owner.krasnodar@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	\N	Новикова Татьяна Владимировна	owner	{"inn": "456789012345", "city": "Краснодар", "phone": "+7 (987) 444-55-66", "passport": "4567890123"}	t	2026-04-10 20:49:17.624276
+66	property.owner.likino@mail.ru	43a0d17178a9d26c9e0fe9a74b0b45e38d32f27aed887a008a54bf6e033bf7b9	\N	Морозов Илья Сергеевич	owner	{"inn": "567890123456", "city": "Ликино-Дулёво", "phone": "+7 (987) 555-66-77", "passport": "5678901234"}	t	2026-04-10 20:49:17.624276
+67	agent.nemtyreva@yandex.ru	f44d1ac9bf0c69b083380b86dbdf3b73797150e3cca4820ac399f7917e607647	\N	Немтырёва Ксения Антоновна	agent	{"city": "Москва", "phone": "+7 (968) 111-22-33"}	t	2026-04-10 20:49:17.624276
 \.
 
 
 --
--- TOC entry 5056 (class 0 OID 0)
+-- TOC entry 5057 (class 0 OID 0)
 -- Dependencies: 225
 -- Name: applications_application_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.applications_application_id_seq', 401, true);
-
-
---
--- TOC entry 5057 (class 0 OID 0)
--- Dependencies: 231
--- Name: audit_logs_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
---
-
-SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 333, true);
+SELECT pg_catalog.setval('public.applications_application_id_seq', 483, true);
 
 
 --
 -- TOC entry 5058 (class 0 OID 0)
--- Dependencies: 227
--- Name: contracts_contract_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+-- Dependencies: 231
+-- Name: audit_logs_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.contracts_contract_id_seq', 100, true);
+SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 749, true);
 
 
 --
 -- TOC entry 5059 (class 0 OID 0)
--- Dependencies: 229
--- Name: messages_message_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+-- Dependencies: 227
+-- Name: contracts_contract_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.messages_message_id_seq', 308, true);
+SELECT pg_catalog.setval('public.contracts_contract_id_seq', 156, true);
 
 
 --
 -- TOC entry 5060 (class 0 OID 0)
--- Dependencies: 221
--- Name: properties_property_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+-- Dependencies: 229
+-- Name: messages_message_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.properties_property_id_seq', 173, true);
+SELECT pg_catalog.setval('public.messages_message_id_seq', 399, true);
 
 
 --
 -- TOC entry 5061 (class 0 OID 0)
--- Dependencies: 223
--- Name: property_photos_photo_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+-- Dependencies: 221
+-- Name: properties_property_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.property_photos_photo_id_seq', 189, true);
+SELECT pg_catalog.setval('public.properties_property_id_seq', 271, true);
 
 
 --
 -- TOC entry 5062 (class 0 OID 0)
+-- Dependencies: 223
+-- Name: property_photos_photo_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.property_photos_photo_id_seq', 191, true);
+
+
+--
+-- TOC entry 5063 (class 0 OID 0)
 -- Dependencies: 219
 -- Name: users_user_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.users_user_id_seq', 24, true);
+SELECT pg_catalog.setval('public.users_user_id_seq', 67, true);
 
 
 --
--- TOC entry 4837 (class 2606 OID 32851)
+-- TOC entry 4838 (class 2606 OID 32851)
 -- Name: applications applications_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2544,7 +2961,7 @@ ALTER TABLE ONLY public.applications
 
 
 --
--- TOC entry 4851 (class 2606 OID 32941)
+-- TOC entry 4852 (class 2606 OID 32941)
 -- Name: audit_logs audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2553,7 +2970,7 @@ ALTER TABLE ONLY public.audit_logs
 
 
 --
--- TOC entry 4842 (class 2606 OID 32885)
+-- TOC entry 4843 (class 2606 OID 32885)
 -- Name: contracts contracts_application_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2562,7 +2979,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- TOC entry 4844 (class 2606 OID 32883)
+-- TOC entry 4845 (class 2606 OID 32883)
 -- Name: contracts contracts_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2571,7 +2988,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- TOC entry 4849 (class 2606 OID 32918)
+-- TOC entry 4850 (class 2606 OID 32918)
 -- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2580,7 +2997,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- TOC entry 4833 (class 2606 OID 32807)
+-- TOC entry 4834 (class 2606 OID 32807)
 -- Name: properties properties_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2589,7 +3006,7 @@ ALTER TABLE ONLY public.properties
 
 
 --
--- TOC entry 4835 (class 2606 OID 32831)
+-- TOC entry 4836 (class 2606 OID 32831)
 -- Name: property_photos property_photos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2598,7 +3015,7 @@ ALTER TABLE ONLY public.property_photos
 
 
 --
--- TOC entry 4829 (class 2606 OID 32787)
+-- TOC entry 4830 (class 2606 OID 32787)
 -- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2607,7 +3024,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4831 (class 2606 OID 32785)
+-- TOC entry 4832 (class 2606 OID 32785)
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2616,7 +3033,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4838 (class 1259 OID 82023)
+-- TOC entry 4839 (class 1259 OID 82023)
 -- Name: idx_applications_property_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2624,7 +3041,7 @@ CREATE INDEX idx_applications_property_id ON public.applications USING btree (pr
 
 
 --
--- TOC entry 4839 (class 1259 OID 82025)
+-- TOC entry 4840 (class 1259 OID 82025)
 -- Name: idx_applications_status; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2632,7 +3049,7 @@ CREATE INDEX idx_applications_status ON public.applications USING btree (status)
 
 
 --
--- TOC entry 4840 (class 1259 OID 82024)
+-- TOC entry 4841 (class 1259 OID 82024)
 -- Name: idx_applications_tenant_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2640,7 +3057,7 @@ CREATE INDEX idx_applications_tenant_id ON public.applications USING btree (tena
 
 
 --
--- TOC entry 4852 (class 1259 OID 82030)
+-- TOC entry 4853 (class 1259 OID 82030)
 -- Name: idx_audit_logs_created_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2648,7 +3065,7 @@ CREATE INDEX idx_audit_logs_created_at ON public.audit_logs USING btree (created
 
 
 --
--- TOC entry 4853 (class 1259 OID 82029)
+-- TOC entry 4854 (class 1259 OID 82029)
 -- Name: idx_audit_logs_user_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2656,7 +3073,7 @@ CREATE INDEX idx_audit_logs_user_id ON public.audit_logs USING btree (user_id);
 
 
 --
--- TOC entry 4845 (class 1259 OID 82026)
+-- TOC entry 4846 (class 1259 OID 82026)
 -- Name: idx_contracts_application_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2664,7 +3081,7 @@ CREATE INDEX idx_contracts_application_id ON public.contracts USING btree (appli
 
 
 --
--- TOC entry 4846 (class 1259 OID 82027)
+-- TOC entry 4847 (class 1259 OID 82027)
 -- Name: idx_messages_from_to; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2672,7 +3089,7 @@ CREATE INDEX idx_messages_from_to ON public.messages USING btree (from_user_id, 
 
 
 --
--- TOC entry 4847 (class 1259 OID 82028)
+-- TOC entry 4848 (class 1259 OID 82028)
 -- Name: idx_messages_is_read; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2680,7 +3097,7 @@ CREATE INDEX idx_messages_is_read ON public.messages USING btree (is_read);
 
 
 --
--- TOC entry 4868 (class 2620 OID 106907)
+-- TOC entry 4869 (class 2620 OID 106907)
 -- Name: applications trg_application_approved; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2688,7 +3105,7 @@ CREATE TRIGGER trg_application_approved AFTER UPDATE OF status ON public.applica
 
 
 --
--- TOC entry 4869 (class 2620 OID 106897)
+-- TOC entry 4870 (class 2620 OID 106897)
 -- Name: applications trg_application_status_change; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2696,7 +3113,7 @@ CREATE TRIGGER trg_application_status_change AFTER UPDATE OF status ON public.ap
 
 
 --
--- TOC entry 4870 (class 2620 OID 90267)
+-- TOC entry 4871 (class 2620 OID 90267)
 -- Name: applications trg_applications_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2704,7 +3121,7 @@ CREATE TRIGGER trg_applications_audit_delete BEFORE DELETE ON public.application
 
 
 --
--- TOC entry 4871 (class 2620 OID 90265)
+-- TOC entry 4872 (class 2620 OID 90265)
 -- Name: applications trg_applications_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2712,7 +3129,7 @@ CREATE TRIGGER trg_applications_audit_insert AFTER INSERT ON public.applications
 
 
 --
--- TOC entry 4872 (class 2620 OID 90266)
+-- TOC entry 4873 (class 2620 OID 90266)
 -- Name: applications trg_applications_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2720,7 +3137,7 @@ CREATE TRIGGER trg_applications_audit_update AFTER UPDATE ON public.applications
 
 
 --
--- TOC entry 4874 (class 2620 OID 98408)
+-- TOC entry 4875 (class 2620 OID 98408)
 -- Name: contracts trg_contract_cancel; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2728,7 +3145,7 @@ CREATE TRIGGER trg_contract_cancel AFTER UPDATE OF signing_status ON public.cont
 
 
 --
--- TOC entry 4875 (class 2620 OID 106899)
+-- TOC entry 4876 (class 2620 OID 106899)
 -- Name: contracts trg_contract_signature; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2736,7 +3153,7 @@ CREATE TRIGGER trg_contract_signature AFTER UPDATE OF tenant_signed, owner_signe
 
 
 --
--- TOC entry 4876 (class 2620 OID 90273)
+-- TOC entry 4877 (class 2620 OID 90273)
 -- Name: contracts trg_contracts_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2744,7 +3161,7 @@ CREATE TRIGGER trg_contracts_audit_delete BEFORE DELETE ON public.contracts FOR 
 
 
 --
--- TOC entry 4877 (class 2620 OID 90271)
+-- TOC entry 4878 (class 2620 OID 90271)
 -- Name: contracts trg_contracts_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2752,7 +3169,7 @@ CREATE TRIGGER trg_contracts_audit_insert AFTER INSERT ON public.contracts FOR E
 
 
 --
--- TOC entry 4878 (class 2620 OID 90272)
+-- TOC entry 4879 (class 2620 OID 90272)
 -- Name: contracts trg_contracts_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2760,7 +3177,7 @@ CREATE TRIGGER trg_contracts_audit_update AFTER UPDATE ON public.contracts FOR E
 
 
 --
--- TOC entry 4880 (class 2620 OID 90279)
+-- TOC entry 4881 (class 2620 OID 90279)
 -- Name: messages trg_messages_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2768,7 +3185,7 @@ CREATE TRIGGER trg_messages_audit_delete BEFORE DELETE ON public.messages FOR EA
 
 
 --
--- TOC entry 4881 (class 2620 OID 90277)
+-- TOC entry 4882 (class 2620 OID 90277)
 -- Name: messages trg_messages_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2776,7 +3193,7 @@ CREATE TRIGGER trg_messages_audit_insert AFTER INSERT ON public.messages FOR EAC
 
 
 --
--- TOC entry 4882 (class 2620 OID 90278)
+-- TOC entry 4883 (class 2620 OID 90278)
 -- Name: messages trg_messages_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2784,7 +3201,7 @@ CREATE TRIGGER trg_messages_audit_update AFTER UPDATE ON public.messages FOR EAC
 
 
 --
--- TOC entry 4873 (class 2620 OID 98405)
+-- TOC entry 4874 (class 2620 OID 98405)
 -- Name: applications trg_new_application_notify; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2792,7 +3209,7 @@ CREATE TRIGGER trg_new_application_notify AFTER INSERT ON public.applications FO
 
 
 --
--- TOC entry 4865 (class 2620 OID 90270)
+-- TOC entry 4866 (class 2620 OID 90270)
 -- Name: properties trg_properties_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2800,7 +3217,7 @@ CREATE TRIGGER trg_properties_audit_delete BEFORE DELETE ON public.properties FO
 
 
 --
--- TOC entry 4866 (class 2620 OID 90268)
+-- TOC entry 4867 (class 2620 OID 90268)
 -- Name: properties trg_properties_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2808,7 +3225,7 @@ CREATE TRIGGER trg_properties_audit_insert AFTER INSERT ON public.properties FOR
 
 
 --
--- TOC entry 4867 (class 2620 OID 90269)
+-- TOC entry 4868 (class 2620 OID 90269)
 -- Name: properties trg_properties_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2816,7 +3233,7 @@ CREATE TRIGGER trg_properties_audit_update AFTER UPDATE ON public.properties FOR
 
 
 --
--- TOC entry 4879 (class 2620 OID 82021)
+-- TOC entry 4880 (class 2620 OID 82021)
 -- Name: contracts trg_update_contract_status; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2824,7 +3241,7 @@ CREATE TRIGGER trg_update_contract_status BEFORE UPDATE OF tenant_signed, owner_
 
 
 --
--- TOC entry 4862 (class 2620 OID 90276)
+-- TOC entry 4863 (class 2620 OID 90276)
 -- Name: users trg_users_audit_delete; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2832,7 +3249,7 @@ CREATE TRIGGER trg_users_audit_delete BEFORE DELETE ON public.users FOR EACH ROW
 
 
 --
--- TOC entry 4863 (class 2620 OID 90274)
+-- TOC entry 4864 (class 2620 OID 90274)
 -- Name: users trg_users_audit_insert; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2840,7 +3257,7 @@ CREATE TRIGGER trg_users_audit_insert AFTER INSERT ON public.users FOR EACH ROW 
 
 
 --
--- TOC entry 4864 (class 2620 OID 90275)
+-- TOC entry 4865 (class 2620 OID 90275)
 -- Name: users trg_users_audit_update; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2848,7 +3265,7 @@ CREATE TRIGGER trg_users_audit_update AFTER UPDATE ON public.users FOR EACH ROW 
 
 
 --
--- TOC entry 4856 (class 2606 OID 32852)
+-- TOC entry 4857 (class 2606 OID 32852)
 -- Name: applications applications_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2857,7 +3274,7 @@ ALTER TABLE ONLY public.applications
 
 
 --
--- TOC entry 4857 (class 2606 OID 32857)
+-- TOC entry 4858 (class 2606 OID 32857)
 -- Name: applications applications_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2866,7 +3283,7 @@ ALTER TABLE ONLY public.applications
 
 
 --
--- TOC entry 4861 (class 2606 OID 32942)
+-- TOC entry 4862 (class 2606 OID 32942)
 -- Name: audit_logs audit_logs_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2875,7 +3292,7 @@ ALTER TABLE ONLY public.audit_logs
 
 
 --
--- TOC entry 4858 (class 2606 OID 32886)
+-- TOC entry 4859 (class 2606 OID 32886)
 -- Name: contracts contracts_application_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2884,7 +3301,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- TOC entry 4859 (class 2606 OID 32919)
+-- TOC entry 4860 (class 2606 OID 32919)
 -- Name: messages messages_from_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2893,7 +3310,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- TOC entry 4860 (class 2606 OID 32924)
+-- TOC entry 4861 (class 2606 OID 32924)
 -- Name: messages messages_to_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2902,7 +3319,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- TOC entry 4854 (class 2606 OID 32808)
+-- TOC entry 4855 (class 2606 OID 32808)
 -- Name: properties properties_owner_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2911,7 +3328,7 @@ ALTER TABLE ONLY public.properties
 
 
 --
--- TOC entry 4855 (class 2606 OID 32832)
+-- TOC entry 4856 (class 2606 OID 32832)
 -- Name: property_photos property_photos_property_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2919,11 +3336,11 @@ ALTER TABLE ONLY public.property_photos
     ADD CONSTRAINT property_photos_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(property_id) ON DELETE CASCADE;
 
 
--- Completed on 2026-03-24 23:24:10
+-- Completed on 2026-04-10 22:49:53
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict to8QUmIO0uaFxpalm5gWbUJYuIwSfET4LUIMSBSUXG5gabRMEqM73eB0PBvzosR
+\unrestrict aywm3wtLDoy5pUPyGB05W7kjeBmGZoYSY4eEoadcmqDV7R61emraEyr6UHK1ZAY
 

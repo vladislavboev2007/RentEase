@@ -4489,8 +4489,9 @@ input, textarea, select, button, .btn, .btn-primary, .btn-secondary, .btn-danger
 .modal-actions button,
 .modal-actions .btn,
 .modal-actions .btn-primary,
-.modal-actions .btn-secondary
-{
+.modal-actions .btn-secondary,
+.modal-actions .btn-warning,
+.modal-actions .btn-archive {   /* ← ДОБАВИТЬ .btn-archive */
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -4501,6 +4502,24 @@ input, textarea, select, button, .btn, .btn-primary, .btn-secondary, .btn-danger
     flex: 1 !important;
     height: 48px !important;
     min-height: 48px !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+}
+
+/* Эффект при наведении (как у "Сохранить изменения") */
+.modal-actions .btn-archive:hover {
+    background: #5a6268 !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3) !important;
+}
+
+/* Эффект при нажатии (как у "Сохранить изменения") */
+.modal-actions .btn-archive:active {
+    transform: translateY(0px) !important;
+    box-shadow: 0 2px 4px rgba(108, 117, 125, 0.2) !important;
 }
 
 /* ==================== ВЫПАДАЮЩИЕ МЕНЮ ДЛЯ КНОПОК ==================== */
@@ -4720,5 +4739,19 @@ input, textarea, select, button, .btn, .btn-primary, .btn-secondary, .btn-danger
 .dropdown-text {
     font-size: 14px;
     font-weight: 500;
+}
+
+/* Скрытие кнопок по умолчанию */
+.btn-warning.hide-btn,
+.btn-primary.hide-btn,
+.btn-archive.hide-btn {
+    display: none !important;
+}
+
+/* Показ кнопок */
+.btn-warning.show-btn,
+.btn-primary.show-btn,
+.btn-archive.show-btn {
+    display: block !important;
 }
 

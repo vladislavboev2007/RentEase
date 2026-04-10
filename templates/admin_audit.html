@@ -6,7 +6,7 @@
     <title>RentEase - Аудит-лог</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="data:,">
-    <script src="/static/script.js" defer></script>
+    <script src="/static/hh_api.js"></script>
     <style>
         .admin-page {
             max-width: 1400px;
@@ -336,10 +336,242 @@
             background: #fff3cd !important;
             color: #856404 !important;
         }
+
+        /* Выпадающие меню */
+        .nav-item {
+            position: relative;
+            display: inline-block;
+        }
+
+        .nav-link {
+            padding: 8px 16px;
+            cursor: pointer;
+            color: white;
+            font-weight: 500;
+            transition: all 0.3s;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .arrow {
+            font-size: 10px;
+            transition: transform 0.3s;
+        }
+
+        .nav-item:hover .arrow {
+            transform: rotate(180deg);
+        }
+
+        .nav-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            min-width: 220px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .nav-item:hover .nav-dropdown {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            text-decoration: none;
+            color: #212529 !important;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .dropdown-item:hover {
+            background: #f8f9fa;
+            padding-left: 22px;
+        }
+
+        .dropdown-icon {
+            font-size: 18px;
+            width: 24px;
+        }
+
+        .dropdown-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: #212529 !important;
+        }
+
+        .location {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .location:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .location img {
+            width: 16px;
+            height: 16px;
+        }
+
+        .login {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 8px 20px;
+            border-radius: 8px;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .login:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .user-menu {
+            position: relative;
+        }
+
+        .user-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s;
+            overflow: hidden;
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.05);
+            border-color: white;
+        }
+
+        .user-avatar-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .user-initials {
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 50px;
+            background-color: white;
+            min-width: 260px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            border-radius: 12px;
+            z-index: 1001;
+            overflow: hidden;
+        }
+
+        .dropdown-content.show {
+            display: block;
+            animation: dropdownFade 0.2s ease;
+        }
+
+        @keyframes dropdownFade {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .user-dropdown {
+            min-width: 260px;
+        }
+
+        .dropdown-header {
+            padding: 16px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .dropdown-user-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .dropdown-user-name {
+            font-weight: 600;
+            color: #212529;
+            font-size: 14px;
+        }
+
+        .dropdown-user-email {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .dropdown-divider {
+            height: 1px;
+            background-color: #e9ecef;
+            margin: 8px 0;
+        }
+
+        .dropdown-content a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            text-decoration: none;
+            color: #212529;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .dropdown-content a:hover {
+            background-color: #f8f9fa;
+            padding-left: 22px;
+        }
+
+        .logout-link {
+            color: #dc3545 !important;
+        }
+
+        .logout-link:hover {
+            background-color: #fff5f5 !important;
+        }
     </style>
 </head>
 <body>
-    <!-- Скрытые данные пользователя -->
     {% if current_user %}
     <div id="user-data"
          data-user-id="{{ current_user.user_id }}"
@@ -360,21 +592,80 @@
     </script>
     {% else %}
     <div id="user-data" style="display: none;"></div>
-    <script>
-        window.currentUser = null;
-    </script>
+    <script>window.currentUser = null;</script>
     {% endif %}
 
-    <!-- Верхняя панель -->
     <div class="header">
         <div class="logo">RentEase</div>
         <div class="menu">
-            <a href="/">Каталог объектов</a>
-            <a href="/">Руководство и поддержка</a>
+            <!-- Выпадающее меню: Каталог объектов -->
+            <div class="nav-item">
+                <div class="nav-link">
+                    Каталог объектов
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="nav-dropdown">
+                    <a href="/" class="dropdown-item">
+                        <span class="dropdown-icon">🏠</span>
+                        <span class="dropdown-text">Все объекты</span>
+                    </a>
+                    <a href="/search?page=1&sort_by=newest&property_type=apartment" class="dropdown-item">
+                        <span class="dropdown-icon">🏢</span>
+                        <span class="dropdown-text">Квартиры</span>
+                    </a>
+                    <a href="/search?page=1&sort_by=newest&property_type=house" class="dropdown-item">
+                        <span class="dropdown-icon">🏡</span>
+                        <span class="dropdown-text">Дома</span>
+                    </a>
+                    <a href="/search?page=1&sort_by=newest&property_type=commercial" class="dropdown-item">
+                        <span class="dropdown-icon">🏭</span>
+                        <span class="dropdown-text">Коммерческая</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Выпадающее меню: Руководство и поддержка -->
+            <div class="nav-item">
+                <div class="nav-link">
+                    Руководство и поддержка
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="nav-dropdown">
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">👤</span>
+                        <span class="dropdown-text">Арендатор</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">🔑</span>
+                        <span class="dropdown-text">Собственник</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">📊</span>
+                        <span class="dropdown-text">Агент</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">⚖️</span>
+                        <span class="dropdown-text">Правила использования</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">❓</span>
+                        <span class="dropdown-text">Часто задаваемые вопросы</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Выбор города -->
             <div class="location" id="citySelector">
-                <span id="selectedCity">Москва</span>
+                <span id="selectedCity">
+                    {% if current_user and current_user.contact_info and current_user.contact_info.city %}
+                        {{ current_user.contact_info.city }}
+                    {% else %}
+                        Москва
+                    {% endif %}
+                </span>
                 <img src="/resources/pin.png" alt="Location">
             </div>
+
             {% if current_user %}
             <div class="user-menu">
                 <div class="user-avatar" onclick="toggleUserMenu(event)" id="userAvatarContainer" data-initials="{{ user_initials }}">
@@ -397,13 +688,12 @@
                 </div>
             </div>
             {% else %}
-            <a href="/?showLogin=true" class="login">Войти</a>
+            <a href="#" class="login" onclick="showLoginModal(); return false;">Войти</a>
             {% endif %}
         </div>
     </div>
 
     <div class="admin-page">
-        <!-- Заголовок страницы с кнопкой назад справа -->
         <div class="admin-header">
             <h1>Аудит-лог</h1>
             <a href="/" class="back-link">
@@ -411,7 +701,6 @@
             </a>
         </div>
 
-        <!-- Умный поиск -->
         <div class="smart-search">
             <div class="search-container">
                 <img src="/resources/search.png" class="search-icon" alt="Search">
@@ -423,7 +712,6 @@
             </div>
         </div>
 
-        <!-- Таблица аудит-лога -->
         <div class="logs-table">
             <table>
                 <thead>
@@ -447,11 +735,10 @@
     </div>
 
     <script>
-        let currentPage = 1;
-        let totalPages = 1;
+        let auditCurrentPage = 1;
+        let auditTotalPages = 1;
         let auditSearchTimeout = null;
 
-        // Функция для получения инициалов
         function getInitials(fullName) {
             if (!fullName) return '?';
             const parts = fullName.split(' ');
@@ -461,262 +748,75 @@
             return fullName[0].toUpperCase();
         }
 
-        // Функция для подсветки текста поиска
-        function highlightText(text, searchTerm) {
-            if (!searchTerm || !text) return text;
-            const regex = new RegExp(`(${searchTerm})`, 'gi');
-            return text.replace(regex, '<span class="highlight">$1</span>');
-        }
-
-        // Загрузка аудит-логов
         async function loadAuditLogs(page = 1) {
-            currentPage = page;
+            auditCurrentPage = page;
             const searchTerm = document.getElementById('smartSearch').value.trim();
-
             let url = `/api/admin/audit-logs?page=${page}&per_page=50`;
-            if (searchTerm) {
-                url += `&search=${encodeURIComponent(searchTerm)}`;
-            }
+            if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
 
             try {
                 const response = await fetch(url, { credentials: 'same-origin' });
-
-                if (!response.ok) {
-                    if (response.status === 403) {
-                        window.location.href = '/';
-                        return;
-                    }
-                    throw new Error(`Ошибка загрузки: ${response.status}`);
-                }
-
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    throw new Error('Сервер вернул не JSON');
-                }
+                if (!response.ok) throw new Error(`Ошибка: ${response.status}`);
 
                 const data = await response.json();
-                console.log('Получены данные:', data);
-
                 const tbody = document.getElementById('logsTableBody');
-                totalPages = data.total_pages;
+                auditTotalPages = data.total_pages;
 
                 if (data.logs.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Записей не найдено</td></tr>';
                 } else {
                     let html = '';
                     data.logs.forEach(log => {
-                        const date = new Date(log.created_at).toLocaleString('ru-RU', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit'
-                        });
-
+                        const date = new Date(log.created_at).toLocaleString('ru-RU');
                         let actionClass = 'badge';
                         if (log.action === 'INSERT') actionClass += ' badge-insert';
                         else if (log.action === 'UPDATE') actionClass += ' badge-update';
                         else if (log.action === 'DELETE') actionClass += ' badge-delete';
                         else if (log.action === 'TOGGLE_BLOCK') actionClass += ' badge-toggle';
 
-                        const userInitials = getInitials(log.user_name) || log.user_email?.[0]?.toUpperCase() || '?';
+                        const userInitials = getInitials(log.user_name);
                         const userAvatar = log.user_avatar ?
-                            `<img src="${log.user_avatar}" alt="Avatar" style="width:100%;height:100%;object-fit:cover;">` :
+                            `<img src="${log.user_avatar}" style="width:100%;height:100%;object-fit:cover;">` :
                             `<span>${userInitials}</span>`;
 
-                        const changes = log.changes || '—';
-
-                        html += `
-                            <tr>
-                                <td style="white-space: nowrap; font-size: 13px; vertical-align: top;">${date}</td>
-                                <td style="vertical-align: top;">
-                                    <div class="user-cell">
-                                        <div class="user-avatar-small">
-                                            ${userAvatar}
-                                        </div>
-                                        <div class="user-info">
-                                            <span class="user-name">${log.user_name || 'Система'}</span>
-                                            <span class="user-email">${log.user_email || ''}</span>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td style="vertical-align: top;">
-                                    <span class="${actionClass}" style="display: inline-block; white-space: nowrap;">${log.action_display || log.action || '—'}</span>
-                                </td>
-                                <td style="vertical-align: top;">
-                                    <div>
-                                        <span class="entity-type">${log.entity_type_display || log.entity_type}</span>
-                                        ${log.entity_id ? `<span class="entity-id">ID: ${log.entity_id}</span>` : ''}
-                                    </div>
-                                    ${log.entity_name ? `<div style="font-size: 12px; color: #28a745; margin-top: 4px; font-weight: 500;">📌 ${log.entity_name}</div>` : ''}
-                                </td>
-                                <td class="changes-cell" style="vertical-align: top;">
-                                    ${changes}
-                                </td>
-                            </tr>
-                        `;
+                        html += `<tr>
+                            <td style="white-space: nowrap;">${date}</td>
+                            <td><div class="user-cell"><div class="user-avatar-small">${userAvatar}</div><div class="user-info"><span class="user-name">${log.user_name || 'Система'}</span><span class="user-email">${log.user_email || ''}</span></div></div></td>
+                            <td><span class="${actionClass}">${log.action_display || log.action}</span></td>
+                            <td><span class="entity-type">${log.entity_type_display || log.entity_type}</span>${log.entity_id ? `<span class="entity-id">ID: ${log.entity_id}</span>` : ''}${log.entity_name ? `<div style="font-size:12px;color:#28a745;">📌 ${log.entity_name}</div>` : ''}</td>
+                            <td class="changes-cell">${log.changes || '—'}</td>
+                        </tr>`;
                     });
                     tbody.innerHTML = html;
                 }
-
                 renderPagination();
-
             } catch (error) {
-                console.error('Ошибка загрузки аудит-логов:', error);
+                console.error('Ошибка:', error);
                 document.getElementById('logsTableBody').innerHTML = `<tr><td colspan="5" class="empty-state">Ошибка загрузки: ${error.message}</td></tr>`;
             }
         }
 
-        // Обработчик поиска с debounce
-        document.getElementById('smartSearch').addEventListener('input', function() {
-            clearTimeout(auditSearchTimeout);
-            auditSearchTimeout = setTimeout(() => {
-                loadAuditLogs(1);
-            }, 500);
-        });
-
         function renderPagination() {
             const pagination = document.getElementById('pagination');
-            let html = '';
-
-            html += `<button class="page-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="loadAuditLogs(${currentPage - 1})">←</button>`;
-
-            for (let i = 1; i <= totalPages; i++) {
-                if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
-                    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="loadAuditLogs(${i})">${i}</button>`;
-                } else if (i === currentPage - 3 || i === currentPage + 3) {
+            if (auditTotalPages <= 1) { pagination.innerHTML = ''; return; }
+            let html = `<button class="page-btn" ${auditCurrentPage === 1 ? 'disabled' : ''} onclick="loadAuditLogs(${auditCurrentPage - 1})">←</button>`;
+            for (let i = 1; i <= auditTotalPages; i++) {
+                if (i === 1 || i === auditTotalPages || (i >= auditCurrentPage - 2 && i <= auditCurrentPage + 2)) {
+                    html += `<button class="page-btn ${i === auditCurrentPage ? 'active' : ''}" onclick="loadAuditLogs(${i})">${i}</button>`;
+                } else if (i === auditCurrentPage - 3 || i === auditCurrentPage + 3) {
                     html += `<span class="page-dots">...</span>`;
                 }
             }
-
-            html += `<button class="page-btn" ${currentPage === totalPages ? 'disabled' : ''} onclick="loadAuditLogs(${currentPage + 1})">→</button>`;
-
+            html += `<button class="page-btn" ${auditCurrentPage === auditTotalPages ? 'disabled' : ''} onclick="loadAuditLogs(${auditCurrentPage + 1})">→</button>`;
             pagination.innerHTML = html;
         }
 
-        // Функции для работы с городом
-        function openCityModal() {
-            let modal = document.getElementById('citySelectModal');
-            if (!modal) {
-                modal = document.createElement('div');
-                modal.id = 'citySelectModal';
-                modal.className = 'popup';
-                modal.innerHTML = `
-                    <div class="popup-content" style="max-width: 500px;">
-                        <button class="close-popup" onclick="closeCityModal()">×</button>
-                        <h2>Выберите город</h2>
-                        <div style="position: relative; margin-bottom: 20px;">
-                            <input type="text" id="citySearchInput" placeholder="Поиск города..." style="width: 100%; padding: 14px 45px 14px 15px; border: 2px solid #e9ecef; border-radius: 12px;">
-                            <img src="/resources/search.png" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); width: 18px; opacity: 0.5;">
-                        </div>
-                        <div id="popularCitiesBlock">
-                            <div style="font-size: 14px; color: #6c757d; margin-bottom: 10px;">⭐ Популярные города</div>
-                            <div id="popularCitiesGrid" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
-                        </div>
-                        <div id="searchResultsBlock" style="display: none;">
-                            <div style="font-size: 14px; color: #6c757d; margin-bottom: 10px;">🔍 Результаты поиска</div>
-                            <div id="searchResultsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 12px;"></div>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(modal);
-            }
-
-            const popularCities = ['Москва', 'Санкт-Петербург', 'Севастополь', 'Новосибирск', 'Екатеринбург', 'Казань', 'Нижний Новгород', 'Челябинск', 'Самара', 'Омск'];
-            const grid = document.getElementById('popularCitiesGrid');
-            if (grid) {
-                grid.innerHTML = popularCities.map(city =>
-                    `<button class="popular-city-btn" style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 30px; padding: 8px 16px; cursor: pointer;" onclick="selectCity('${city}')">${city}</button>`
-                ).join('');
-            }
-
-            document.getElementById('searchResultsBlock').style.display = 'none';
-            document.getElementById('popularCitiesBlock').style.display = 'block';
-
-            const searchInput = document.getElementById('citySearchInput');
-            searchInput.value = '';
-            searchInput.focus();
-
-            let searchTimeout;
-            searchInput.oninput = function() {
-                clearTimeout(searchTimeout);
-                const query = this.value.trim();
-                if (query.length < 2) {
-                    document.getElementById('searchResultsBlock').style.display = 'none';
-                    document.getElementById('popularCitiesBlock').style.display = 'block';
-                    return;
-                }
-                searchTimeout = setTimeout(() => {
-                    if (typeof HH_API !== 'undefined') {
-                        HH_API.searchCities(query, (cities) => {
-                            const resultsBlock = document.getElementById('searchResultsBlock');
-                            const resultsList = document.getElementById('searchResultsList');
-                            if (cities.length === 0) {
-                                resultsList.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">Ничего не найдено</div>';
-                            } else {
-                                resultsList.innerHTML = cities.map(city => {
-                                    const cityName = city.split(' (')[0];
-                                    return `<div onclick="selectCity('${city.replace(/'/g, "\\'")}')" style="padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #f0f0f0;"><span style="font-weight: 500;">${cityName}</span></div>`;
-                                }).join('');
-                            }
-                            resultsBlock.style.display = 'block';
-                            document.getElementById('popularCitiesBlock').style.display = 'none';
-                        });
-                    }
-                }, 300);
-            };
-            modal.style.display = 'flex';
-        }
-
-        function closeCityModal() {
-            const modal = document.getElementById('citySelectModal');
-            if (modal) modal.style.display = 'none';
-        }
-
-        function selectCity(city) {
-            const cityName = city.split(' (')[0];
-            const citySpan = document.getElementById('selectedCity');
-            if (citySpan) citySpan.textContent = cityName;
-            localStorage.setItem('selectedCity', cityName);
-            closeCityModal();
-        }
-
-        document.getElementById('citySelector').addEventListener('click', openCityModal);
-
-        const savedCity = localStorage.getItem('selectedCity');
-        if (savedCity) {
-            const citySpan = document.getElementById('selectedCity');
-            if (citySpan) citySpan.textContent = savedCity;
-        }
-
-        document.addEventListener('click', function(e) {
-            const modal = document.getElementById('citySelectModal');
-            if (modal && modal.style.display === 'flex' && e.target === modal) {
-                closeCityModal();
-            }
-            const userDropdown = document.getElementById('userDropdown');
-            const userAvatar = document.querySelector('.user-avatar');
-            if (userDropdown && userAvatar && !userAvatar.contains(e.target)) {
-                userDropdown.classList.remove('show');
-            }
+        document.getElementById('smartSearch').addEventListener('input', function() {
+            clearTimeout(auditSearchTimeout);
+            auditSearchTimeout = setTimeout(() => loadAuditLogs(1), 500);
         });
 
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeCityModal();
-        });
-
-        function toggleUserMenu(event) {
-            event.stopPropagation();
-            const dropdown = document.getElementById('userDropdown');
-            if (dropdown) dropdown.classList.toggle('show');
-        }
-
-        function logout() {
-            window.location.href = '/api/logout';
-        }
-
-        // Добавьте в код страницы
+        // Функции для города
         async function loadUserCity() {
             try {
                 const response = await fetch('/api/user/profile', { credentials: 'same-origin' });
@@ -732,16 +832,66 @@
             }
         }
 
-        // Вызвать после загрузки страницы
-        document.addEventListener('DOMContentLoaded', function() {
-            if (window.currentUser && window.currentUser.id) {
-                loadUserCity();
+        function openCityModal() {
+            let modal = document.getElementById('citySelectModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'citySelectModal';
+                modal.className = 'popup';
+                modal.innerHTML = `<div class="popup-content" style="max-width:500px;"><button class="close-popup" onclick="closeCityModal()">×</button><h2>Выберите город</h2><div style="position:relative;margin-bottom:20px;"><input type="text" id="citySearchInput" placeholder="Поиск города..." style="width:100%;padding:14px 45px 14px 15px;border:2px solid #e9ecef;border-radius:12px;"><img src="/resources/search.png" style="position:absolute;right:15px;top:50%;transform:translateY(-50%);width:18px;"></div><div id="popularCitiesBlock"><div style="font-size:14px;color:#6c757d;margin-bottom:10px;">⭐ Популярные города</div><div id="popularCitiesGrid" style="display:flex;flex-wrap:wrap;gap:8px;"></div></div><div id="searchResultsBlock" style="display:none;"><div style="font-size:14px;color:#6c757d;margin-bottom:10px;">🔍 Результаты поиска</div><div id="searchResultsList" style="max-height:300px;overflow-y:auto;border:1px solid #e9ecef;border-radius:12px;"></div></div></div>`;
+                document.body.appendChild(modal);
             }
-        });
+            const POPULAR_CITIES = ['Москва', 'Санкт-Петербург', 'Севастополь', 'Новосибирск', 'Екатеринбург', 'Казань', 'Нижний Новгород', 'Челябинск', 'Самара', 'Омск'];
+            const grid = document.getElementById('popularCitiesGrid');
+            if (grid) grid.innerHTML = POPULAR_CITIES.map(c => `<button style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:30px;padding:8px 16px;margin:4px;cursor:pointer;" onclick="selectCity('${c}')">${c}</button>`).join('');
+            document.getElementById('popularCitiesBlock').style.display = 'block';
+            document.getElementById('searchResultsBlock').style.display = 'none';
+            const searchInput = document.getElementById('citySearchInput');
+            searchInput.value = '';
+            searchInput.oninput = function() {
+                const q = this.value.trim();
+                if (q.length >= 2) {
+                    HH_API.searchCities(q, (cities) => {
+                        if (cities.length === 0) {
+                            document.getElementById('searchResultsList').innerHTML = '<div style="padding:20px;text-align:center;">Ничего не найдено</div>';
+                        } else {
+                            document.getElementById('searchResultsList').innerHTML = cities.map(c => `<div style="padding:12px 15px;cursor:pointer;border-bottom:1px solid #f0f0f0;" onclick="selectCity('${c.replace(/'/g, "\\'")}')">${c.split(' (')[0]}</div>`).join('');
+                        }
+                        document.getElementById('popularCitiesBlock').style.display = 'none';
+                        document.getElementById('searchResultsBlock').style.display = 'block';
+                    });
+                } else {
+                    document.getElementById('popularCitiesBlock').style.display = 'block';
+                    document.getElementById('searchResultsBlock').style.display = 'none';
+                }
+            };
+            modal.style.display = 'flex';
+        }
 
-        // Загрузка при открытии страницы
+        function closeCityModal() { document.getElementById('citySelectModal')?.remove(); }
+        function selectCity(city) {
+            document.getElementById('selectedCity').textContent = city.split(' (')[0];
+            localStorage.setItem('selectedCity', city.split(' (')[0]);
+            closeCityModal();
+        }
+
+        function toggleUserMenu(event) {
+            event.stopPropagation();
+            document.getElementById('userDropdown')?.classList.toggle('show');
+        }
+
+        function showLoginModal() { window.location.href = '/?showLogin=true'; }
+        function logout() { window.location.href = '/api/logout'; }
+
+        document.getElementById('citySelector').addEventListener('click', openCityModal);
+        document.addEventListener('click', (e) => { if (e.target.classList.contains('popup')) closeCityModal(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCityModal(); });
+
         document.addEventListener('DOMContentLoaded', function() {
             loadAuditLogs();
+            const savedCity = localStorage.getItem('selectedCity');
+            if (savedCity) document.getElementById('selectedCity').textContent = savedCity;
+            if (window.currentUser?.id) loadUserCity();
             const userAvatarContainer = document.getElementById('userAvatarContainer');
             if (userAvatarContainer && window.currentUser?.avatar_url) {
                 userAvatarContainer.innerHTML = `<img src="${window.currentUser.avatar_url}" alt="Avatar" class="user-avatar-img">`;

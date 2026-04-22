@@ -27,29 +27,16 @@ import jwt
 from uuid import uuid4
 import uuid
 from typing import Optional, List, Dict, Any, Set
-from pydantic import BaseModel, EmailStr, field_validator  # Важно: field_validator для Pydantic v2
-from docx import Document
-from docx.shared import Inches, Pt, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from openpyxl import Workbook
-from openpyxl.chart import BarChart, PieChart, Reference
-from openpyxl.styles import Font, Alignment
-import shutil
-import io
-import tempfile
+from pydantic import BaseModel
 from apscheduler.schedulers.background import BackgroundScheduler
 from smtp import send_registration_code, send_recovery_code, send_contract_signed_notification, send_contract_fully_signed_notification, send_application_status_notification, send_contract_cancelled_notification
-from database import SessionLocal, User, Property, PropertyPhoto, Application, Contract, Message, AuditLog
+from database import SessionLocal
+from models import User, Property, PropertyPhoto, Application, Contract, Message, AuditLog
 from schemas import (
     UserRegisterStep1, UserRegisterStep2, UserRegisterStep3,
     UserProfileUpdate, PasswordRecoveryRequest, PasswordRecoveryVerify,
     PasswordRecoveryReset, PropertyCreate, ApplicationCreate,
-    ApplicationResponse, MessageCreate
+    MessageCreate, ReportCreate
 )
 from reports import (
     generate_contract_docx,  # правильное имя функции
@@ -318,36 +305,6 @@ async def save_upload_file(upload_file: UploadFile, subdir: str = "") -> str:
         print(f"❌ Ошибка сохранения файла: {e}")
         raise
 
-# ==================== PYDANTIC СХЕМЫ ====================
-
-class PropertyCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
-    address: str
-    city: str
-    property_type: str
-    area: float
-    rooms: int
-    price: float
-    interval_pay: str
-
-
-class ApplicationCreate(BaseModel):
-    property_id: int
-    desired_date: str
-    duration_days: int
-    message: Optional[str] = None
-
-
-class MessageCreate(BaseModel):
-    to_user_id: int
-    content: str
-
-class ReportCreate(BaseModel):
-    property_id: int
-    reason: str
-    description: str
-    is_anonymous: bool = False
 
 # ==================== WEBSOCKET ДЛЯ ОНЛАЙН СТАТУСА ====================
 

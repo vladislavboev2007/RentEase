@@ -5,7 +5,6 @@ from email.mime.multipart import MIMEMultipart
 from typing import List, Optional
 import uuid
 from datetime import datetime
-import asyncio
 
 # Настройки для Yandex Mail
 SMTP_SERVER = "smtp.yandex.ru"

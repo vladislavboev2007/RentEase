@@ -1,8 +1,8 @@
 # init_db.py
-from database import engine, SessionLocal, Base, User, Property, PropertyPhoto, Application, Contract
+from models import Base, User, Property, PropertyPhoto, Application, Contract
+from database import engine, SessionLocal
 from datetime import datetime, date
 import hashlib
-import random
 
 
 def hash_password(password: str) -> str:

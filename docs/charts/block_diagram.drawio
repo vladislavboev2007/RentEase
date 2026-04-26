@@ -1,6 +1,6 @@
-<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.3.0 Chrome/140.0.7339.249 Electron/38.7.2 Safari/537.36" version="29.3.0">
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.3.0 Chrome/140.0.7339.249 Electron/38.7.2 Safari/537.36">
   <diagram name="Страница-1" id="tvzTUuVE3bqQDYAIBHAw">
-    <mxGraphModel dx="1678" dy="999" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="1472" dy="877" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -37,20 +37,20 @@
         <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-8" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Создание записи &quot;Заявка&quot; в БД со статусом &quot;На рассмотрении&quot;" vertex="1">
           <mxGeometry height="70" width="140" x="321" y="242" as="geometry" />
         </mxCell>
-        <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-9" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Назначение заявки агенту" vertex="1">
-          <mxGeometry height="30" width="140" x="321" y="342" as="geometry" />
+        <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-9" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Назначение заявки собственнику/агенту" vertex="1">
+          <mxGeometry height="30" width="150" x="315" y="339" as="geometry" />
         </mxCell>
-        <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-10" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Оповещение&amp;nbsp;&lt;div&gt;агента о новой заявке и начало обсуждения&lt;/div&gt;" vertex="1">
-          <mxGeometry height="40" width="170" x="306" y="392" as="geometry" />
+        <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-10" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Оповещение&amp;nbsp;&lt;div&gt;агента/собственника о новой заявке и начало обсуждения&lt;/div&gt;" vertex="1">
+          <mxGeometry height="40" width="197" x="291.49" y="392" as="geometry" />
         </mxCell>
         <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-11" parent="1" style="rhombus;whiteSpace=wrap;html=1;" value="Продолжение&lt;div&gt;обсуждения?&lt;/div&gt;" vertex="1">
           <mxGeometry height="80" width="110" x="336" y="462" as="geometry" />
         </mxCell>
-        <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-12" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Присваивание заявке статуса &quot;Одобрено&quot;" vertex="1">
-          <mxGeometry height="40" width="160" x="311" y="757" as="geometry" />
+        <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-12" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Присваивание заявке статуса &quot;Одобрено&quot;, оповещение арендатора" vertex="1">
+          <mxGeometry height="50" width="203" x="289.62" y="747" as="geometry" />
         </mxCell>
-        <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-13" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Блокировка&amp;nbsp;&lt;div&gt;соответствующего объекта статусом &#39;Зарезервирован&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&#39;&amp;nbsp;&lt;/span&gt;&lt;/div&gt;" vertex="1">
-          <mxGeometry height="50" width="190" x="296" y="817" as="geometry" />
+        <mxCell id="ZKyrNZ6Za2cn_I0xqtTG-13" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Блокировка&amp;nbsp;&lt;div&gt;соответствующего объекта статусом &#39;Заблокирован&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&#39; (blocked)&amp;nbsp;&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="231.5" x="275.25" y="817" as="geometry" />
         </mxCell>
         <mxCell id="Z4-zXtmCTteUKsxm2U2x-1" edge="1" parent="1" source="ZKyrNZ6Za2cn_I0xqtTG-8" style="endArrow=classic;html=1;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="ZKyrNZ6Za2cn_I0xqtTG-9" value="">
           <mxGeometry height="50" relative="1" width="50" as="geometry">
@@ -102,23 +102,20 @@
         <mxCell id="Z4-zXtmCTteUKsxm2U2x-9" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Нет" vertex="1">
           <mxGeometry height="20" width="40" x="451" y="482" as="geometry" />
         </mxCell>
-        <mxCell id="Z4-zXtmCTteUKsxm2U2x-11" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Присваивание заявке статуса &quot;&lt;span style=&quot;color: rgb(15, 17, 21); font-family: Menlo, Monaco, Consolas, &amp;quot;Cascadia Mono&amp;quot;, &amp;quot;Ubuntu Mono&amp;quot;, &amp;quot;DejaVu Sans Mono&amp;quot;, &amp;quot;Liberation Mono&amp;quot;, &amp;quot;JetBrains Mono&amp;quot;, &amp;quot;Fira Code&amp;quot;, Cousine, &amp;quot;Roboto Mono&amp;quot;, &amp;quot;Courier New&amp;quot;, Courier, sans-serif, system-ui; font-size: 13px; text-align: start; background-color: transparent;&quot;&gt;Договор оформлен&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&quot;&lt;/span&gt;" vertex="1">
-          <mxGeometry height="50" width="160" x="311" y="927" as="geometry" />
-        </mxCell>
         <mxCell id="Z4-zXtmCTteUKsxm2U2x-14" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Да" vertex="1">
           <mxGeometry height="20" width="40" x="396" y="539" as="geometry" />
         </mxCell>
-        <mxCell id="Z4-zXtmCTteUKsxm2U2x-15" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Генерация договора" vertex="1">
-          <mxGeometry height="20" width="160" x="311" y="887" as="geometry" />
+        <mxCell id="Z4-zXtmCTteUKsxm2U2x-15" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Генерация договора со статусом Черновик (draft)" vertex="1">
+          <mxGeometry height="43" width="168" x="306" y="887" as="geometry" />
         </mxCell>
-        <mxCell id="Z4-zXtmCTteUKsxm2U2x-16" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Присваивание заявке статуса &quot;&lt;span style=&quot;color: rgb(15, 17, 21); font-family: Menlo, Monaco, Consolas, &amp;quot;Cascadia Mono&amp;quot;, &amp;quot;Ubuntu Mono&amp;quot;, &amp;quot;DejaVu Sans Mono&amp;quot;, &amp;quot;Liberation Mono&amp;quot;, &amp;quot;JetBrains Mono&amp;quot;, &amp;quot;Fira Code&amp;quot;, Cousine, &amp;quot;Roboto Mono&amp;quot;, &amp;quot;Courier New&amp;quot;, Courier, sans-serif, system-ui; font-size: 13px; text-align: start; background-color: transparent;&quot;&gt;Завершена&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&quot;&lt;/span&gt;" vertex="1">
-          <mxGeometry height="50" width="160" x="311" y="997" as="geometry" />
+        <mxCell id="Z4-zXtmCTteUKsxm2U2x-16" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Подписание обеими сторонами, оповщение им, присваивание договору статуса &quot;&lt;span style=&quot;color: rgb(15, 17, 21); font-family: Menlo, Monaco, Consolas, &amp;quot;Cascadia Mono&amp;quot;, &amp;quot;Ubuntu Mono&amp;quot;, &amp;quot;DejaVu Sans Mono&amp;quot;, &amp;quot;Liberation Mono&amp;quot;, &amp;quot;JetBrains Mono&amp;quot;, &amp;quot;Fira Code&amp;quot;, Cousine, &amp;quot;Roboto Mono&amp;quot;, &amp;quot;Courier New&amp;quot;, Courier, sans-serif, system-ui; font-size: 13px; text-align: start; background-color: transparent;&quot;&gt;Подписан&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&quot; (Signed)&lt;/span&gt;" vertex="1">
+          <mxGeometry height="64" width="212.38" x="275.05" y="1025" as="geometry" />
         </mxCell>
-        <mxCell id="Z4-zXtmCTteUKsxm2U2x-17" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Присваивание объекту статуса &quot;&lt;span style=&quot;color: rgb(15, 17, 21); font-family: Menlo, Monaco, Consolas, &amp;quot;Cascadia Mono&amp;quot;, &amp;quot;Ubuntu Mono&amp;quot;, &amp;quot;DejaVu Sans Mono&amp;quot;, &amp;quot;Liberation Mono&amp;quot;, &amp;quot;JetBrains Mono&amp;quot;, &amp;quot;Fira Code&amp;quot;, Cousine, &amp;quot;Roboto Mono&amp;quot;, &amp;quot;Courier New&amp;quot;, Courier, sans-serif, system-ui; font-size: 13px; text-align: start; background-color: transparent;&quot;&gt;Занят&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&quot;&lt;/span&gt;" vertex="1">
-          <mxGeometry height="50" width="160" x="311" y="1067" as="geometry" />
+        <mxCell id="Z4-zXtmCTteUKsxm2U2x-17" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Присваивание объекту статуса &quot;&lt;span style=&quot;color: rgb(15, 17, 21); font-family: Menlo, Monaco, Consolas, &amp;quot;Cascadia Mono&amp;quot;, &amp;quot;Ubuntu Mono&amp;quot;, &amp;quot;DejaVu Sans Mono&amp;quot;, &amp;quot;Liberation Mono&amp;quot;, &amp;quot;JetBrains Mono&amp;quot;, &amp;quot;Fira Code&amp;quot;, Cousine, &amp;quot;Roboto Mono&amp;quot;, &amp;quot;Courier New&amp;quot;, Courier, sans-serif, system-ui; font-size: 13px; text-align: start; background-color: transparent;&quot;&gt;Занят&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&quot; (rented)&lt;/span&gt;" vertex="1">
+          <mxGeometry height="50" width="173" x="294.74" y="1110" as="geometry" />
         </mxCell>
         <mxCell id="Z4-zXtmCTteUKsxm2U2x-18" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Конец" vertex="1">
-          <mxGeometry height="30" width="120" x="331" y="1137" as="geometry" />
+          <mxGeometry height="30" width="120" x="322.24" y="1180" as="geometry" />
         </mxCell>
         <mxCell id="Z4-zXtmCTteUKsxm2U2x-19" edge="1" parent="1" source="ZKyrNZ6Za2cn_I0xqtTG-13" style="endArrow=classic;html=1;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="Z4-zXtmCTteUKsxm2U2x-15" value="">
           <mxGeometry height="50" relative="1" width="50" as="geometry">
@@ -126,28 +123,22 @@
             <mxPoint x="351" y="927" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="Z4-zXtmCTteUKsxm2U2x-20" edge="1" parent="1" source="Z4-zXtmCTteUKsxm2U2x-15" style="endArrow=classic;html=1;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="Z4-zXtmCTteUKsxm2U2x-11" value="">
+        <mxCell id="Z4-zXtmCTteUKsxm2U2x-21" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="Z4-zXtmCTteUKsxm2U2x-16" value="">
           <mxGeometry height="50" relative="1" width="50" as="geometry">
-            <mxPoint x="301" y="977" as="sourcePoint" />
-            <mxPoint x="351" y="927" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="Z4-zXtmCTteUKsxm2U2x-21" edge="1" parent="1" source="Z4-zXtmCTteUKsxm2U2x-11" style="endArrow=classic;html=1;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="Z4-zXtmCTteUKsxm2U2x-16" value="">
-          <mxGeometry height="50" relative="1" width="50" as="geometry">
-            <mxPoint x="301" y="967" as="sourcePoint" />
-            <mxPoint x="351" y="917" as="targetPoint" />
+            <mxPoint x="382.5" y="1003" as="sourcePoint" />
+            <mxPoint x="343.5" y="990" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="Z4-zXtmCTteUKsxm2U2x-22" edge="1" parent="1" source="Z4-zXtmCTteUKsxm2U2x-16" style="endArrow=classic;html=1;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="Z4-zXtmCTteUKsxm2U2x-17" value="">
           <mxGeometry height="50" relative="1" width="50" as="geometry">
-            <mxPoint x="301" y="967" as="sourcePoint" />
-            <mxPoint x="351" y="917" as="targetPoint" />
+            <mxPoint x="383.5" y="1089" as="sourcePoint" />
+            <mxPoint x="343.5" y="959" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="Z4-zXtmCTteUKsxm2U2x-23" edge="1" parent="1" source="Z4-zXtmCTteUKsxm2U2x-17" style="endArrow=classic;html=1;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="Z4-zXtmCTteUKsxm2U2x-18" value="">
           <mxGeometry height="50" relative="1" width="50" as="geometry">
-            <mxPoint x="301" y="967" as="sourcePoint" />
-            <mxPoint x="351" y="917" as="targetPoint" />
+            <mxPoint x="292.24" y="1010" as="sourcePoint" />
+            <mxPoint x="342.24" y="960" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="Z4-zXtmCTteUKsxm2U2x-27" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Появляется сообщение об архиве или занятости объекта" vertex="1">
@@ -217,6 +208,15 @@
           <mxGeometry height="50" relative="1" width="50" as="geometry">
             <mxPoint x="471" y="382" as="sourcePoint" />
             <mxPoint x="521" y="332" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZGV-SM8QMpteetNDCoyq-1" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Первая сторона подписывает, присваивается договору Рассматривается (Pending). Оповещение подписавшему" vertex="1">
+          <mxGeometry height="56" width="207.37" x="286.3" y="951" as="geometry" />
+        </mxCell>
+        <mxCell id="ZGV-SM8QMpteetNDCoyq-2" edge="1" parent="1" source="Z4-zXtmCTteUKsxm2U2x-15" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="ZGV-SM8QMpteetNDCoyq-1" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="456" y="957" as="sourcePoint" />
+            <mxPoint x="506" y="907" as="targetPoint" />
           </mxGeometry>
         </mxCell>
       </root>

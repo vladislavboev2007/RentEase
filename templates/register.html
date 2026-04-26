@@ -406,12 +406,90 @@
             }
         }
 
-        /* Стили для верхнего меню */
+        /* ==================== СТИЛИ ДЛЯ ВЫПАДАЮЩИХ МЕНЮ ==================== */
         .menu {
             display: flex;
             align-items: center;
             gap: 20px;
             flex-wrap: wrap;
+        }
+
+        .nav-item {
+            position: relative;
+            display: inline-block;
+        }
+
+        .nav-link {
+            padding: 8px 16px;
+            cursor: pointer;
+            color: white;
+            font-weight: 500;
+            transition: all 0.3s;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .arrow {
+            font-size: 10px;
+            transition: transform 0.3s;
+        }
+
+        .nav-item:hover .arrow {
+            transform: rotate(180deg);
+        }
+
+        .nav-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            min-width: 220px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .nav-item:hover .nav-dropdown {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            text-decoration: none;
+            color: #212529 !important;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .dropdown-item:hover {
+            background: #f8f9fa;
+            padding-left: 22px;
+        }
+
+        .dropdown-icon {
+            font-size: 18px;
+            width: 24px;
+        }
+
+        .dropdown-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: #212529 !important;
         }
 
         .location {
@@ -452,12 +530,69 @@
     <div class="header">
         <div class="logo">RentEase</div>
         <div class="menu">
-            <a href="/">Каталог объектов</a>
-            <a href="/">Руководство и поддержка</a>
+            <!-- Выпадающее меню: Каталог объектов -->
+            <div class="nav-item">
+                <div class="nav-link">
+                    Каталог объектов
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="nav-dropdown">
+                    <a href="/" class="dropdown-item">
+                        <span class="dropdown-icon">🏠</span>
+                        <span class="dropdown-text">Все объекты</span>
+                    </a>
+                    <a href="/search?page=1&sort_by=newest&property_type=apartment" class="dropdown-item">
+                        <span class="dropdown-icon">🏢</span>
+                        <span class="dropdown-text">Квартиры</span>
+                    </a>
+                    <a href="/search?page=1&sort_by=newest&property_type=house" class="dropdown-item">
+                        <span class="dropdown-icon">🏡</span>
+                        <span class="dropdown-text">Дома</span>
+                    </a>
+                    <a href="/search?page=1&sort_by=newest&property_type=commercial" class="dropdown-item">
+                        <span class="dropdown-icon">🏭</span>
+                        <span class="dropdown-text">Коммерческая</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Выпадающее меню: Руководство и поддержка -->
+            <div class="nav-item">
+                <div class="nav-link">
+                    Руководство и поддержка
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="nav-dropdown">
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">👤</span>
+                        <span class="dropdown-text">Арендатор</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">🔑</span>
+                        <span class="dropdown-text">Собственник</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">📊</span>
+                        <span class="dropdown-text">Агент</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">⚖️</span>
+                        <span class="dropdown-text">Правила использования</span>
+                    </div>
+                    <div class="dropdown-item" onclick="window.location.href='/'">
+                        <span class="dropdown-icon">❓</span>
+                        <span class="dropdown-text">Часто задаваемые вопросы</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Выбор города -->
             <div class="location" id="citySelector">
                 <span id="selectedCity">Москва</span>
                 <img src="/resources/pin.png" alt="Location">
             </div>
+
+            <!-- Кнопка входа -->
             <a href="/?showLogin=true" class="login">Войти</a>
         </div>
     </div>
@@ -763,7 +898,25 @@
             });
         });
 
-        // Выбор города
+        // ==================== РАБОТА С ГОРОДОМ ====================
+
+        // Сохранение города в localStorage
+        function saveCityToLocalStorage(city) {
+            localStorage.setItem('selectedCity', city);
+        }
+
+        // Загрузка города из localStorage
+        function loadCityFromLocalStorage() {
+            const savedCity = localStorage.getItem('selectedCity');
+            const citySpan = document.getElementById('selectedCity');
+            if (savedCity && citySpan) {
+                citySpan.textContent = savedCity;
+                return savedCity;
+            }
+            return null;
+        }
+
+        // Открыть модальное окно выбора города
         function openCityModal() {
             let modal = document.getElementById('citySelectModal');
             if (!modal) {
@@ -780,18 +933,24 @@
             document.getElementById('searchResultsBlock').style.display = 'none';
             const searchInput = document.getElementById('citySearchInput');
             searchInput.value = '';
+            searchInput.focus();
+
+            let searchTimeout;
             searchInput.oninput = function() {
+                clearTimeout(searchTimeout);
                 const q = this.value.trim();
                 if (q.length >= 2) {
-                    HH_API.searchCities(q, (cities) => {
-                        if (cities.length === 0) {
-                            document.getElementById('searchResultsList').innerHTML = '<div style="padding:20px;text-align:center;">Ничего не найдено</div>';
-                        } else {
-                            document.getElementById('searchResultsList').innerHTML = cities.map(c => `<div style="padding:12px 15px;cursor:pointer;border-bottom:1px solid #f0f0f0;" onclick="selectCity('${c.replace(/'/g, "\\'")}')">${c.split(' (')[0]}</div>`).join('');
-                        }
-                        document.getElementById('popularCitiesBlock').style.display = 'none';
-                        document.getElementById('searchResultsBlock').style.display = 'block';
-                    });
+                    searchTimeout = setTimeout(() => {
+                        HH_API.searchCities(q, (cities) => {
+                            if (cities.length === 0) {
+                                document.getElementById('searchResultsList').innerHTML = '<div style="padding:20px;text-align:center;">Ничего не найдено</div>';
+                            } else {
+                                document.getElementById('searchResultsList').innerHTML = cities.map(c => `<div style="padding:12px 15px;cursor:pointer;border-bottom:1px solid #f0f0f0;" onclick="selectCity('${c.replace(/'/g, "\\'")}')">${c.split(' (')[0]}</div>`).join('');
+                            }
+                            document.getElementById('popularCitiesBlock').style.display = 'none';
+                            document.getElementById('searchResultsBlock').style.display = 'block';
+                        });
+                    }, 300);
                 } else {
                     document.getElementById('popularCitiesBlock').style.display = 'block';
                     document.getElementById('searchResultsBlock').style.display = 'none';
@@ -799,16 +958,36 @@
             };
             modal.style.display = 'flex';
         }
-        function closeCityModal() { document.getElementById('citySelectModal')?.remove(); }
+
+        function closeCityModal() {
+            document.getElementById('citySelectModal')?.remove();
+        }
+
         function selectCity(city) {
-            document.getElementById('selectedCity').textContent = city.split(' (')[0];
-            localStorage.setItem('selectedCity', city.split(' (')[0]);
+            const cityName = city.split(' (')[0];
+            const citySpan = document.getElementById('selectedCity');
+            if (citySpan) citySpan.textContent = cityName;
+            // Сохраняем в localStorage
+            saveCityToLocalStorage(cityName);
             closeCityModal();
         }
+
+        // Загружаем город при загрузке страницы
+        loadCityFromLocalStorage();
+
+        // Привязываем обработчик к кнопке выбора города
         document.getElementById('citySelector').addEventListener('click', openCityModal);
 
-        const savedCity = localStorage.getItem('selectedCity');
-        if (savedCity) document.getElementById('selectedCity').textContent = savedCity;
+        // Закрытие по клику на фон и ESC
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('citySelectModal');
+            if (modal && modal.style.display === 'flex' && e.target === modal) {
+                closeCityModal();
+            }
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeCityModal();
+        });
     </script>
 </body>
 </html>

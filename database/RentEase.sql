@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict 1DjYBWXQjxg4CPrsHLJJt51O7uZv5WEemphfJskQLcfC9O2ufbn1R7deU7zME8N
+\restrict 35mofwRyvzKMO5Y9gCGmI3SXPQZphHr4c1HeSr5xqzF9nJp2W5nUogtIFOIsfWf
 
 -- Dumped from database version 18.1
 -- Dumped by pg_dump version 18.1
 
--- Started on 2026-04-26 22:24:57
+-- Started on 2026-04-27 22:59:35
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -407,7 +407,7 @@ $$;
 ALTER FUNCTION public.get_agent_application_status_stats(p_agent_id integer, p_days integer) OWNER TO postgres;
 
 --
--- TOC entry 252 (class 1255 OID 49246)
+-- TOC entry 253 (class 1255 OID 49246)
 -- Name: get_agent_monthly_stats(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -674,7 +674,7 @@ $$;
 ALTER FUNCTION public.notify_contract_cancellation() OWNER TO postgres;
 
 --
--- TOC entry 254 (class 1255 OID 106898)
+-- TOC entry 252 (class 1255 OID 106898)
 -- Name: notify_contract_signature(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -685,60 +685,62 @@ DECLARE
     v_tenant_id INTEGER;
     v_owner_id INTEGER;
     v_property_title TEXT;
-    v_tenant_name TEXT;
-    v_owner_name TEXT;
     v_contract_number TEXT;
-    v_message_content TEXT;
-    v_recipient_id INTEGER;
+    v_new_signing_status TEXT;
 BEGIN
-    -- Получаем связанные данные
-    SELECT a.tenant_id, p.owner_id, p.title,
-           COALESCE(tu.full_name, 'Арендатор') as tenant_name,
-           COALESCE(ou.full_name, 'Собственник') as owner_name
-    INTO v_tenant_id, v_owner_id, v_property_title, v_tenant_name, v_owner_name
+    -- Сначала вычисляем новый статус подписания
+    IF NEW.tenant_signed = true AND NEW.owner_signed = true THEN
+        v_new_signing_status := 'signed';
+    ELSIF NEW.tenant_signed = true OR NEW.owner_signed = true THEN
+        v_new_signing_status := 'pending';
+    ELSE
+        v_new_signing_status := 'draft';
+    END IF;
+    
+    -- Обновляем статус в таблице
+    NEW.signing_status := v_new_signing_status;
+    
+    -- Получаем данные для уведомлений
+    SELECT a.tenant_id, p.owner_id, p.title
+    INTO v_tenant_id, v_owner_id, v_property_title
     FROM applications a
     JOIN properties p ON a.property_id = p.property_id
-    LEFT JOIN users tu ON tu.user_id = a.tenant_id
-    LEFT JOIN users ou ON ou.user_id = p.owner_id
     WHERE a.application_id = NEW.application_id;
-
-    IF v_tenant_id IS NULL OR v_owner_id IS NULL THEN
-        RETURN NEW;
-    END IF;
-
+    
     v_contract_number := 'Д-' || NEW.contract_id;
-
-    -- ТОЛЬКО ОДНО УВЕДОМЛЕНИЕ при подписании
-    IF NEW.tenant_signed IS DISTINCT FROM OLD.tenant_signed AND NEW.tenant_signed = TRUE THEN
-        -- Уведомляем собственника
-        v_recipient_id := v_owner_id;
-        v_message_content := '**Арендатор ' || v_tenant_name || ' подписал договор** ' || v_contract_number || ' на объект "' || v_property_title || '"';
+    
+    -- Отправляем уведомления
+    IF NEW.tenant_signed IS DISTINCT FROM OLD.tenant_signed AND NEW.tenant_signed = true THEN
+        INSERT INTO messages (from_user_id, to_user_id, content, created_at)
+        VALUES (NULL, v_owner_id, 
+                '**Арендатор подписал договор** ' || v_contract_number || ' на объект "' || v_property_title || '"', 
+                NOW());
+    END IF;
+    
+    IF NEW.owner_signed IS DISTINCT FROM OLD.owner_signed AND NEW.owner_signed = true THEN
+        INSERT INTO messages (from_user_id, to_user_id, content, created_at)
+        VALUES (NULL, v_tenant_id, 
+                '**Собственник подписал договор** ' || v_contract_number || ' на объект "' || v_property_title || '"', 
+                NOW());
+    END IF;
+    
+    -- Если договор полностью подписан (после обновления статуса)
+    IF v_new_signing_status = 'signed' THEN
+        INSERT INTO messages (from_user_id, to_user_id, content, created_at)
+        VALUES (NULL, v_tenant_id, 
+                '**Договор ' || v_contract_number || ' полностью подписан** на объект "' || v_property_title || '"', 
+                NOW());
         
-        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
-        VALUES (NULL, v_recipient_id, v_message_content, FALSE, NOW());
+        INSERT INTO messages (from_user_id, to_user_id, content, created_at)
+        VALUES (NULL, v_owner_id, 
+                '**Договор ' || v_contract_number || ' полностью подписан** на объект "' || v_property_title || '"', 
+                NOW());
         
-    ELSIF NEW.owner_signed IS DISTINCT FROM OLD.owner_signed AND NEW.owner_signed = TRUE THEN
-        -- Уведомляем арендатора
-        v_recipient_id := v_tenant_id;
-        v_message_content := '**Собственник ' || v_owner_name || ' подписал договор** ' || v_contract_number || ' на объект "' || v_property_title || '"';
-        
-        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
-        VALUES (NULL, v_recipient_id, v_message_content, FALSE, NOW());
-        
-    ELSIF NEW.signing_status = 'signed' AND (OLD.signing_status IS DISTINCT FROM 'signed') THEN
-        -- Договор полностью подписан - уведомляем обе стороны
-        v_message_content := '**Договор ' || v_contract_number || ' полностью подписан** на объект "' || v_property_title || '"';
-        
-        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
-        VALUES (NULL, v_tenant_id, v_message_content, FALSE, NOW());
-        
-        INSERT INTO messages (from_user_id, to_user_id, content, is_read, created_at)
-        VALUES (NULL, v_owner_id, v_message_content, FALSE, NOW());
-
-		UPDATE properties SET status = 'rented' 
+        -- МЕНЯЕМ СТАТУС ОБЪЕКТА
+        UPDATE properties SET status = 'rented' 
         WHERE property_id = (SELECT property_id FROM applications WHERE application_id = NEW.application_id);
     END IF;
-
+    
     RETURN NEW;
 END;
 $$;
@@ -853,7 +855,7 @@ $$;
 ALTER FUNCTION public.send_report_to_admins(p_property_id integer, p_user_id integer, p_reason character varying, p_description text) OWNER TO postgres;
 
 --
--- TOC entry 253 (class 1255 OID 106894)
+-- TOC entry 254 (class 1255 OID 106894)
 -- Name: send_report_to_admins(integer, integer, character varying, text, boolean); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -1539,12 +1541,12 @@ COPY public.applications (application_id, property_id, tenant_id, message, desir
 391	152	15	Отличный вариант, готов обсудить условия	2026-03-28	351	Можем встретиться для обсуждения	approved	2026-03-14 00:00:00	2026-03-15 00:00:00
 392	149	11	Интересует аренда на длительный срок	2026-03-18	211	Добро пожаловать! Жду на подписание	approved	2026-03-04 00:00:00	2026-03-10 00:00:00
 393	155	15	Отличный вариант, готов обсудить условия	2026-03-27	233	Можем встретиться для обсуждения	approved	2026-03-13 00:00:00	2026-03-16 00:00:00
-394	1	6	Тест	2026-03-14	365	\N	pending	2026-03-14 19:01:53.808364	\N
 254	5	17	Нужна квартира срочно	2026-02-25	365	Можем встретиться на неделе	approved	2026-01-29 00:00:00	2026-01-20 00:00:00
 402	158	25	Нужно оперативное одобрение	2026-04-09	180	Хорошо! Я поняла ваше предложение	approved	2026-03-27 22:02:40.92516	2026-03-27 22:04:23.19202
 263	6	6	Планирую переезд	2026-03-07	365	\N	cancelled	2026-02-03 00:00:00	\N
 265	4	6	Планирую переезд	2026-03-20	365	Созвонимся для уточнения	approved	2026-02-05 00:00:00	2026-02-14 00:00:00
-457	2	1	\N	\N	\N	\N	pending	2026-04-10 20:48:33.195602	\N
+394	1	6	Тест	2026-03-14	365	\N	rejected	2026-03-14 19:01:53.808364	2026-04-27 21:43:31.395029
+457	2	1	\N	\N	\N	\N	rejected	2026-04-10 20:48:33.195602	2026-04-27 21:43:37.519693
 271	3	7	Срочный поиск жилья	2026-03-22	365	Жду вас на просмотр	approved	2026-03-08 00:00:00	2026-03-06 00:00:00
 124	1	6	Здравствуйте! Хотел бы посмотреть квартиру в ближайшие выходные	2026-03-10	365	Добрый вечер извините что я вас задержал! Поэтому завтра заселитесь	approved	2026-02-20 10:30:00	2026-03-09 20:29:24.042456
 273	5	6	Срочный поиск жилья	2026-03-16	365	Жду вас на просмотр	approved	2026-03-02 00:00:00	2026-03-10 00:00:00
@@ -2132,6 +2134,11 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 734	\N	UPDATE	users	15	{"table": "users", "changes": {"avatar_url": {"new": "/static/uploads/avatars/ksenia.jfif", "old": null}}, "old_data": {"email": "kruchkova.oksana@mail.ru", "user_id": 15, "full_name": "Крючкова Оксана Вячеславовна", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-10T20:22:23.818207", "contact_info": {"city": "Москва", "phone": "+7 (916) 123-45-67"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 21:11:43.693613
 735	\N	UPDATE	users	16	{"table": "users", "changes": {"avatar_url": {"new": "/static/uploads/avatars/ilya.jpg", "old": null}}, "old_data": {"email": "mazanov.ilya@mail.ru", "user_id": 16, "full_name": "Мазанов Илья Алексеевич", "is_active": true, "user_type": "tenant", "avatar_url": null, "created_at": "2026-03-10T20:22:23.818207", "contact_info": {"city": "Москва", "phone": "+7 (925) 234-56-78"}, "password_hash": "b4f08230cddd4c1bc52a876e12db534f8b40eedb08ba78a5501d1cdf8eb8cb33"}}	2026-04-10 21:15:27.201659
 750	\N	UPDATE	messages	399	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Арендатор Ткаченко Дмитрий Евгеньевич подписал договор** Д-156 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T22:48:26.388299", "message_id": 399, "to_user_id": 12, "from_user_id": null}}	2026-04-21 10:31:36.678406
+755	1	UPDATE	properties	250	{"table": "properties", "changes": {"price": {"new": 10000.00, "old": 50000.00}}, "old_data": {"area": 30.00, "city": "Санкт-Петербург", "price": 50000.00, "rooms": 1, "title": "Студия на Петроградке", "status": "active", "address": "ул. Ленина, д. 45", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Маленькая уютная студия в историческом районе.", "property_id": 250, "interval_pay": "month", "property_type": "apartment"}}	2026-04-27 20:44:22.108305
+756	1	UPDATE	properties	137	{"table": "properties", "changes": {"area": {"new": 1733.00, "old": 22.00}, "price": {"new": 160000.00, "old": 2222.00}, "rooms": {"new": 8, "old": 3}, "address": {"new": "улица Ленина, д. 30", "old": "rdf"}, "description": {"new": "Продается 3-этажное здание", "old": "fgr"}}, "old_data": {"area": 22.00, "city": "Орехово-Зуево", "price": 2222.00, "rooms": 3, "title": "Коммерческое помещение", "status": "active", "address": "rdf", "owner_id": 2, "created_at": "2026-03-09T08:01:27.051473", "description": "fgr", "property_id": 137, "interval_pay": "month", "property_type": "house"}}	2026-04-27 21:08:20.134907
+762	\N	UPDATE	messages	242	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "📋 **Новая заявка** от Тестовый пользователь на объект \\"Уютная квартира в центре\\"", "is_read": false, "created_at": "2026-03-14T19:01:53.808364", "message_id": 242, "to_user_id": 2, "from_user_id": null}}	2026-04-27 21:43:24.829018
+765	2	INSERT	messages	403	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка отклонена** на объект \\"Студия в новостройке\\". Теперь подпишите договор на данный объект.", "is_read": false, "created_at": "2026-04-27T21:43:37.516743", "message_id": 403, "to_user_id": 1, "from_user_id": null}}	2026-04-27 21:43:37.516743
+766	2	UPDATE	applications	457	{"table": "applications", "changes": {"status": {"new": "rejected", "old": "pending"}, "responded_at": {"new": "2026-04-27T21:43:37.519693", "old": null}}, "old_data": {"answer": null, "status": "pending", "message": null, "tenant_id": 1, "created_at": "2026-04-10T20:48:33.195602", "property_id": 2, "desired_date": null, "responded_at": null, "duration_days": null, "application_id": 457}}	2026-04-27 21:43:37.516743
 736	\N	UPDATE	messages	115	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "Договорились, напишите за час до прихода", "is_read": false, "created_at": "2025-06-16T14:37:14.951329", "message_id": 115, "to_user_id": 7, "from_user_id": 12}}	2026-04-10 21:17:18.808474
 738	12	INSERT	contracts	156	{"table": "contracts", "action": "INSERT", "new_data": {"end_date": "2026-10-30", "created_at": "2026-04-10T22:35:02.826654", "start_date": "2026-04-13", "contract_id": 156, "owner_signed": false, "total_amount": 1750000.00, "tenant_signed": false, "application_id": 374, "signing_status": "draft"}}	2026-04-10 22:35:02.826654
 739	12	UPDATE	properties	149	{"table": "properties", "changes": {"status": {"new": "blocked", "old": "active"}}, "old_data": {"area": 200.00, "city": "Геленджик", "price": 250000.00, "rooms": 5, "title": "Коттедж с бассейном", "status": "active", "address": "с. Кабардинка, ул. Морская, д. 7", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Элитный коттедж с закрытой территорией и бассейном", "property_id": 149, "interval_pay": "month", "property_type": "house"}}	2026-04-10 22:35:02.826654
@@ -2141,15 +2148,45 @@ COPY public.audit_logs (log_id, user_id, action, entity_type, entity_id, details
 748	19	UPDATE	contracts	156	{"table": "contracts", "changes": {"tenant_signed": {"new": true, "old": false}, "signing_status": {"new": "signed", "old": "pending"}}, "old_data": {"end_date": "2026-10-30", "created_at": "2026-04-10T22:35:02.826654", "start_date": "2026-04-13", "contract_id": 156, "owner_signed": true, "total_amount": 1750000.00, "tenant_signed": false, "application_id": 374, "signing_status": "pending"}}	2026-04-10 22:48:26.388299
 751	12	INSERT	messages	400	{"table": "messages", "action": "INSERT", "new_data": {"content": "Привет, предлагаю тебе коммерческое помещение в Лиазе", "is_read": false, "created_at": "2026-04-21T07:32:10.275965", "message_id": 400, "to_user_id": 17, "from_user_id": 12}}	2026-04-21 10:32:10.270662
 752	12	INSERT	messages	401	{"table": "messages", "action": "INSERT", "new_data": {"content": "алеее", "is_read": false, "created_at": "2026-04-21T07:32:32.454174", "message_id": 401, "to_user_id": 17, "from_user_id": 12}}	2026-04-21 10:32:32.451669
+757	1	UPDATE	properties	243	{"table": "properties", "changes": {"area": {"new": 2280.00, "old": 85.00}, "price": {"new": 12000000.00, "old": 200000.00}, "rooms": {"new": 56, "old": 3}, "title": {"new": "Бизнес-центр офис «Северное Сияние»", "old": "Бизнес-центр офис"}, "description": {"new": "Дизайнерский офис с мебелью 2280 м2. Станция метро Савеловская.  \\r\\no\\t8 этаж, целиком, Класс А\\r\\no\\tСмешанная функциональная планировка\\r\\no\\tСовременная качественная офисная отделка\\r\\no\\tКабинеты, переговорные, опен спейс, кухня, и с/у\\r\\no\\tОфис полностью укомплектован качественной мебелью\\r\\no\\tОфисный блок рассчитан на 265 сотрудников\\r\\no\\tКоличество рабочих мест возможно изменить\\r\\no\\tВидовой этаж, прекрасные виды на Москву\\r\\no\\tБольшие окна\\r\\no\\tПрезентабельная входная группа\\r\\no\\tПрезентабельный центральный ресепшн\\r\\no\\tИзвестный деловой квартал\\r\\no\\tБизнес-центр Северное Сияние\\r\\no\\tБлижайшие станции метро: Савеловская, 4 – 5 минут пешком\\r\\no\\tСобственная развитая инфраструктура\\r\\no\\tВ шаговой доступности вся необходимая инфраструктура\\r\\no\\tСовременные инженерные системы\\r\\no\\tВсе коммуникации центральные\\r\\no\\tКруглосуточная охрана и видеонаблюдение\\r\\no\\tПодземная парковка\\r\\no\\tДолгосрочная аренда\\r\\no\\tВакантно с 01.07.2026\\r\\nЗдание расположено в районе Правды. Общая площадь здания 37814 м2.\\r\\nЭтажность 16. Год постройки 2006.\\r\\nЗапишитесь на индивидуальный просмотр и профессиональное сопровождение. Звоните!", "old": "Офисное помещение в деловом центре Москвы. Полная отделка, кондиционирование."}}, "old_data": {"area": 85.00, "city": "Москва", "price": 200000.00, "rooms": 3, "title": "Бизнес-центр офис", "status": "active", "address": "ул. Правды, д. 26", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Офисное помещение в деловом центре Москвы. Полная отделка, кондиционирование.", "property_id": 243, "interval_pay": "month", "property_type": "commercial"}}	2026-04-27 21:14:18.198941
+758	1	UPDATE	properties	246	{"table": "properties", "changes": {"description": {"new": "Продается уютная двухкомнатная квартира. Комнаты изолированные, что обеспечивает комфорт и приватность. Из окон открывается вид на зеленый двор, где расположена детская и спортивная площадки.\\r\\n\\r\\nВ квартире выполнен дизайнерский ремонт, все что вы видите на фото остается! \\r\\nПросторная гостиная оборудована удобным диваном и современным освещением. \\r\\nКухня светлая и функциональная, квартира оснащена всей необходимой техникой, включая стиральную машину.\\r\\n\\r\\nМесто шикарное! 5 минут до метро! \\r\\nВся инфраструктура рядом: пункты выдачи, школа, больница, детские сады, поликлиника!\\r\\nВо дворе имеется открытая парковка для автомобилей.\\r\\n\\r\\nОдин взрослый собственник, без обременений, никто не прописан, квартира полностью готова к сделке!", "old": "Уютная квартира рядом с ВДНХ. Развитая инфраструктура, транспортная доступность."}}, "old_data": {"area": 52.00, "city": "Москва", "price": 75000.00, "rooms": 2, "title": "Квартира на ВДНХ", "status": "active", "address": "ул. Космонавтов, д. 12, кв. 34", "owner_id": 4, "created_at": "2026-04-10T20:49:17.624276", "description": "Уютная квартира рядом с ВДНХ. Развитая инфраструктура, транспортная доступность.", "property_id": 246, "interval_pay": "month", "property_type": "apartment"}}	2026-04-27 21:15:59.275652
+759	1	UPDATE	properties	247	{"table": "properties", "changes": {"rooms": {"new": 4, "old": 5}}, "old_data": {"area": 220.00, "city": "Москва", "price": 350000.00, "rooms": 5, "title": "Дом в Строгино", "status": "active", "address": "ул. Исаковского, д. 8", "owner_id": 5, "created_at": "2026-04-10T20:49:17.624276", "description": "Коттедж с участком в престижном районе. Своя инфраструктура, охрана.", "property_id": 247, "interval_pay": "month", "property_type": "house"}}	2026-04-27 21:19:16.469678
 737	\N	UPDATE	messages	185	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "Привет! Как дела?", "is_read": false, "created_at": "2026-01-04T18:39:26.638369", "message_id": 185, "to_user_id": 7, "from_user_id": 3}}	2026-04-10 21:17:27.312957
 742	12	INSERT	messages	398	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-156 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-10T22:39:01.950664", "message_id": 398, "to_user_id": 19, "from_user_id": null}}	2026-04-10 22:39:01.950664
 743	12	UPDATE	contracts	156	{"table": "contracts", "changes": {"owner_signed": {"new": true, "old": false}, "signing_status": {"new": "pending", "old": "draft"}}, "old_data": {"end_date": "2026-10-30", "created_at": "2026-04-10T22:35:02.826654", "start_date": "2026-04-13", "contract_id": 156, "owner_signed": false, "total_amount": 1750000.00, "tenant_signed": false, "application_id": 374, "signing_status": "draft"}}	2026-04-10 22:39:01.950664
 753	12	UPDATE	users	12	{"table": "users", "changes": {"contact_info": {"new": {"inn": "4324435667", "city": "Ликино-Дулево", "phone": "+79066784783", "passport": "4621789011", "birth_date": "2007-01-02"}, "old": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789011", "birth_date": "2007-01-02"}}}, "old_data": {"email": "qmett1@gmail.com", "user_id": 12, "full_name": "Соловьёва Юлия Сергеевна", "is_active": true, "user_type": "agent", "avatar_url": "/static/uploads/avatars/e5afd064062f46de89802f5ef3ca4bae.jpg", "created_at": "2026-03-10T20:02:42.602234", "contact_info": {"inn": "4324435667", "city": "Ликино-Дулево ", "phone": "+79066784783", "passport": "4621789011", "birth_date": "2007-01-02"}, "password_hash": "bdc1e3618db56b35a6c7d8c0375166fd7b11893c9bca67113b4ea963b454fb8e"}}	2026-04-21 10:33:07.190628
+760	1	UPDATE	properties	249	{"table": "properties", "changes": {"area": {"new": 301.00, "old": 160.00}}, "old_data": {"area": 160.00, "city": "Санкт-Петербург", "price": 300000.00, "rooms": 4, "title": "Дом в Комарово", "status": "active", "address": "пос. Комарово, ул. Лесная, д. 10", "owner_id": 3, "created_at": "2026-04-10T20:49:17.624276", "description": "Элитный дом в курортном районе. Участок 15 соток, лес рядом.", "property_id": 249, "interval_pay": "month", "property_type": "house"}}	2026-04-27 21:32:12.529884
+761	\N	UPDATE	messages	370	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Новая заявка** от Администратор Системы на объект \\"Студия в новостройке\\"", "is_read": false, "created_at": "2026-04-10T20:48:33.195602", "message_id": 370, "to_user_id": 2, "from_user_id": null}}	2026-04-27 21:43:20.822804
+763	2	INSERT	messages	402	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Заявка отклонена** на объект \\"Уютная квартира в центре\\". Теперь подпишите договор на данный объект.", "is_read": false, "created_at": "2026-04-27T21:43:31.391354", "message_id": 402, "to_user_id": 6, "from_user_id": null}}	2026-04-27 21:43:31.391354
+764	2	UPDATE	applications	394	{"table": "applications", "changes": {"status": {"new": "rejected", "old": "pending"}, "responded_at": {"new": "2026-04-27T21:43:31.395029", "old": null}}, "old_data": {"answer": null, "status": "pending", "message": "Тест", "tenant_id": 6, "created_at": "2026-03-14T19:01:53.808364", "property_id": 1, "desired_date": "2026-03-14", "responded_at": null, "duration_days": 365, "application_id": 394}}	2026-04-27 21:43:31.391354
 744	\N	UPDATE	applications	356	{"table": "applications", "changes": {"tenant_id": {"new": 15, "old": 16}}, "old_data": {"answer": "Можем встретиться для обсуждения", "status": "approved", "message": "Хочу посмотреть объект в ближайшее время", "tenant_id": 16, "created_at": "2025-11-15T00:00:00", "property_id": 130, "desired_date": "2025-11-29", "responded_at": "2025-11-20T00:00:00", "duration_days": 407, "application_id": 356}}	2026-04-10 22:46:51.39183
 745	\N	UPDATE	applications	356	{"table": "applications", "changes": {"tenant_id": {"new": 16, "old": 15}}, "old_data": {"answer": "Можем встретиться для обсуждения", "status": "approved", "message": "Хочу посмотреть объект в ближайшее время", "tenant_id": 15, "created_at": "2025-11-15T00:00:00", "property_id": 130, "desired_date": "2025-11-29", "responded_at": "2025-11-20T00:00:00", "duration_days": 407, "application_id": 356}}	2026-04-10 22:47:12.181925
 746	\N	UPDATE	applications	356	{"table": "applications", "changes": {"tenant_id": {"new": 15, "old": 16}}, "old_data": {"answer": "Можем встретиться для обсуждения", "status": "approved", "message": "Хочу посмотреть объект в ближайшее время", "tenant_id": 16, "created_at": "2025-11-15T00:00:00", "property_id": 130, "desired_date": "2025-11-29", "responded_at": "2025-11-20T00:00:00", "duration_days": 407, "application_id": 356}}	2026-04-10 22:48:20.869618
 749	\N	UPDATE	applications	356	{"table": "applications", "changes": {"tenant_id": {"new": 16, "old": 15}}, "old_data": {"answer": "Можем встретиться для обсуждения", "status": "approved", "message": "Хочу посмотреть объект в ближайшее время", "tenant_id": 15, "created_at": "2025-11-15T00:00:00", "property_id": 130, "desired_date": "2025-11-29", "responded_at": "2025-11-20T00:00:00", "duration_days": 407, "application_id": 356}}	2026-04-10 22:48:56.542957
 754	12	UPDATE	properties	155	{"table": "properties", "changes": {"area": {"new": 72.00, "old": 70.00}}, "old_data": {"area": 70.00, "city": "Куровское", "price": 35000.00, "rooms": 2, "title": "Дом в тихом районе", "status": "active", "address": "ул. Заречная, д. 7", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Дом с небольшим участком", "property_id": 155, "interval_pay": "month", "property_type": "house"}}	2026-04-21 10:33:15.225763
+767	\N	UPDATE	messages	122	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "Хочу уточнить детали перед подписанием", "is_read": false, "created_at": "2026-03-10T03:05:58.440139", "message_id": 122, "to_user_id": 2, "from_user_id": 9}}	2026-04-27 21:43:42.875361
+768	1	UPDATE	properties	258	{"table": "properties", "changes": {"area": {"new": 80.00, "old": 68.00}}, "old_data": {"area": 68.00, "city": "Екатеринбург", "price": 45000.00, "rooms": 2, "title": "Квартира в центре Екатеринбурга", "status": "active", "address": "ул. Ленина, д. 35, кв. 45", "owner_id": 2, "created_at": "2026-04-10T20:49:17.624276", "description": "Просторная квартира с отличным ремонтом. Вся необходимая техника.", "property_id": 258, "interval_pay": "month", "property_type": "apartment"}}	2026-04-27 21:49:07.530914
+769	\N	UPDATE	messages	403	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Заявка отклонена** на объект \\"Студия в новостройке\\". Теперь подпишите договор на данный объект.", "is_read": false, "created_at": "2026-04-27T21:43:37.516743", "message_id": 403, "to_user_id": 1, "from_user_id": null}}	2026-04-27 21:54:32.05582
+770	\N	INSERT	messages	404	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Арендатор Боев Владислав Максимович подписал договор** Д-95 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-27T22:43:33.585595", "message_id": 404, "to_user_id": 12, "from_user_id": null}}	2026-04-27 22:43:33.585595
+771	\N	UPDATE	contracts	95	{"table": "contracts", "changes": {"owner_signed": {"new": false, "old": true}, "tenant_signed": {"new": true, "old": false}, "signing_status": {"new": "pending", "old": "cancelled"}}, "old_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": true, "total_amount": 750000.00, "tenant_signed": false, "application_id": 395, "signing_status": "cancelled"}}	2026-04-27 22:43:33.585595
+775	\N	UPDATE	contracts	95	{"table": "contracts", "changes": {"owner_signed": {"new": false, "old": true}, "signing_status": {"new": "pending", "old": "signed"}}, "old_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": true, "total_amount": 750000.00, "tenant_signed": true, "application_id": 395, "signing_status": "signed"}}	2026-04-27 22:51:28.03669
+783	\N	UPDATE	contracts	95	{"table": "contracts", "changes": {"owner_signed": {"new": false, "old": true}, "signing_status": {"new": "pending", "old": "signed"}}, "old_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": true, "total_amount": 750000.00, "tenant_signed": true, "application_id": 395, "signing_status": "signed"}}	2026-04-27 22:58:05.827476
+772	12	INSERT	messages	405	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-95 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-27T22:43:47.75592", "message_id": 405, "to_user_id": 9, "from_user_id": null}}	2026-04-27 22:43:47.75592
+773	12	UPDATE	contracts	95	{"table": "contracts", "changes": {"owner_signed": {"new": true, "old": false}, "signing_status": {"new": "signed", "old": "pending"}}, "old_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": false, "total_amount": 750000.00, "tenant_signed": true, "application_id": 395, "signing_status": "pending"}}	2026-04-27 22:43:47.75592
+774	\N	UPDATE	messages	404	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Арендатор Боев Владислав Максимович подписал договор** Д-95 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-27T22:43:33.585595", "message_id": 404, "to_user_id": 12, "from_user_id": null}}	2026-04-27 22:44:12.999764
+776	12	INSERT	messages	406	{"table": "messages", "action": "INSERT", "new_data": {"content": "Собственник подписал договор Д-95", "is_read": false, "created_at": "2026-04-27T22:51:48.689667", "message_id": 406, "to_user_id": 9, "from_user_id": null}}	2026-04-27 22:51:48.689667
+777	12	INSERT	messages	407	{"table": "messages", "action": "INSERT", "new_data": {"content": "Договор Д-95 полностью подписан", "is_read": false, "created_at": "2026-04-27T22:51:48.689667", "message_id": 407, "to_user_id": 9, "from_user_id": null}}	2026-04-27 22:51:48.689667
+778	12	INSERT	messages	408	{"table": "messages", "action": "INSERT", "new_data": {"content": "Договор Д-95 полностью подписан", "is_read": false, "created_at": "2026-04-27T22:51:48.689667", "message_id": 408, "to_user_id": 12, "from_user_id": null}}	2026-04-27 22:51:48.689667
+779	12	UPDATE	properties	149	{"table": "properties", "changes": {"status": {"new": "rented", "old": "blocked"}}, "old_data": {"area": 200.00, "city": "Геленджик", "price": 250000.00, "rooms": 5, "title": "Коттедж с бассейном", "status": "blocked", "address": "с. Кабардинка, ул. Морская, д. 7", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Элитный коттедж с закрытой территорией и бассейном", "property_id": 149, "interval_pay": "month", "property_type": "house"}}	2026-04-27 22:51:48.689667
+780	12	UPDATE	contracts	95	{"table": "contracts", "changes": {"owner_signed": {"new": true, "old": false}, "signing_status": {"new": "signed", "old": "pending"}}, "old_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": false, "total_amount": 750000.00, "tenant_signed": true, "application_id": 395, "signing_status": "pending"}}	2026-04-27 22:51:48.689667
+781	\N	UPDATE	messages	408	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "Договор Д-95 полностью подписан", "is_read": false, "created_at": "2026-04-27T22:51:48.689667", "message_id": 408, "to_user_id": 12, "from_user_id": null}}	2026-04-27 22:57:03.53891
+782	\N	UPDATE	properties	149	{"table": "properties", "changes": {"status": {"new": "blocked", "old": "rented"}}, "old_data": {"area": 200.00, "city": "Геленджик", "price": 250000.00, "rooms": 5, "title": "Коттедж с бассейном", "status": "rented", "address": "с. Кабардинка, ул. Морская, д. 7", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Элитный коттедж с закрытой территорией и бассейном", "property_id": 149, "interval_pay": "month", "property_type": "house"}}	2026-04-27 22:57:45.154072
+784	12	INSERT	messages	409	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Собственник подписал договор** Д-95 на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-27T22:58:38.524544", "message_id": 409, "to_user_id": 9, "from_user_id": null}}	2026-04-27 22:58:38.524544
+785	12	INSERT	messages	410	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Договор Д-95 полностью подписан** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-27T22:58:38.524544", "message_id": 410, "to_user_id": 9, "from_user_id": null}}	2026-04-27 22:58:38.524544
+786	12	INSERT	messages	411	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Договор Д-95 полностью подписан** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-27T22:58:38.524544", "message_id": 411, "to_user_id": 12, "from_user_id": null}}	2026-04-27 22:58:38.524544
+787	12	UPDATE	properties	149	{"table": "properties", "changes": {"status": {"new": "rented", "old": "blocked"}}, "old_data": {"area": 200.00, "city": "Геленджик", "price": 250000.00, "rooms": 5, "title": "Коттедж с бассейном", "status": "blocked", "address": "с. Кабардинка, ул. Морская, д. 7", "owner_id": 12, "created_at": "2026-03-10T20:27:37.442124", "description": "Элитный коттедж с закрытой территорией и бассейном", "property_id": 149, "interval_pay": "month", "property_type": "house"}}	2026-04-27 22:58:38.524544
+788	12	UPDATE	contracts	95	{"table": "contracts", "changes": {"owner_signed": {"new": true, "old": false}, "signing_status": {"new": "signed", "old": "pending"}}, "old_data": {"end_date": "2026-08-07", "created_at": "2026-03-14T19:35:16.672442", "start_date": "2026-05-09", "contract_id": 95, "owner_signed": false, "total_amount": 750000.00, "tenant_signed": true, "application_id": 395, "signing_status": "pending"}}	2026-04-27 22:58:38.524544
+789	\N	UPDATE	messages	411	{"table": "messages", "changes": {"is_read": {"new": true, "old": false}}, "old_data": {"content": "**Договор Д-95 полностью подписан** на объект \\"Коттедж с бассейном\\"", "is_read": false, "created_at": "2026-04-27T22:58:38.524544", "message_id": 411, "to_user_id": 12, "from_user_id": null}}	2026-04-27 22:59:00.434559
 599	\N	INSERT	applications	457	{"table": "applications", "action": "INSERT", "new_data": {"answer": null, "status": "pending", "message": null, "tenant_id": 1, "created_at": "2026-04-10T20:48:33.195602", "property_id": 2, "desired_date": null, "responded_at": null, "duration_days": null, "application_id": 457}}	2026-04-10 20:48:33.195602
 600	\N	INSERT	messages	370	{"table": "messages", "action": "INSERT", "new_data": {"content": "**Новая заявка** от Администратор Системы на объект \\"Студия в новостройке\\"", "is_read": false, "created_at": "2026-04-10T20:48:33.195602", "message_id": 370, "to_user_id": 2, "from_user_id": null}}	2026-04-10 20:48:33.195602
 \.
@@ -2238,7 +2275,6 @@ COPY public.contracts (contract_id, application_id, start_date, end_date, total_
 33	\N	2025-07-22	2025-11-26	435800.25	signed	2025-03-19 09:07:32.453203	t	t
 92	388	2026-03-18	2027-06-16	208000.00	pending	2026-03-14 00:03:50.015217	t	f
 96	141	2026-03-19	2027-03-19	845000.00	draft	2026-03-14 20:27:01.682142	f	f
-95	395	2026-05-09	2026-08-07	750000.00	cancelled	2026-03-14 19:35:16.672442	f	t
 97	353	2026-03-21	2026-09-17	1500000.00	signed	2026-03-15 21:04:53.015646	t	t
 94	392	2026-03-18	2026-10-15	2000000.00	signed	2026-03-14 03:33:32.932517	t	t
 101	402	2026-04-09	2026-10-06	150000.00	signed	2026-03-27 22:04:23.188632	t	t
@@ -2261,6 +2297,7 @@ COPY public.contracts (contract_id, application_id, start_date, end_date, total_
 152	472	2026-02-01	2026-05-31	300000.00	signed	2026-02-10 20:49:17.624276	t	t
 153	473	2026-03-01	2026-05-29	465000.00	signed	2026-02-10 20:49:17.624276	t	t
 156	374	2026-04-13	2026-10-30	1750000.00	signed	2026-04-10 22:35:02.826654	t	t
+95	395	2026-05-09	2026-08-07	750000.00	signed	2026-03-14 19:35:16.672442	t	t
 \.
 
 
@@ -2381,12 +2418,12 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 185	3	7	Привет! Как дела?	t	2026-01-04 18:39:26.638369
 116	12	7	Ваша заявка одобрена! Можем приступать к оформлению договора.	t	2025-06-17 05:40:15.550206
 114	7	12	Могу ли я внести предоплату?	t	2025-06-16 07:29:20.079121
+122	9	2	Хочу уточнить детали перед подписанием	t	2026-03-10 03:05:58.440139
 117	15	18	Здравствуйте! Когда можно подъехать на просмотр?	f	2025-07-17 00:01:20.597764
 118	18	15	Договорились, напишите за час до прихода	t	2025-07-18 23:05:22.228592
 119	18	15	Ваша заявка одобрена! Можем приступать к оформлению договора.	t	2025-07-14 18:42:02.231699
 120	17	12	Спасибо за показ квартиры, мне очень понравилось	t	2025-06-30 15:36:33.39929
 121	12	17	Да, жду вас завтра в 15:00	t	2025-07-01 23:31:55.016979
-122	9	2	Хочу уточнить детали перед подписанием	f	2026-03-10 03:05:58.440139
 123	17	4	Добрый день! Интересует вопрос по аренде	t	2026-01-30 22:56:32.45819
 124	6	5	Хочу уточнить детали перед подписанием	f	2026-02-05 14:59:53.370891
 126	7	3	Добрый день! Интересует вопрос по аренде	t	2026-03-10 14:13:06.853469
@@ -2499,7 +2536,6 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 103	16	12	Здравствуйте! Когда можно подъехать на просмотр?	t	2025-07-06 20:31:52.025269
 193	3	1	Слышал, цены на аренду выросли	t	2026-01-18 16:05:20.898848
 200	5	1	Слышал, цены на аренду выросли	t	2025-08-25 15:05:25.10128
-242	\N	2	📋 **Новая заявка** от Тестовый пользователь на объект "Уютная квартира в центре"	f	2026-03-14 19:01:53.808364
 187	3	9	Посоветуй хорошего агента по недвижимости	t	2025-06-03 04:52:27.321125
 237	\N	9	**Системное сообщение** Скоро заканчивается срок аренды	t	2026-01-24 06:35:46.48803
 231	\N	9	**Внимание** Обновите данные в профиле	t	2026-02-25 01:44:37.017336
@@ -2558,7 +2594,6 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 309	\N	12	**Новая заявка** от Боев Владислав Максимович на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-27 22:02:40.913157
 310	\N	25	**Заявка одобрена** на объект "Коммерческое помещение ЛиАЗ". Теперь подпишите договор на данный объект.	t	2026-03-27 22:04:23.188632
 311	\N	25	**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-101 на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-27 22:04:37.397925
-370	\N	2	**Новая заявка** от Администратор Системы на объект "Студия в новостройке"	f	2026-04-10 20:48:33.195602
 312	\N	12	**Арендатор Боев Владислав Максимович подписал договор** Д-101 на объект "Коммерческое помещение ЛиАЗ"	t	2026-03-27 22:06:37.983033
 313	12	4	<img src=x onerror=alert('XSS')>	f	2026-03-31 19:30:40.706979
 314	12	1	НОВАЯ ЖАЛОБА НА ОБЪЕКТ\n\nОтправитель: Соловьёва Юлия Сергеевна\nОбъект: Квартира в центре (ID: 150)\nПричина: Фальшивый объект\nОписание: Нет объекта такого\n\nДата: 2026-04-01 20:36:02.350919+03	t	2026-04-01 20:36:02.350919
@@ -2571,6 +2606,7 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 380	\N	5	**Новая заявка** от myname на объект "Новостройка"	f	2026-04-10 20:49:17.624276
 373	\N	12	**Новая заявка** от myname на объект "Коттедж с бассейном"	t	2026-04-10 20:49:17.624276
 401	12	17	алеее	f	2026-04-21 07:32:32.454174
+370	\N	2	**Новая заявка** от Администратор Системы на объект "Студия в новостройке"	t	2026-04-10 20:48:33.195602
 387	\N	4	**Новая заявка** от Боев Владислав Максимович на объект "Квартира в центре"	f	2026-04-10 20:49:17.624276
 388	\N	4	**Новая заявка** от myname на объект "Квартира в центре"	f	2026-04-10 20:49:17.624276
 389	\N	5	**Новая заявка** от Чувага Роман Думитрувич на объект "Новостройка"	f	2026-04-10 20:49:17.624276
@@ -2595,6 +2631,17 @@ COPY public.messages (message_id, from_user_id, to_user_id, content, is_read, cr
 397	\N	19	**Заявка одобрена** на объект "Коттедж с бассейном". Теперь подпишите договор на данный объект.	f	2026-04-10 22:35:02.826654
 399	\N	12	**Арендатор Ткаченко Дмитрий Евгеньевич подписал договор** Д-156 на объект "Коттедж с бассейном"	t	2026-04-10 22:48:26.388299
 398	\N	19	**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-156 на объект "Коттедж с бассейном"	f	2026-04-10 22:39:01.950664
+242	\N	2	📋 **Новая заявка** от Тестовый пользователь на объект "Уютная квартира в центре"	t	2026-03-14 19:01:53.808364
+402	\N	6	**Заявка отклонена** на объект "Уютная квартира в центре". Теперь подпишите договор на данный объект.	f	2026-04-27 21:43:31.391354
+403	\N	1	**Заявка отклонена** на объект "Студия в новостройке". Теперь подпишите договор на данный объект.	t	2026-04-27 21:43:37.516743
+405	\N	9	**Собственник Соловьёва Юлия Сергеевна подписал договор** Д-95 на объект "Коттедж с бассейном"	f	2026-04-27 22:43:47.75592
+404	\N	12	**Арендатор Боев Владислав Максимович подписал договор** Д-95 на объект "Коттедж с бассейном"	t	2026-04-27 22:43:33.585595
+406	\N	9	Собственник подписал договор Д-95	f	2026-04-27 22:51:48.689667
+407	\N	9	Договор Д-95 полностью подписан	f	2026-04-27 22:51:48.689667
+408	\N	12	Договор Д-95 полностью подписан	t	2026-04-27 22:51:48.689667
+409	\N	9	**Собственник подписал договор** Д-95 на объект "Коттедж с бассейном"	f	2026-04-27 22:58:38.524544
+410	\N	9	**Договор Д-95 полностью подписан** на объект "Коттедж с бассейном"	f	2026-04-27 22:58:38.524544
+411	\N	12	**Договор Д-95 полностью подписан** на объект "Коттедж с бассейном"	t	2026-04-27 22:58:38.524544
 \.
 
 
@@ -2609,15 +2656,10 @@ COPY public.properties (property_id, owner_id, title, description, address, city
 240	2	Премиум квартира в центре Москвы	Элитная квартира в историческом центре. Дизайнерский ремонт, панорамные окна, все коммуникации.	ул. Тверская, д. 15, кв. 45	Москва	apartment	120.00	3	150000.00	month	active	2026-04-10 20:49:17.624276
 241	2	Студия возле метро	Уютная студия в 3 минутах от метро. Подходит для одного человека или пары.	ул. Арбат, д. 10	Москва	apartment	28.00	1	55000.00	month	active	2026-04-10 20:49:17.624276
 242	2	Дом в Новой Москве	Современный таунхаус в экологически чистом районе. Своя парковка, участок 6 соток.	пос. Коммунарка, ул. Центральная, д. 5	Москва	house	180.00	4	250000.00	month	active	2026-04-10 20:49:17.624276
-243	4	Бизнес-центр офис	Офисное помещение в деловом центре Москвы. Полная отделка, кондиционирование.	ул. Правды, д. 26	Москва	commercial	85.00	3	200000.00	month	active	2026-04-10 20:49:17.624276
 244	5	Квартира с видом на город	Светлая квартира на высоком этаже. Отличный ремонт, бытовая техника.	пр-т Вернадского, д. 45, кв. 78	Москва	apartment	65.00	2	95000.00	month	active	2026-04-10 20:49:17.624276
 245	2	Лофт в центре	Стильный лофт для творческих людей. Высокие потолки, панорамные окна.	ул. Мясницкая, д. 30	Москва	apartment	95.00	2	180000.00	month	active	2026-04-10 20:49:17.624276
-246	4	Квартира на ВДНХ	Уютная квартира рядом с ВДНХ. Развитая инфраструктура, транспортная доступность.	ул. Космонавтов, д. 12, кв. 34	Москва	apartment	52.00	2	75000.00	month	active	2026-04-10 20:49:17.624276
-247	5	Дом в Строгино	Коттедж с участком в престижном районе. Своя инфраструктура, охрана.	ул. Исаковского, д. 8	Москва	house	220.00	5	350000.00	month	active	2026-04-10 20:49:17.624276
 5	4	Коммерческое помещение	Помещение свободного назначения на первом этаже жилого дома	пр. Мира, д. 32	Новосибирск	house	85.00	2	60000.00	month	active	2026-02-13 21:58:34.420669
 248	3	Квартира у Финского залива	Прекрасный вид на залив. Новый дом, современная планировка.	ул. Савушкина, д. 115, кв. 45	Санкт-Петербург	apartment	68.00	2	85000.00	month	active	2026-04-10 20:49:17.624276
-249	3	Дом в Комарово	Элитный дом в курортном районе. Участок 15 соток, лес рядом.	пос. Комарово, ул. Лесная, д. 10	Санкт-Петербург	house	160.00	4	300000.00	month	active	2026-04-10 20:49:17.624276
-250	4	Студия на Петроградке	Маленькая уютная студия в историческом районе.	ул. Ленина, д. 45	Санкт-Петербург	apartment	30.00	1	50000.00	month	active	2026-04-10 20:49:17.624276
 251	4	Офис на Васильевском	Помещение под офис на Васильевском острове. Хорошая транспортная доступность.	Средний пр-т, д. 85	Санкт-Петербург	commercial	55.00	2	95000.00	month	active	2026-04-10 20:49:17.624276
 252	3	Квартира у метро	Уютная квартира в 2 минутах от метро. Вся необходимая мебель.	ул. Восстания, д. 22, кв. 12	Санкт-Петербург	apartment	48.00	2	65000.00	month	active	2026-04-10 20:49:17.624276
 253	5	Квартира в центре Казани	Современная квартира в новостройке. Панорамные окна, дизайнерский ремонт.	ул. Баумана, д. 20, кв. 45	Казань	apartment	72.00	2	55000.00	month	active	2026-04-10 20:49:17.624276
@@ -2625,12 +2667,14 @@ COPY public.properties (property_id, owner_id, title, description, address, city
 255	5	Студия у Кремля	Студия в историческом центре, вид на Кремль.	ул. Кремлёвская, д. 15	Казань	apartment	35.00	1	40000.00	month	active	2026-04-10 20:49:17.624276
 256	2	Коммерческое помещение	Помещение на первом этаже жилого дома. Под магазин или офис.	пр-т Победы, д. 100	Казань	commercial	70.00	2	60000.00	month	active	2026-04-10 20:49:17.624276
 257	2	Квартира в новостройке	Просторная квартира с отделкой. Сдан в эксплуатацию в 2025 году.	ул. Чистопольская, д. 45, кв. 78	Казань	apartment	85.00	3	70000.00	month	active	2026-04-10 20:49:17.624276
-258	2	Квартира в центре Екатеринбурга	Просторная квартира с отличным ремонтом. Вся необходимая техника.	ул. Ленина, д. 35, кв. 45	Екатеринбург	apartment	68.00	2	45000.00	month	active	2026-04-10 20:49:17.624276
+137	2	Коммерческое помещение	Продается 3-этажное здание	улица Ленина, д. 30	Орехово-Зуево	house	1733.00	8	160000.00	month	active	2026-03-09 08:01:27.051473
+247	5	Дом в Строгино	Коттедж с участком в престижном районе. Своя инфраструктура, охрана.	ул. Исаковского, д. 8	Москва	house	220.00	4	350000.00	month	active	2026-04-10 20:49:17.624276
+249	3	Дом в Комарово	Элитный дом в курортном районе. Участок 15 соток, лес рядом.	пос. Комарово, ул. Лесная, д. 10	Санкт-Петербург	house	301.00	4	300000.00	month	active	2026-04-10 20:49:17.624276
+258	2	Квартира в центре Екатеринбурга	Просторная квартира с отличным ремонтом. Вся необходимая техника.	ул. Ленина, д. 35, кв. 45	Екатеринбург	apartment	80.00	2	45000.00	month	active	2026-04-10 20:49:17.624276
 2	2	Студия в новостройке	Современная студия с дизайнерским ремонтом, есть всё для комфортного проживания	ул. Ленина, д. 15	Москва	apartment	32.00	1	35000.00	month	rented	2026-02-13 21:58:34.38867
 3	3	Загородный дом у озера	Двухэтажный дом с участком, камин, сауна, отличное место для отдыха	пос. Репино, ул. Лесная, д. 5	Ленинградская область	house	150.00	4	120000.00	month	active	2026-02-13 21:58:34.41967
 4	3	Квартира на Невском	Квартира в историческом центре, высокие потолки, лепнина, паркет	Невский пр., д. 25, кв. 12	Санкт-Петербург	apartment	95.00	3	75000.00	week	active	2026-02-13 21:58:34.41967
 1	2	Уютная квартира в центре	Тест аудита	ул. Тверская, д. 10, кв. 45	Москва	apartment	65.50	2	45000.00	month	rented	2026-02-13 21:58:34.38867
-137	2	Коммерческое помещение	fgr	rdf	Орехово-Зуево	house	22.00	3	2222.00	month	active	2026-03-09 08:01:27.051473
 259	2	Дом в лесном массиве	Частный дом в экологически чистом районе. Участок 10 соток.	ул. Лесная, д. 15	Екатеринбург	house	140.00	4	120000.00	month	active	2026-04-10 20:49:17.624276
 260	5	Студия у парка	Уютная студия в шаговой доступности от парка.	ул. 8 Марта, д. 50	Екатеринбург	apartment	32.00	1	28000.00	month	active	2026-04-10 20:49:17.624276
 261	5	Офис в центре	Офисное помещение в деловом центре города.	пр-т Ленина, д. 25	Екатеринбург	commercial	45.00	1	35000.00	month	active	2026-04-10 20:49:17.624276
@@ -2678,8 +2722,11 @@ COPY public.properties (property_id, owner_id, title, description, address, city
 153	4	Квартира улучшенной планировки	Сдаем 2-комн квартиру в самом ЦЕНТРЕ г. Куровское, ул. Вокзальная, д. 8\r\nКвартира улучшенной планировки, площадью 75,4 кв.м.\r\nБольшая кухня 15 кв.м., комнаты изолированные по 19 кв.м. Просторный холл 16 кв.м.\r\nС/у раздельный. В плитке, трубы поменяны.\r\nКвартира на 6 этаже, в блоке есть лифт. Свой отдельный тамбур.\r\nХорошее состоянии. Остается практически вся мебель и техника.\r\nОкна выходят на 2 стороны, по типу «распашонка».\r\nБалкон из комнаты, застклен.\r\nВ доме установлен счетчик на отопление, что позволяет экономить на ком.платежах.\r\nСоседи все приличные.\r\nКвартира не требует доп.вложений. Можно заезжать и жить.\r\nВсе в шаговой доступности дет.сады, школа, спортивный комплекс, супермаркеты, салон красоты и пр.\r\nДо ж.д. станции Куровская 5 минут пешком.	ул. Вокзальная, д. 8, кв. 15	Куровское	apartment	75.00	2	26000.00	month	active	2026-03-10 20:27:37.442124
 166	18	Офис в Сочи	Cдaм пoд кoворкинг вecь салон крaсoты или места паpикмaхepa и мacтepа маникюра.\r\n\r\nMеcта пoд нoгтевыx мacтерoв, парикмaxepов и визажиста.\r\n\r\nЕcть oтдельнoе пoмещениe под склaд, преднaзначaлcя для склaдиpования обopудования, тoвара.\r\n\r\nЕсть peсeпшен, 4 места под мастера маникюра с установленными вытяжками Vеrаksо в столах, 1 место под визажиста и 2 места под парикмахера.\r\nЕсть диван для гостей, вешалка, телевизор, очиститель воздуха, зеркало в полный рост.\r\nЕсть лаборатория для мастера по волосам.\r\n\r\nТакже есть под общий ЛОФТ стиль 2 ограждающих стенки для потенциального мастера педикюра, но еще не успели поставить.\r\n\r\nНа этаже есть 2 туалета.\r\n\r\nВ здании есть Магнит и Магнит косметик.\r\nА также спортивный клуб “Медведь».	ул. Конституции, д. 10	Сочи	commercial	50.00	1	90000.00	month	active	2026-03-10 20:27:37.442124
 271	4	Дом в Ликино-Дулёво	Частный дом с участком. Идеально для загородного проживания.	ул. Заводская, д. 5	Ликино-Дулёво	house	70.00	2	25000.00	month	active	2026-04-10 20:49:17.624276
-149	12	Коттедж с бассейном	Элитный коттедж с закрытой территорией и бассейном	с. Кабардинка, ул. Морская, д. 7	Геленджик	house	200.00	5	250000.00	month	blocked	2026-03-10 20:27:37.442124
 155	12	Дом в тихом районе	Дом с небольшим участком	ул. Заречная, д. 7	Куровское	house	72.00	2	35000.00	month	active	2026-03-10 20:27:37.442124
+250	4	Студия на Петроградке	Маленькая уютная студия в историческом районе.	ул. Ленина, д. 45	Санкт-Петербург	apartment	30.00	1	10000.00	month	active	2026-04-10 20:49:17.624276
+243	4	Бизнес-центр офис «Северное Сияние»	Дизайнерский офис с мебелью 2280 м2. Станция метро Савеловская.  \r\no\t8 этаж, целиком, Класс А\r\no\tСмешанная функциональная планировка\r\no\tСовременная качественная офисная отделка\r\no\tКабинеты, переговорные, опен спейс, кухня, и с/у\r\no\tОфис полностью укомплектован качественной мебелью\r\no\tОфисный блок рассчитан на 265 сотрудников\r\no\tКоличество рабочих мест возможно изменить\r\no\tВидовой этаж, прекрасные виды на Москву\r\no\tБольшие окна\r\no\tПрезентабельная входная группа\r\no\tПрезентабельный центральный ресепшн\r\no\tИзвестный деловой квартал\r\no\tБизнес-центр Северное Сияние\r\no\tБлижайшие станции метро: Савеловская, 4 – 5 минут пешком\r\no\tСобственная развитая инфраструктура\r\no\tВ шаговой доступности вся необходимая инфраструктура\r\no\tСовременные инженерные системы\r\no\tВсе коммуникации центральные\r\no\tКруглосуточная охрана и видеонаблюдение\r\no\tПодземная парковка\r\no\tДолгосрочная аренда\r\no\tВакантно с 01.07.2026\r\nЗдание расположено в районе Правды. Общая площадь здания 37814 м2.\r\nЭтажность 16. Год постройки 2006.\r\nЗапишитесь на индивидуальный просмотр и профессиональное сопровождение. Звоните!	ул. Правды, д. 26	Москва	commercial	2280.00	56	12000000.00	month	active	2026-04-10 20:49:17.624276
+246	4	Квартира на ВДНХ	Продается уютная двухкомнатная квартира. Комнаты изолированные, что обеспечивает комфорт и приватность. Из окон открывается вид на зеленый двор, где расположена детская и спортивная площадки.\r\n\r\nВ квартире выполнен дизайнерский ремонт, все что вы видите на фото остается! \r\nПросторная гостиная оборудована удобным диваном и современным освещением. \r\nКухня светлая и функциональная, квартира оснащена всей необходимой техникой, включая стиральную машину.\r\n\r\nМесто шикарное! 5 минут до метро! \r\nВся инфраструктура рядом: пункты выдачи, школа, больница, детские сады, поликлиника!\r\nВо дворе имеется открытая парковка для автомобилей.\r\n\r\nОдин взрослый собственник, без обременений, никто не прописан, квартира полностью готова к сделке!	ул. Космонавтов, д. 12, кв. 34	Москва	apartment	52.00	2	75000.00	month	active	2026-04-10 20:49:17.624276
+149	12	Коттедж с бассейном	Элитный коттедж с закрытой территорией и бассейном	с. Кабардинка, ул. Морская, д. 7	Геленджик	house	200.00	5	250000.00	month	rented	2026-03-10 20:27:37.442124
 \.
 
 
@@ -2710,7 +2757,6 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 8	5	/static/uploads/properties/5/photo3.png	f	2
 9	6	/static/uploads/properties/6/photo6.png	t	1
 35	149	/static/uploads/properties/149/600034e7c99f415aabd3c1eb84fe77d0.jpg	t	1
-33	137	/static/uploads/properties/137/d3342f97cbdb412bb5e1a55e2cc71b76.png	t	1
 34	164	/static/uploads/properties/164/ce95ae6747504292973c6ef778ae0a29.jpg	t	1
 40	161	/static/uploads/properties/161/3d8184bf18dd48e69453ad04ff3cba2f.jpg	t	1
 38	152	/static/uploads/properties/152/2c9c0a095ac34a728e8a07119894a7e9.jpg	f	2
@@ -2830,6 +2876,7 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 160	142	/static/uploads/properties/142/09f0058e534f4779a75ace952c673f56.png	f	9
 161	142	/static/uploads/properties/142/10214b29d0bd4c508506ba8fafa26815.png	f	10
 152	142	/static/uploads/properties/142/260e5cf8f7b94a73bc650eac5b4a15e5.png	t	1
+198	241	/static/uploads/properties/241/7c2dbfe311d742e3acb6cd489eb44d9d.webp	t	1
 185	166	/static/uploads/properties/166/2104ef5477514271bc9d125021903973.png	f	2
 162	158	/static/uploads/properties/158/37fcfe56b4f64755aee8a049c405c9c1.png	t	1
 186	166	/static/uploads/properties/166/017aa19bbb2a4716be1e821586bb4e52.png	f	3
@@ -2837,6 +2884,7 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 188	166	/static/uploads/properties/166/d8e67bbf2007416e8cbdc6fcd3a4cf9e.png	f	5
 189	166	/static/uploads/properties/166/99fc8edbd2144277b3c6f9c80e14e5d0.png	f	6
 184	166	/static/uploads/properties/166/20bbe86e413645f4b6e0c7dc6de1d672.png	t	1
+199	241	/static/uploads/properties/241/0a047fb58249473fba0d07bfb6deccbb.webp	f	2
 170	156	/static/uploads/properties/156/358815e4256b4aac978abb221dd48a70.jpeg	t	1
 171	156	/static/uploads/properties/156/3bcc5add6e8841dd9c763c770af5f831.jpeg	f	2
 172	156	/static/uploads/properties/156/44ffac19f42946a2b08b27e04e4c21f8.jpeg	f	3
@@ -2846,11 +2894,117 @@ COPY public.property_photos (photo_id, property_id, url, is_main, sequence_numbe
 176	156	/static/uploads/properties/156/22827c36d6504d4d9f5f2244288f3294.jpeg	f	7
 177	156	/static/uploads/properties/156/7e4210ef6e6f46e5b01c5b1e6f792b15.jpeg	f	8
 178	156	/static/uploads/properties/156/90263135bd4647e8ac4be88c6640118b.jpeg	f	9
+200	255	/static/uploads/properties/255/080adf09826444dd8ab4578b5d762964.jpg	t	1
+201	255	/static/uploads/properties/255/4f4f14d2bff74a69b5aa083625a6a8cc.jpg	f	2
 179	167	/static/uploads/properties/167/b5a758f622a04a499352e23cf0a2c6e7.jpeg	t	1
 180	167	/static/uploads/properties/167/2efde3d28ae24939b7ef7f3f34477a56.jpeg	f	2
 181	167	/static/uploads/properties/167/f9f226005c204ac4baa627f7b099c859.jpeg	f	3
 182	167	/static/uploads/properties/167/18b49f9c093249009e3df03325a79c64.jpeg	f	4
 183	167	/static/uploads/properties/167/a796069d4dde4a5fa7031adf7ca0f151.jpeg	f	5
+209	251	/static/uploads/properties/251/7ad5929b0bed4291976829ae3e1b9e4f.jfif	t	1
+210	251	/static/uploads/properties/251/50c10704154845089f1d085139c2523e.webp	f	2
+202	260	/static/uploads/properties/260/c86b1724d023403e9f23bc8346537ad2.jpg	t	1
+203	260	/static/uploads/properties/260/dff47ad9d87d41529df2790d5c177770.jpg	f	2
+204	260	/static/uploads/properties/260/22e6f54599ac48109c9efbeca606c425.jpg	f	3
+192	250	/static/uploads/properties/250/77f795bd523546e4b5c6fe6a6b94dd44.jpg	t	1
+193	250	/static/uploads/properties/250/821b2c14a3144eb085d02d18fa163df8.jpg	f	2
+194	250	/static/uploads/properties/250/9bdaf0bb16fc4bc8b6fe98119ceb4bea.jpg	f	3
+211	251	/static/uploads/properties/251/c5ec9996d81a4fd2baec8b2ac58005ff.webp	f	3
+195	268	/static/uploads/properties/268/9db72dafc77342b59c0cbaa8d658e4e5.jpg	t	1
+196	268	/static/uploads/properties/268/819df1ed037d452d8b018d58f1d28d10.jpg	f	2
+197	268	/static/uploads/properties/268/372c3e78159b4482937082b839540478.jpg	f	3
+221	128	/static/uploads/properties/128/576b651dc25148f5a9ca8aabe102ad33.jpg	t	1
+205	264	/static/uploads/properties/264/04e5e85e9f434a10a186b3519fa10cf0.jpg	t	1
+206	264	/static/uploads/properties/264/b7b753ab51b742b49fdad6db74422e66.jpg	f	2
+207	264	/static/uploads/properties/264/885b5612a2974f8db146201271265955.jpg	f	3
+208	264	/static/uploads/properties/264/f270eea4120e4a83a1379ccca10731fc.jpg	f	4
+222	128	/static/uploads/properties/128/67f88f4da55b4806bab1ff474b88db79.jpg	f	2
+212	159	/static/uploads/properties/159/2b78e612dc5545a38d5e1b125be75057.jpg	t	1
+213	159	/static/uploads/properties/159/9d9cd7947ccb493f8387601f4fa98a73.jpg	f	2
+214	159	/static/uploads/properties/159/67c23b5744ab4faba08f3eabd42893d0.jpg	f	3
+223	128	/static/uploads/properties/128/42e6e7488d2e4384acf407708bf66622.jpg	f	3
+215	160	/static/uploads/properties/160/3dc54e5a070a42b5ba152f9b15f5322a.png	t	1
+216	160	/static/uploads/properties/160/6a9feb8971574ba7a75bb68cac2ac019.png	f	2
+217	162	/static/uploads/properties/162/98ad8adc6a8a480fabbbe26761f736f9.webp	t	1
+218	162	/static/uploads/properties/162/fe5ac61fe2234f3abfc3b13838dacd8e.webp	f	2
+219	162	/static/uploads/properties/162/5ad51dd616c94764a2f47160676b067d.webp	f	3
+220	162	/static/uploads/properties/162/fc12a3d659b54718828f1a1020900577.webp	f	4
+225	252	/static/uploads/properties/252/668ea7fe06c244209dc86a2baa3e381c.jpg	t	1
+224	137	/static/uploads/properties/137/5b94766c6aca45f19c3650214415cc3c.png	t	1
+226	252	/static/uploads/properties/252/ad4aace2116b485e9d19ce38bcfd13ee.jpg	f	2
+227	252	/static/uploads/properties/252/e292ca17e9e740fc8fb8a3ee8ea4066a.jpg	f	3
+228	243	/static/uploads/properties/243/ac8425dfddf94f44832d1026d099653d.webp	t	1
+229	243	/static/uploads/properties/243/ab0f0c838592459780a55aca69fd7ee3.webp	f	2
+230	243	/static/uploads/properties/243/41c5532631184194b943e55c0ffbb56e.webp	f	3
+231	243	/static/uploads/properties/243/9aa943f726114958a2ad79a995e08607.webp	f	4
+246	242	/static/uploads/properties/242/7cbb0ae41bfb41dca0ceeea22730663a.jpg	t	1
+247	242	/static/uploads/properties/242/0d62de038dda4d0bb8a478819ef97999.jpg	f	2
+248	242	/static/uploads/properties/242/a4f52b2a87a243a4a6a09142779ce05d.jpg	f	3
+249	242	/static/uploads/properties/242/07d6cbd6dcc348c292db1fbb7dcbfd0e.jpg	f	4
+250	242	/static/uploads/properties/242/49767ac58a39456ba1d806999137805b.jpg	f	5
+233	246	/static/uploads/properties/246/414758454f5342709a6acca681b486c1.jpg	f	2
+232	246	/static/uploads/properties/246/4b0e0280dc1541baa933ad6aee2d1a06.jpg	t	1
+251	242	/static/uploads/properties/242/7aa43309210a493abe495b8b811766e4.jpg	f	6
+252	242	/static/uploads/properties/242/6854ae4d67f64a909be3c7052df73ddf.jpg	f	7
+234	240	/static/uploads/properties/240/1ecd8204daf442d3ba3b0516c2fde3b7.jpg	t	1
+235	240	/static/uploads/properties/240/65d362450971442f9f639a85d618ca6d.jpg	f	2
+253	242	/static/uploads/properties/242/300f2665345d43a895a2265f828345c2.jpg	f	8
+236	247	/static/uploads/properties/247/77e9d7c2cb15432d9a3c2d7bc4e65bd1.jpg	t	1
+237	247	/static/uploads/properties/247/a5800604c236473da102c1ff1cad7863.jpg	f	2
+238	247	/static/uploads/properties/247/939b2607e7d64e6b81862b909a96fe56.jpg	f	3
+254	244	/static/uploads/properties/244/0e9d2f5083474deaadb18009de6ae7dc.webp	t	1
+239	253	/static/uploads/properties/253/81a8cdba05764ca89d1d4ae2fbff669b.jpg	t	1
+240	253	/static/uploads/properties/253/6123ee39a67b4817a6f683101d59ae40.jpg	f	2
+242	248	/static/uploads/properties/248/2f14c3711bcc4bcfb332ba8301aa5995.jpg	f	2
+241	248	/static/uploads/properties/248/be4ce09bca4e479991972cd36652ef75.jpg	t	1
+272	270	/static/uploads/properties/270/5673c9ae764149a6b4b93470c997af01.jpg	f	4
+243	254	/static/uploads/properties/254/1811ebf3d85944ec825a757b56d6ba59.jpg	t	1
+244	254	/static/uploads/properties/254/bed60ab15116473ca2de4731feee93c2.jpg	f	2
+245	254	/static/uploads/properties/254/9bf95a282bc048f4aa0241f43b4655ac.jpg	f	3
+262	249	/static/uploads/properties/249/fcb894463ccc412189577ea6400b41f3.jpg	t	1
+263	249	/static/uploads/properties/249/5c87765d7c244a73ad35059750ce21fb.jpg	f	2
+276	263	/static/uploads/properties/263/8e4a00cc55334ab6938631120204321d.jpg	t	1
+264	256	/static/uploads/properties/256/4e6431dba5344b1fa2642c4d554fba18.jpg	t	1
+265	256	/static/uploads/properties/256/6a75bb51655f4c7da8a2751fa932a446.jpg	f	2
+266	256	/static/uploads/properties/256/409209136ff447049e12a09f8b5be7d6.jpg	f	3
+255	245	/static/uploads/properties/245/3679992a27134b0db9461a741795bc81.jpg	t	1
+256	245	/static/uploads/properties/245/de3cd6828f904a7dbe8db8d9546fa74b.jpg	f	2
+257	245	/static/uploads/properties/245/d18e1e1eecaf4c1da10f8026344cda11.jpg	f	3
+258	245	/static/uploads/properties/245/f5b0b18ba43b4e9f8c3ff43c43672c4d.jpg	f	4
+259	245	/static/uploads/properties/245/4ea0cebe9a45478da07a083a7670aaab.jpg	f	5
+260	245	/static/uploads/properties/245/c74d4d8f207b4508bc35a2c2caeb0e03.jpg	f	6
+261	245	/static/uploads/properties/245/4208f3b69d3844f48b6a87c83db097f8.jpg	f	7
+277	263	/static/uploads/properties/263/addef2df1b574296995376512a808062.jpg	f	2
+278	263	/static/uploads/properties/263/74611a494b024241b38d9d033113a4dc.jpg	f	3
+267	269	/static/uploads/properties/269/57a35ead73f94f11adc39cb66b87494e.jpg	t	1
+268	269	/static/uploads/properties/269/7a0f7be33bbf44d1b8561099aed1eaa2.jpg	f	2
+282	257	/static/uploads/properties/257/766bd1c686534307bffa2ad525b08996.jpg	t	1
+269	270	/static/uploads/properties/270/ff3e45209bb542c18bf64bf8809ff202.jpg	t	1
+270	270	/static/uploads/properties/270/d40942e28eba454e92421ba4b06b5d54.jpg	f	2
+271	270	/static/uploads/properties/270/15a4f76ff04b473089fc2dfb3527f4b3.jpg	f	3
+273	262	/static/uploads/properties/262/54ec7cdd73f74d7f877d579195fab315.jpg	t	1
+274	262	/static/uploads/properties/262/7d88a560c92049ebbc6ebd7ed280fd97.jpg	f	2
+275	262	/static/uploads/properties/262/2c10cc2077424018ac6e7139f0455014.jpg	f	3
+281	265	/static/uploads/properties/265/e7cbf4acbf2d471fb242de70d6bcc404.jpg	f	3
+283	257	/static/uploads/properties/257/6f9c62125c05451ab96883e14d9f41ce.jpg	f	2
+284	257	/static/uploads/properties/257/5d04c07ffffb4753b3e347aaeb4f7cea.jpg	f	3
+279	265	/static/uploads/properties/265/385b90e967f94cd2870dce7ff5f3125a.jpg	t	1
+280	265	/static/uploads/properties/265/a24ffb8c24bc44bfbb74f84e0d50d2d8.jpg	f	2
+285	258	/static/uploads/properties/258/59292eda0f7a44d8a21ef990a5487d5a.webp	t	1
+286	258	/static/uploads/properties/258/cf854f44ecc44125979f8cddfcc39458.webp	f	2
+287	258	/static/uploads/properties/258/9abdb6de69ab42fda9406233390f1586.webp	f	3
+288	258	/static/uploads/properties/258/b8e937e47b574e92a85925a0486f29f2.webp	f	4
+289	259	/static/uploads/properties/259/c4e05195455146fbb6ce7464112f46a6.jpg	t	1
+290	259	/static/uploads/properties/259/d5ac44d2823d40ffb897f859a82c1a42.jpg	f	2
+291	259	/static/uploads/properties/259/37b350ac914b4dedab24d698e0457937.jpg	f	3
+292	259	/static/uploads/properties/259/d84fabc6f5c845f3839b0911399df635.jpg	f	4
+293	261	/static/uploads/properties/261/25dd295ee9da4995b8f489947b1aaeac.jpg	t	1
+294	261	/static/uploads/properties/261/6ec877b7cb0447b793b6ce2498b0da1a.jpg	f	2
+295	261	/static/uploads/properties/261/42ad39b83c2a44dd809855aeaf726f37.jpg	f	3
+296	266	/static/uploads/properties/266/c580df4f28ec4db3aa3183e8f2a282b3.jpg	t	1
+297	266	/static/uploads/properties/266/79cda0b896d148c28cd79d4e793573ff.jpg	f	2
+298	266	/static/uploads/properties/266/31b6969803ee4005a83914a1191c79a2.jpg	f	3
+299	266	/static/uploads/properties/266/7f9ac46f5e284b1587e0c796cd55e11a.jpg	f	4
 \.
 
 
@@ -2913,7 +3067,7 @@ SELECT pg_catalog.setval('public.applications_application_id_seq', 483, true);
 -- Name: audit_logs_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 754, true);
+SELECT pg_catalog.setval('public.audit_logs_log_id_seq', 789, true);
 
 
 --
@@ -2931,7 +3085,7 @@ SELECT pg_catalog.setval('public.contracts_contract_id_seq', 156, true);
 -- Name: messages_message_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.messages_message_id_seq', 401, true);
+SELECT pg_catalog.setval('public.messages_message_id_seq', 411, true);
 
 
 --
@@ -2949,7 +3103,7 @@ SELECT pg_catalog.setval('public.properties_property_id_seq', 271, true);
 -- Name: property_photos_photo_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.property_photos_photo_id_seq', 191, true);
+SELECT pg_catalog.setval('public.property_photos_photo_id_seq', 299, true);
 
 
 --
@@ -3346,11 +3500,11 @@ ALTER TABLE ONLY public.property_photos
     ADD CONSTRAINT property_photos_property_id_fkey FOREIGN KEY (property_id) REFERENCES public.properties(property_id) ON DELETE CASCADE;
 
 
--- Completed on 2026-04-26 22:24:59
+-- Completed on 2026-04-27 22:59:36
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 1DjYBWXQjxg4CPrsHLJJt51O7uZv5WEemphfJskQLcfC9O2ufbn1R7deU7zME8N
+\unrestrict 35mofwRyvzKMO5Y9gCGmI3SXPQZphHr4c1HeSr5xqzF9nJp2W5nUogtIFOIsfWf
 

@@ -2606,6 +2606,9 @@ async function loadMyProperties() {
                     statusClass = 'status-draft';
                     statusText = 'Черновик';
                     break;
+                case 'blocked':
+                    statusText = 'Ожидает подписания';  // ← ИЗМЕНИТЬ
+                    break;
                 case 'rented':
                     statusClass = 'status-rented';
                     statusText = 'Сдано';
@@ -6722,6 +6725,7 @@ function getStatusText(status) {
     const texts = {
         'active': 'Активно',
         'draft': 'Черновик',
+        'blocked': 'Ожидает подписания',
         'rented': 'Сдано',
         'archived': 'В архиве'
     };

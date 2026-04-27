@@ -77,7 +77,7 @@ class Property(Base):
             name="interval_pay_check"
         ),
         CheckConstraint(
-            "status IN ('draft', 'active', 'rented', 'archived')",
+            "status IN ('draft', 'active', 'blocked', 'rented', 'archived')",
             name="property_status_check"
         ),
         CheckConstraint("price >= 0", name="price_positive"),
